@@ -1,0 +1,8 @@
+/Makefile
+CTestTestfile.cmake
+Testing/
+*.a
+generated
+*.so
+*.dylib
+/3rdparty

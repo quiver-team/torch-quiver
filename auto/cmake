@@ -1,0 +1,64 @@
+# -*- mode: sh -*-
+
+QUIET=0
+
+CMAKE_FLAGS=
+
+add_cmake_flag() {
+    if [ $QUIET -eq 0 ]; then
+        echo "Using $1=$2"
+    fi
+    CMAKE_FLAGS="${CMAKE_FLAGS} -D$1=$2"
+}
+
+pass_cmake_flag_from_env() {
+    local name=$1
+    local env_key=$2
+    if [ -z ${env_key} ]; then
+        env_key=$name
+    fi
+    local val=$(eval echo \$$env_key)
+    if [ ! -z "$val" ]; then
+        add_cmake_flag $name $val
+    fi
+}
+
+CMAKE_PREFIX_PATH=
+
+add_cmake_prefix() {
+    if [ $QUIET -eq 0 ]; then
+        echo "adding to CMAKE_PREFIX_PATH with $1"
+    fi
+    CMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH;$1"
+}
+
+cleanup_cmake_cache() {
+    if [ -f CMakeCache.txt ]; then
+        rm CMakeCache.txt
+    fi
+    if [ -d 3rdparty ]; then
+        for cmake_cache in $(find 3rdparty/ | grep CMakeCache.txt); do
+            rm $cmake_cache
+        done
+    fi
+}
+
+get_dep() {
+    local name=$1
+    head -n 1 ./deps/$name | awk '{print $1}'
+}
+
+log_config_var() {
+    local name=$1
+    local val=$(eval echo \$$name)
+    if [ $QUIET -eq 0 ]; then
+        echo "$name=$val"
+    fi
+}
+
+config_cmake() {
+    add_cmake_prefixes
+    add_cmake_flags
+    cleanup_cmake_cache
+    cmake . $CMAKE_FLAGS
+}

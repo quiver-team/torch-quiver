@@ -1,0 +1,10 @@
+Quiver
+
+Graph Neural Network Operators for heterogeneous hardware.
+
+code structure
+
+*.cu.hpp // cuda template
+*.hpp // c++ header or template
+*.cu  // cuda kernels
+*.cpp // c++ implementations

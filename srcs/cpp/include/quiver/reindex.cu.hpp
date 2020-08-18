@@ -7,6 +7,8 @@
 #include <thrust/binary_search.h>
 #include <thrust/device_vector.h>
 
+#include <quiver/trace.hpp>
+
 template <typename T>
 __global__ void mask_permutation_kernel(const size_t n, thrust::pair<T, T> *q,
                                         const size_t m, const T *p)
@@ -160,6 +162,8 @@ void reindex_with_seeds(const thrust::device_vector<T> &a,
                         thrust::device_vector<T> &b,
                         thrust::device_vector<T> &c)
 {
+    TRACE("reindex_with_seeds<thrust>");
+
     reindex(a, b, c);
 
     thrust::device_vector<T> s1;
@@ -199,17 +203,23 @@ void reindex_with_seeds(const std::vector<T> &a, const std::vector<T> &s,
 {
     thrust::device_vector<T> cuda_a(a.size());
     thrust::device_vector<T> cuda_s(s.size());
-    thrust::copy(a.begin(), a.end(), cuda_a.begin());
-    thrust::copy(s.begin(), s.end(), cuda_s.begin());
+    {
+        TRACE("reindex_with_seeds::copy1");
+        thrust::copy(a.begin(), a.end(), cuda_a.begin());
+        thrust::copy(s.begin(), s.end(), cuda_s.begin());
+    }
 
     thrust::device_vector<T> cuda_b;
     thrust::device_vector<T> cuda_c;
     reindex_with_seeds(cuda_a, cuda_s, cuda_b, cuda_c);
 
-    b.resize(cuda_b.size());
-    thrust::copy(cuda_b.begin(), cuda_b.end(), b.begin());
-    c.resize(cuda_c.size());
-    thrust::copy(cuda_c.begin(), cuda_c.end(), c.begin());
+    {
+        TRACE("reindex_with_seeds::copy2");
+        b.resize(cuda_b.size());
+        thrust::copy(cuda_b.begin(), cuda_b.end(), b.begin());
+        c.resize(cuda_c.size());
+        thrust::copy(cuda_c.begin(), cuda_c.end(), c.begin());
+    }
 }
 
 template <typename T>
@@ -218,15 +228,22 @@ void reindex_with_seeds(size_t l, const T *s, size_t r, const T *a,
 {
     thrust::device_vector<T> cuda_a(r);
     thrust::device_vector<T> cuda_s(l);
-    thrust::copy(a, a + r, cuda_a.begin());
-    thrust::copy(s, s + l, cuda_s.begin());
+    {
+        TRACE("reindex_with_seeds::copy1");
+
+        thrust::copy(a, a + r, cuda_a.begin());
+        thrust::copy(s, s + l, cuda_s.begin());
+    }
 
     thrust::device_vector<T> cuda_b;
     thrust::device_vector<T> cuda_c;
     reindex_with_seeds(cuda_a, cuda_s, cuda_b, cuda_c);
 
-    b.resize(cuda_b.size());
-    thrust::copy(cuda_b.begin(), cuda_b.end(), b.begin());
-    c.resize(cuda_c.size());
-    thrust::copy(cuda_c.begin(), cuda_c.end(), c.begin());
+    {
+        TRACE("reindex_with_seeds::copy2");
+        b.resize(cuda_b.size());
+        thrust::copy(cuda_b.begin(), cuda_b.end(), b.begin());
+        c.resize(cuda_c.size());
+        thrust::copy(cuda_c.begin(), cuda_c.end(), c.begin());
+    }
 }

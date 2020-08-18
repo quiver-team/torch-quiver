@@ -10,7 +10,6 @@
 #include <quiver/common.hpp>
 #include <quiver/quiver.cu.hpp>
 #include <quiver/reindex.cu.hpp>
-#include <quiver/timer.hpp>
 #include <quiver/trace.hpp>
 
 namespace quiver
@@ -239,7 +238,7 @@ class TorchQuiver : public torch_quiver_t
 TorchQuiver new_quiver_from_edge_index(size_t n,
                                        const torch::Tensor &edge_index)
 {
-    timer _(__func__);
+    TRACE(__func__);
     using T = typename TorchQuiver::T;
     check(edge_index.is_contiguous());
     check_eq<int64_t>(edge_index.dim(), 2);
@@ -249,7 +248,7 @@ TorchQuiver new_quiver_from_edge_index(size_t n,
     using vec = std::vector<std::pair<T, T>>;
     vec ei(m);
     {
-        timer _("zip edge_index");
+        TRACE("zip edge_index");
         zip(p, p + m, p + m, &ei[0].first);
     }
     return TorchQuiver((T)n, std::move(ei));

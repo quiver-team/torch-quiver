@@ -6,7 +6,7 @@
 #include <quiver/cuda_pair.cu.hpp>
 #include <quiver/cuda_random.cu.hpp>
 #include <quiver/quiver.hpp>
-#include <quiver/timer.hpp>
+#include <quiver/trace.hpp>
 
 #include <cuda_runtime.h>
 #include <thrust/device_vector.h>
@@ -89,7 +89,7 @@ class quiver<T, CUDA> : public Quiver
                          int k, thrust::device_ptr<T> outputs,
                          thrust::device_ptr<T> output_counts) const
     {
-        timer _(__func__);
+        TRACE(__func__);
         sampler_.sample<T>(row_ptr_.size(), col_idx_.size(),
                            thrust::raw_pointer_cast(row_ptr_.data()),
                            thrust::raw_pointer_cast(col_idx_.data()),
@@ -105,29 +105,29 @@ class quiver<T, CUDA> : public Quiver
     quiver(T n, std::vector<std::pair<T, T>> edge_index)
     // : row_ptr_(n), col_idx_(edge_index.size())
     {
-        timer _(__func__);
+        TRACE(__func__);
         {
-            timer _("resize");
+            TRACE("resize");
             row_ptr_.resize(n);
             col_idx_.resize(edge_index.size());
         }
         {
-            timer _("std::sort");
+            TRACE("std::sort");
             // FIXME: sort on GPU
             std::sort(edge_index.begin(), edge_index.end());
         }
         const auto rc_idx = [&] {
-            timer _("unzip");
+            TRACE("unzip");
             return unzip(edge_index);
         }();
         auto &row_idx = rc_idx.first;
         auto &col_idx = rc_idx.second;
         std::vector<T> row_ptr = [&] {
-            timer _("compress_row_idx");
+            TRACE("compress_row_idx");
             return compress_row_idx(n, row_idx);
         }();
         {
-            timer _("thrust::copy");
+            TRACE("thrust::copy");
             thrust::copy(row_ptr.begin(), row_ptr.end(), row_ptr_.begin());
             thrust::copy(col_idx.begin(), col_idx.end(), col_idx_.begin());
         }
@@ -146,8 +146,8 @@ class quiver<T, CUDA> : public Quiver
     {
         thrust::device_vector<T> inputs(batch_size);
         {
-            timer _("thrust::copy_h2d(" +
-                    std::to_string(batch_size * sizeof(T)) + ")");
+            TRACE("thrust::copy_h2d(" + std::to_string(batch_size * sizeof(T)) +
+                  ")");
             thrust::copy(vertices, vertices + batch_size, inputs.begin());
         }
         thrust::device_vector<T> outputs(batch_size * k);
@@ -155,8 +155,8 @@ class quiver<T, CUDA> : public Quiver
         _launch_sampler(inputs.size(), inputs.data(), k, outputs.data(),
                         output_counts.data());
         {
-            timer _("thrust::copy_d2h(" +
-                    std::to_string(batch_size * sizeof(T) * k) + ")");
+            TRACE("thrust::copy_d2h(" +
+                  std::to_string(batch_size * sizeof(T) * k) + ")");
             thrust::copy(output_counts.begin(), output_counts.end(),
                          sampled_counts);
             thrust::copy(outputs.begin(), outputs.end(), results);

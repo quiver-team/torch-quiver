@@ -3,6 +3,10 @@
 #include <cstdio>
 #include <string>
 
+bool trace_enable();
+
+extern bool _trace_enable;
+
 namespace quiver
 {
 class tracer
@@ -20,20 +24,34 @@ class tracer
   public:
     tracer(const std::string name) : name_(std::move(name)), t0_(clock_t::now())
     {
-        printf("%*s{ // %s\n", indent * tab, "", name_.c_str());
-        ++indent;
+        if (_trace_enable) {
+            printf("%*s{ // %s\n", indent * tab, "", name_.c_str());
+            ++indent;
+        }
     }
 
     ~tracer()
     {
-        using duration_t = std::chrono::duration<double>;
-        --indent;
-        const duration_t d = clock_t::now() - t0_;
-        printf("%*s} // %s took %fms\n", indent * tab, "", name_.c_str(),
-               d.count() * 1000);
+        if (_trace_enable) {
+            using duration_t = std::chrono::duration<double>;
+            --indent;
+            const duration_t d = clock_t::now() - t0_;
+            printf("%*s} // %s took %fms\n", indent * tab, "", name_.c_str(),
+                   d.count() * 1000);
+        }
     }
 };
 }  // namespace quiver
 
 #define TRACE(e) ::quiver::tracer __(e);
-#define DEFINE_TRACE int ::quiver::tracer::indent = 0;
+
+#define DEFINE_TRACE                                                           \
+    int ::quiver::tracer::indent = 0;                                          \
+                                                                               \
+    bool trace_enable()                                                        \
+    {                                                                          \
+        if (getenv("ENABLE_TRACE")) { return true; }                           \
+        return false;                                                          \
+    }                                                                          \
+                                                                               \
+    bool _trace_enable = trace_enable();

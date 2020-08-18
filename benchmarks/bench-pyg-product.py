@@ -20,6 +20,16 @@ def info(t, name=None):
     print(msg)
 
 
+class Adj(NamedTuple):
+    edge_index: torch.Tensor
+    e_id: torch.Tensor
+    size: Tuple[int, int]
+
+    def to(self, *args, **kwargs):
+        return Adj(self.edge_index.to(*args, **kwargs),
+                   self.e_id.to(*args, **kwargs), self.size)
+
+
 class CudaNeighborSampler(torch.utils.data.DataLoader):
     def __init__(self,
                  edge_index: torch.Tensor,
@@ -60,7 +70,7 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
         batch_size: int = len(batch)
         print('sample batch size %d' % (batch_size))
 
-        # adjs: List[Adj] = []
+        adjs: List[Adj] = []
 
         n_id = batch
         for size in self.sizes:
@@ -69,13 +79,16 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
             n_id = result
 
             edge_index = torch.stack([row_idx, col_idx], dim=0)
-            # adjs.append(Adj(edge_index, e_id, size))
+            size = torch.LongTensor([row_idx.max() + 1, col_idx.max() + 1])
+            # FIXME: also sample e_id
+            e_id = torch.tensor([])
+            adjs.append(Adj(edge_index, e_id, size))
 
-        return batch_size, batch
-        # if len(adjs) > 1:
-        #     return batch_size, n_id, adjs[::-1]
-        # else:
-        #     return batch_size, n_id, adjs[0]
+        # return batch_size, batch
+        if len(adjs) > 1:
+            return batch_size, n_id, adjs[::-1]
+        else:
+            return batch_size, n_id, adjs[0]
 
     def __repr__(self):
         return '{}(sizes={})'.format(self.__class__.__name__, self.sizes)
@@ -111,8 +124,7 @@ def main():
         batch_size=1024,
     )
 
-    # for idx, (batch_size, n_id, adjs) in enumerate(train_loader):
-    for idx, (batch_size, batch) in enumerate(sampler):
+    for idx, (batch_size, n_id, adjs) in enumerate(sampler):
         print('#%d' % (idx))
 
 

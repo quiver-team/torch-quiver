@@ -30,6 +30,7 @@ ENDFUNCTION()
 
 ADD_LIBRARY(quiver SHARED)
 ADD_SOURCE(quiver ${CMAKE_SOURCE_DIR}/srcs/cpp/src/quiver/quiver.cpp)
+ADD_SOURCE(quiver ${CMAKE_SOURCE_DIR}/srcs/cpp/src/quiver/trace.cpp)
 IF(ENABLE_CUDA)
     ADD_SOURCE(quiver ${CMAKE_SOURCE_DIR}/srcs/cpp/src/quiver/cuda/quiver.cu)
 ENDIF()

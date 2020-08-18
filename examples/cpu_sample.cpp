@@ -8,6 +8,8 @@
 
 #include <quiver/trace.hpp>
 
+DEFINE_TRACE;
+
 std::vector<int64_t> col;
 std::vector<int64_t> rowptr;
 std::vector<int64_t> rowcount;

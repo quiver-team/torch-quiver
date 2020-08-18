@@ -64,17 +64,12 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
 
         n_id = batch
         for size in self.sizes:
-            result = self.quiver.sample_adj(n_id, size)
+            result, row_idx, col_idx = self.quiver.sample_sub(n_id, size)
             info(result)
             n_id = result
-            # adj, n_id = self.adj.sample_adj(n_id, size, replace=False)
-        #     if self.flow == 'source_to_target':
-        #         adj = adj.t()
-        #     row, col, e_id = adj.coo()
-        #     size = adj.sparse_sizes()
-        #     edge_index = torch.stack([row, col], dim=0)
 
-        #     adjs.append(Adj(edge_index, e_id, size))
+            edge_index = torch.stack([row_idx, col_idx], dim=0)
+            # adjs.append(Adj(edge_index, e_id, size))
 
         return batch_size, batch
         # if len(adjs) > 1:

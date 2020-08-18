@@ -7,6 +7,8 @@
 
 #include <quiver/trace.hpp>
 
+DEFINE_TRACE;
+
 void check_eq(int x, int y)
 {
     if (x != y) { throw std::runtime_error("check failed"); }

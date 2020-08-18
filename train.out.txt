@@ -1,0 +1,1177 @@
+loading ... 
+load data took 1.646s
+building quiver
+build quiver took 6674.710989ms
+create train_loader took 6.846s
+building quiver
+build quiver took 3808.888912ms
+create subgraph_loader took 4.101s
+build model took 0.149s
+
+Run 01:
+
+before for loop took 0.001s
+set mode to train took 0.000s
+sample took 60.659409ms
+prepro took 0.076s
+train took 0.108s
+
+
+
+sample took 48.259258ms
+prepro took 0.059s
+train took 0.021s
+
+
+
+sample took 46.471357ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 49.861193ms
+prepro took 0.061s
+train took 0.020s
+
+
+
+sample took 46.340227ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 49.140930ms
+prepro took 0.061s
+train took 0.020s
+
+
+
+sample took 46.785355ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 45.982122ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 45.459747ms
+prepro took 0.057s
+train took 0.020s
+
+
+
+sample took 47.006369ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 47.545195ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 51.091194ms
+prepro took 0.062s
+train took 0.020s
+
+
+
+sample took 45.116186ms
+prepro took 0.057s
+train took 0.020s
+
+
+
+sample took 60.228348ms
+prepro took 0.072s
+train took 0.020s
+
+
+
+sample took 45.337200ms
+prepro took 0.057s
+train took 0.020s
+
+
+
+sample took 49.416542ms
+prepro took 0.061s
+train took 0.020s
+
+
+
+sample took 45.505524ms
+prepro took 0.057s
+train took 0.020s
+
+
+
+sample took 46.464205ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 47.176361ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 48.025608ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 46.290398ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 47.820807ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 47.085524ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 51.984549ms
+prepro took 0.063s
+train took 0.021s
+
+
+
+sample took 60.263157ms
+prepro took 0.072s
+train took 0.021s
+
+
+
+sample took 58.810234ms
+prepro took 0.070s
+train took 0.022s
+
+
+
+sample took 65.941095ms
+prepro took 0.077s
+train took 0.022s
+
+
+
+sample took 68.117142ms
+prepro took 0.080s
+train took 0.022s
+
+
+
+sample took 58.284521ms
+prepro took 0.070s
+train took 0.021s
+
+
+
+sample took 69.231033ms
+prepro took 0.081s
+train took 0.020s
+
+
+
+sample took 51.056147ms
+prepro took 0.062s
+train took 0.021s
+
+
+
+sample took 62.434196ms
+prepro took 0.075s
+train took 0.022s
+
+
+
+sample took 47.233343ms
+prepro took 0.058s
+train took 0.021s
+
+
+
+sample took 52.674294ms
+prepro took 0.064s
+train took 0.021s
+
+
+
+sample took 50.831795ms
+prepro took 0.062s
+train took 0.021s
+
+
+
+sample took 50.743818ms
+prepro took 0.062s
+train took 0.021s
+
+
+
+sample took 49.862146ms
+prepro took 0.061s
+train took 0.020s
+
+
+
+sample took 49.129009ms
+prepro took 0.061s
+train took 0.020s
+
+
+
+sample took 46.098471ms
+prepro took 0.057s
+train took 0.020s
+
+
+
+sample took 46.003819ms
+prepro took 0.057s
+train took 0.020s
+
+
+
+sample took 46.977758ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 46.536207ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 46.453476ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 44.202805ms
+prepro took 0.056s
+train took 0.020s
+
+
+
+sample took 46.702862ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 46.951294ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 44.919729ms
+prepro took 0.056s
+train took 0.020s
+
+
+
+sample took 53.784609ms
+prepro took 0.065s
+train took 0.020s
+
+
+
+sample took 45.508862ms
+prepro took 0.057s
+train took 0.020s
+
+
+
+sample took 46.407700ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 46.161890ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 47.642708ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 47.295332ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 45.258284ms
+prepro took 0.057s
+train took 0.020s
+
+
+
+sample took 44.752836ms
+prepro took 0.056s
+train took 0.020s
+
+
+
+sample took 46.171427ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 47.729254ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 46.535015ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 45.654535ms
+prepro took 0.057s
+train took 0.020s
+
+
+
+sample took 46.660662ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 57.990074ms
+prepro took 0.070s
+train took 0.020s
+
+
+
+sample took 47.172785ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 46.223164ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 46.518326ms
+prepro took 0.058s
+train took 0.019s
+
+
+
+sample took 47.708273ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 46.966553ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 46.575308ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 44.714689ms
+prepro took 0.056s
+train took 0.020s
+
+
+
+sample took 46.772718ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 44.657469ms
+prepro took 0.056s
+train took 0.020s
+
+
+
+sample took 53.709507ms
+prepro took 0.065s
+train took 0.020s
+
+
+
+sample took 46.705961ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 47.579050ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 55.072069ms
+prepro took 0.066s
+train took 0.020s
+
+
+
+sample took 46.733379ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 46.032429ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 46.095133ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 46.719551ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 46.767950ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 73.442459ms
+prepro took 0.085s
+train took 0.022s
+
+
+
+sample took 59.543133ms
+prepro took 0.071s
+train took 0.022s
+
+
+
+sample took 69.334030ms
+prepro took 0.081s
+train took 0.021s
+
+
+
+sample took 58.002949ms
+prepro took 0.070s
+train took 0.022s
+
+
+
+sample took 61.244011ms
+prepro took 0.073s
+train took 0.022s
+
+
+
+sample took 59.387684ms
+prepro took 0.071s
+train took 0.022s
+
+
+
+sample took 61.963081ms
+prepro took 0.073s
+train took 0.022s
+
+
+
+sample took 57.613611ms
+prepro took 0.069s
+train took 0.021s
+
+
+
+sample took 55.886984ms
+prepro took 0.067s
+train took 0.021s
+
+
+
+sample took 53.320169ms
+prepro took 0.065s
+train took 0.021s
+
+
+
+sample took 51.689863ms
+prepro took 0.063s
+train took 0.021s
+
+
+
+sample took 49.540758ms
+prepro took 0.061s
+train took 0.021s
+
+
+
+sample took 51.775217ms
+prepro took 0.063s
+train took 0.021s
+
+
+
+sample took 53.647995ms
+prepro took 0.065s
+train took 0.021s
+
+
+
+sample took 47.931433ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 47.143698ms
+prepro took 0.059s
+train took 0.021s
+
+
+
+sample took 45.646906ms
+prepro took 0.057s
+train took 0.020s
+
+
+
+sample took 50.681829ms
+prepro took 0.062s
+train took 0.020s
+
+
+
+sample took 51.373482ms
+prepro took 0.063s
+train took 0.020s
+
+
+
+sample took 45.997620ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 47.650099ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 56.323051ms
+prepro took 0.068s
+train took 0.020s
+
+
+
+sample took 46.364784ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 46.272993ms
+prepro took 0.058s
+train took 0.021s
+
+
+
+sample took 56.926012ms
+prepro took 0.068s
+train took 0.020s
+
+
+
+sample took 58.214903ms
+prepro took 0.070s
+train took 0.020s
+
+
+
+sample took 78.262806ms
+prepro took 0.091s
+train took 0.021s
+
+
+
+sample took 53.136587ms
+prepro took 0.065s
+train took 0.021s
+
+
+
+sample took 53.735733ms
+prepro took 0.065s
+train took 0.021s
+
+
+
+sample took 50.633669ms
+prepro took 0.062s
+train took 0.021s
+
+
+
+sample took 59.764147ms
+prepro took 0.071s
+train took 0.021s
+
+
+
+sample took 59.527636ms
+prepro took 0.072s
+train took 0.021s
+
+
+
+sample took 46.269894ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 46.049356ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 46.721697ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 46.020985ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 46.047449ms
+prepro took 0.057s
+train took 0.020s
+
+
+
+sample took 47.842264ms
+prepro took 0.060s
+train took 0.020s
+
+
+
+sample took 54.568768ms
+prepro took 0.066s
+train took 0.020s
+
+
+
+sample took 46.255112ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 43.768644ms
+prepro took 0.055s
+train took 0.020s
+
+
+
+sample took 47.510624ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 49.257994ms
+prepro took 0.061s
+train took 0.020s
+
+
+
+sample took 46.521664ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 46.123028ms
+prepro took 0.057s
+train took 0.020s
+
+
+
+sample took 46.480179ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 49.861431ms
+prepro took 0.061s
+train took 0.021s
+
+
+
+sample took 48.035860ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 46.963453ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 46.297550ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 46.461582ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 51.152229ms
+prepro took 0.063s
+train took 0.020s
+
+
+
+sample took 48.067331ms
+prepro took 0.060s
+train took 0.020s
+
+
+
+sample took 46.942472ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 47.852993ms
+prepro took 0.059s
+train took 0.022s
+
+
+
+sample took 63.946009ms
+prepro took 0.076s
+train took 0.020s
+
+
+
+sample took 47.062635ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 63.021898ms
+prepro took 0.076s
+train took 0.022s
+
+
+
+sample took 55.118799ms
+prepro took 0.067s
+train took 0.020s
+
+
+
+sample took 46.427727ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 45.879841ms
+prepro took 0.057s
+train took 0.020s
+
+
+
+sample took 46.052217ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 47.250271ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 51.853657ms
+prepro took 0.063s
+train took 0.020s
+
+
+
+sample took 46.911716ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 45.110703ms
+prepro took 0.057s
+train took 0.020s
+
+
+
+sample took 47.462225ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 51.313162ms
+prepro took 0.063s
+train took 0.029s
+
+
+
+sample took 46.096563ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 48.062801ms
+prepro took 0.060s
+train took 0.020s
+
+
+
+sample took 48.675537ms
+prepro took 0.060s
+train took 0.020s
+
+
+
+sample took 54.304600ms
+prepro took 0.066s
+train took 0.020s
+
+
+
+sample took 46.344757ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 47.178030ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 49.871683ms
+prepro took 0.061s
+train took 0.019s
+
+
+
+sample took 50.922155ms
+prepro took 0.063s
+train took 0.021s
+
+
+
+sample took 64.677000ms
+prepro took 0.076s
+train took 0.022s
+
+
+
+sample took 50.809860ms
+prepro took 0.062s
+train took 0.021s
+
+
+
+sample took 65.174103ms
+prepro took 0.076s
+train took 0.022s
+
+
+
+sample took 59.148550ms
+prepro took 0.071s
+train took 0.021s
+
+
+
+sample took 47.128439ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 45.966625ms
+prepro took 0.057s
+train took 0.020s
+
+
+
+sample took 46.676636ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 45.990944ms
+prepro took 0.057s
+train took 0.020s
+
+
+
+sample took 46.785355ms
+prepro took 0.058s
+train took 0.021s
+
+
+
+sample took 46.440840ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 49.075127ms
+prepro took 0.061s
+train took 0.020s
+
+
+
+sample took 51.822424ms
+prepro took 0.063s
+train took 0.021s
+
+
+
+sample took 50.357580ms
+prepro took 0.062s
+train took 0.021s
+
+
+
+sample took 67.782164ms
+prepro took 0.080s
+train took 0.021s
+
+
+
+sample took 54.199934ms
+prepro took 0.066s
+train took 0.022s
+
+
+
+sample took 51.354408ms
+prepro took 0.063s
+train took 0.021s
+
+
+
+sample took 52.231550ms
+prepro took 0.064s
+train took 0.021s
+
+
+
+sample took 50.554276ms
+prepro took 0.062s
+train took 0.021s
+
+
+
+sample took 51.451683ms
+prepro took 0.063s
+train took 0.021s
+
+
+
+sample took 50.746441ms
+prepro took 0.062s
+train took 0.020s
+
+
+
+sample took 45.839071ms
+prepro took 0.057s
+train took 0.020s
+
+
+
+sample took 46.648741ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 46.851397ms
+prepro took 0.059s
+train took 0.020s
+
+
+
+sample took 46.838760ms
+prepro took 0.058s
+train took 0.025s
+
+
+
+sample took 67.438602ms
+prepro took 0.079s
+train took 0.020s
+
+
+
+sample took 47.861576ms
+prepro took 0.060s
+train took 0.020s
+
+
+
+sample took 46.397448ms
+prepro took 0.058s
+train took 0.021s
+
+
+
+sample took 48.510551ms
+prepro took 0.060s
+train took 0.020s
+
+
+
+sample took 47.067404ms
+prepro took 0.058s
+train took 0.020s
+
+
+
+sample took 44.904470ms
+prepro took 0.056s
+train took 0.020s
+
+
+
+sample took 47.286272ms
+prepro took 0.059s
+train took 0.022s
+
+
+
+sample took 52.953482ms
+prepro took 0.064s
+train took 0.021s
+
+
+
+sample took 48.490047ms
+prepro took 0.060s
+train took 0.021s
+
+
+
+sample took 50.558090ms
+prepro took 0.062s
+train took 0.020s
+
+
+
+sample took 90.093374ms
+prepro took 0.102s
+train took 0.020s
+
+
+
+sample took 85.126400ms
+prepro took 0.097s
+train took 0.020s
+
+
+
+sample took 51.632404ms
+prepro took 0.063s
+train took 0.020s
+
+
+
+sample took 4.480362ms
+prepro took 0.019s
+train took 0.005s
+
+
+
+train loop took 16.035s
+Epoch 01, Loss: 0.6671, Approx. Train: 0.8251
+train one epoch took 16.035s
+finish took 0.000s
+main took 28.779s

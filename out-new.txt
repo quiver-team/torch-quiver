@@ -1,1162 +1,388 @@
 building quiver
-zip edge_index took 383.06ms
-new_quiver_from_edge_index took 18.60s
-build quiver took 18610.564947ms
-sample batch size 1024
- torch.LongTensor torch.Size([15786])
- torch.LongTensor torch.Size([122923])
- torch.LongTensor torch.Size([348961])
-sample took 84.606647ms
+build quiver took 6632.189989ms
+sample took 75.452566ms
 #0
-sample batch size 1024
- torch.LongTensor torch.Size([15808])
- torch.LongTensor torch.Size([124203])
- torch.LongTensor torch.Size([354285])
-sample took 69.563866ms
+sample took 53.126335ms
 #1
-sample batch size 1024
- torch.LongTensor torch.Size([15835])
- torch.LongTensor torch.Size([124979])
- torch.LongTensor torch.Size([356718])
-sample took 58.985472ms
+sample took 62.975168ms
 #2
-sample batch size 1024
- torch.LongTensor torch.Size([15804])
- torch.LongTensor torch.Size([123967])
- torch.LongTensor torch.Size([354329])
-sample took 55.534363ms
+sample took 51.165104ms
 #3
-sample batch size 1024
- torch.LongTensor torch.Size([15820])
- torch.LongTensor torch.Size([123634])
- torch.LongTensor torch.Size([353023])
-sample took 57.254076ms
+sample took 63.529730ms
 #4
-sample batch size 1024
- torch.LongTensor torch.Size([15839])
- torch.LongTensor torch.Size([125913])
- torch.LongTensor torch.Size([358012])
-sample took 61.427832ms
+sample took 56.602478ms
 #5
-sample batch size 1024
- torch.LongTensor torch.Size([15816])
- torch.LongTensor torch.Size([124595])
- torch.LongTensor torch.Size([356424])
-sample took 62.699318ms
+sample took 53.871393ms
 #6
-sample batch size 1024
- torch.LongTensor torch.Size([15760])
- torch.LongTensor torch.Size([123264])
- torch.LongTensor torch.Size([352783])
-sample took 63.521862ms
+sample took 55.303097ms
 #7
-sample batch size 1024
- torch.LongTensor torch.Size([15872])
- torch.LongTensor torch.Size([124762])
- torch.LongTensor torch.Size([356722])
-sample took 58.450937ms
+sample took 53.741693ms
 #8
-sample batch size 1024
- torch.LongTensor torch.Size([15815])
- torch.LongTensor torch.Size([124937])
- torch.LongTensor torch.Size([355176])
-sample took 51.304340ms
+sample took 57.024717ms
 #9
-sample batch size 1024
- torch.LongTensor torch.Size([15751])
- torch.LongTensor torch.Size([123135])
- torch.LongTensor torch.Size([350558])
-sample took 58.478594ms
+sample took 58.817625ms
 #10
-sample batch size 1024
- torch.LongTensor torch.Size([15841])
- torch.LongTensor torch.Size([124939])
- torch.LongTensor torch.Size([357186])
-sample took 57.825804ms
+sample took 53.149939ms
 #11
-sample batch size 1024
- torch.LongTensor torch.Size([15868])
- torch.LongTensor torch.Size([124565])
- torch.LongTensor torch.Size([355122])
-sample took 64.924479ms
+sample took 56.373358ms
 #12
-sample batch size 1024
- torch.LongTensor torch.Size([15811])
- torch.LongTensor torch.Size([124325])
- torch.LongTensor torch.Size([354047])
-sample took 56.503296ms
+sample took 51.534176ms
 #13
-sample batch size 1024
- torch.LongTensor torch.Size([15822])
- torch.LongTensor torch.Size([124792])
- torch.LongTensor torch.Size([356457])
-sample took 56.852102ms
+sample took 59.442282ms
 #14
-sample batch size 1024
- torch.LongTensor torch.Size([15847])
- torch.LongTensor torch.Size([124814])
- torch.LongTensor torch.Size([356904])
-sample took 56.723595ms
+sample took 55.470705ms
 #15
-sample batch size 1024
- torch.LongTensor torch.Size([15744])
- torch.LongTensor torch.Size([124732])
- torch.LongTensor torch.Size([355413])
-sample took 60.653448ms
+sample took 54.220438ms
 #16
-sample batch size 1024
- torch.LongTensor torch.Size([15815])
- torch.LongTensor torch.Size([124083])
- torch.LongTensor torch.Size([353333])
-sample took 57.470798ms
+sample took 52.556276ms
 #17
-sample batch size 1024
- torch.LongTensor torch.Size([15785])
- torch.LongTensor torch.Size([124020])
- torch.LongTensor torch.Size([353949])
-sample took 58.577776ms
+sample took 55.466175ms
 #18
-sample batch size 1024
- torch.LongTensor torch.Size([15842])
- torch.LongTensor torch.Size([124647])
- torch.LongTensor torch.Size([354068])
-sample took 63.761950ms
+sample took 59.632301ms
 #19
-sample batch size 1024
- torch.LongTensor torch.Size([15665])
- torch.LongTensor torch.Size([122639])
- torch.LongTensor torch.Size([350415])
-sample took 57.468414ms
+sample took 50.103903ms
 #20
-sample batch size 1024
- torch.LongTensor torch.Size([15860])
- torch.LongTensor torch.Size([125931])
- torch.LongTensor torch.Size([359090])
-sample took 57.513475ms
+sample took 53.735018ms
 #21
-sample batch size 1024
- torch.LongTensor torch.Size([15832])
- torch.LongTensor torch.Size([124733])
- torch.LongTensor torch.Size([356976])
-sample took 52.458763ms
+sample took 56.562662ms
 #22
-sample batch size 1024
- torch.LongTensor torch.Size([15925])
- torch.LongTensor torch.Size([125304])
- torch.LongTensor torch.Size([356871])
-sample took 56.634903ms
+sample took 51.941872ms
 #23
-sample batch size 1024
- torch.LongTensor torch.Size([15791])
- torch.LongTensor torch.Size([124563])
- torch.LongTensor torch.Size([354134])
-sample took 55.530310ms
+sample took 53.521872ms
 #24
-sample batch size 1024
- torch.LongTensor torch.Size([15825])
- torch.LongTensor torch.Size([125286])
- torch.LongTensor torch.Size([356550])
-sample took 56.572199ms
+sample took 53.288221ms
 #25
-sample batch size 1024
- torch.LongTensor torch.Size([15758])
- torch.LongTensor torch.Size([123412])
- torch.LongTensor torch.Size([350151])
-sample took 59.249401ms
+sample took 53.609610ms
 #26
-sample batch size 1024
- torch.LongTensor torch.Size([15789])
- torch.LongTensor torch.Size([124542])
- torch.LongTensor torch.Size([354199])
-sample took 55.024862ms
+sample took 52.848577ms
 #27
-sample batch size 1024
- torch.LongTensor torch.Size([15826])
- torch.LongTensor torch.Size([125630])
- torch.LongTensor torch.Size([358598])
-sample took 59.409380ms
+sample took 57.810545ms
 #28
-sample batch size 1024
- torch.LongTensor torch.Size([15798])
- torch.LongTensor torch.Size([124340])
- torch.LongTensor torch.Size([354410])
-sample took 55.138826ms
+sample took 52.852869ms
 #29
-sample batch size 1024
- torch.LongTensor torch.Size([15697])
- torch.LongTensor torch.Size([123270])
- torch.LongTensor torch.Size([349801])
-sample took 55.705070ms
+sample took 50.910950ms
 #30
-sample batch size 1024
- torch.LongTensor torch.Size([15846])
- torch.LongTensor torch.Size([124622])
- torch.LongTensor torch.Size([355605])
-sample took 59.774399ms
+sample took 52.500963ms
 #31
-sample batch size 1024
- torch.LongTensor torch.Size([15842])
- torch.LongTensor torch.Size([125081])
- torch.LongTensor torch.Size([356791])
-sample took 58.927536ms
+sample took 52.782774ms
 #32
-sample batch size 1024
- torch.LongTensor torch.Size([15818])
- torch.LongTensor torch.Size([124087])
- torch.LongTensor torch.Size([352530])
-sample took 58.392286ms
+sample took 58.626413ms
 #33
-sample batch size 1024
- torch.LongTensor torch.Size([15721])
- torch.LongTensor torch.Size([123732])
- torch.LongTensor torch.Size([354711])
-sample took 58.628559ms
+sample took 52.554607ms
 #34
-sample batch size 1024
- torch.LongTensor torch.Size([15652])
- torch.LongTensor torch.Size([123099])
- torch.LongTensor torch.Size([352535])
-sample took 57.714939ms
+sample took 59.234381ms
 #35
-sample batch size 1024
- torch.LongTensor torch.Size([15906])
- torch.LongTensor torch.Size([125319])
- torch.LongTensor torch.Size([357956])
-sample took 72.517872ms
+sample took 56.236029ms
 #36
-sample batch size 1024
- torch.LongTensor torch.Size([15773])
- torch.LongTensor torch.Size([123690])
- torch.LongTensor torch.Size([352145])
-sample took 52.150965ms
+sample took 56.751490ms
 #37
-sample batch size 1024
- torch.LongTensor torch.Size([15815])
- torch.LongTensor torch.Size([124062])
- torch.LongTensor torch.Size([353069])
-sample took 57.053566ms
+sample took 63.472509ms
 #38
-sample batch size 1024
- torch.LongTensor torch.Size([15765])
- torch.LongTensor torch.Size([124422])
- torch.LongTensor torch.Size([354032])
-sample took 58.480501ms
+sample took 55.857420ms
 #39
-sample batch size 1024
- torch.LongTensor torch.Size([15764])
- torch.LongTensor torch.Size([124078])
- torch.LongTensor torch.Size([353656])
-sample took 56.891441ms
+sample took 51.132917ms
 #40
-sample batch size 1024
- torch.LongTensor torch.Size([15953])
- torch.LongTensor torch.Size([126047])
- torch.LongTensor torch.Size([360669])
-sample took 59.636593ms
+sample took 65.343380ms
 #41
-sample batch size 1024
- torch.LongTensor torch.Size([15787])
- torch.LongTensor torch.Size([124018])
- torch.LongTensor torch.Size([355373])
-sample took 53.564072ms
+sample took 57.301998ms
 #42
-sample batch size 1024
- torch.LongTensor torch.Size([15803])
- torch.LongTensor torch.Size([124764])
- torch.LongTensor torch.Size([356485])
-sample took 62.050343ms
+sample took 55.449486ms
 #43
-sample batch size 1024
- torch.LongTensor torch.Size([15687])
- torch.LongTensor torch.Size([123836])
- torch.LongTensor torch.Size([354914])
-sample took 63.351154ms
+sample took 61.500788ms
 #44
-sample batch size 1024
- torch.LongTensor torch.Size([15796])
- torch.LongTensor torch.Size([124636])
- torch.LongTensor torch.Size([354722])
-sample took 54.996014ms
+sample took 56.674957ms
 #45
-sample batch size 1024
- torch.LongTensor torch.Size([15886])
- torch.LongTensor torch.Size([125261])
- torch.LongTensor torch.Size([356140])
-sample took 56.774139ms
+sample took 54.656267ms
 #46
-sample batch size 1024
- torch.LongTensor torch.Size([15854])
- torch.LongTensor torch.Size([124897])
- torch.LongTensor torch.Size([355445])
-sample took 55.727005ms
+sample took 55.439711ms
 #47
-sample batch size 1024
- torch.LongTensor torch.Size([15709])
- torch.LongTensor torch.Size([124253])
- torch.LongTensor torch.Size([354900])
-sample took 56.952715ms
+sample took 56.302547ms
 #48
-sample batch size 1024
- torch.LongTensor torch.Size([15858])
- torch.LongTensor torch.Size([124286])
- torch.LongTensor torch.Size([353192])
-sample took 56.123972ms
+sample took 55.459499ms
 #49
-sample batch size 1024
- torch.LongTensor torch.Size([15802])
- torch.LongTensor torch.Size([124441])
- torch.LongTensor torch.Size([355382])
-sample took 56.852341ms
+sample took 55.603743ms
 #50
-sample batch size 1024
- torch.LongTensor torch.Size([15806])
- torch.LongTensor torch.Size([124214])
- torch.LongTensor torch.Size([353641])
-sample took 58.562756ms
+sample took 53.607464ms
 #51
-sample batch size 1024
- torch.LongTensor torch.Size([15920])
- torch.LongTensor torch.Size([125172])
- torch.LongTensor torch.Size([356785])
-sample took 60.343266ms
+sample took 61.625004ms
 #52
-sample batch size 1024
- torch.LongTensor torch.Size([15757])
- torch.LongTensor torch.Size([124316])
- torch.LongTensor torch.Size([355114])
-sample took 61.316490ms
+sample took 53.639650ms
 #53
-sample batch size 1024
- torch.LongTensor torch.Size([15764])
- torch.LongTensor torch.Size([124215])
- torch.LongTensor torch.Size([354190])
-sample took 54.286480ms
+sample took 51.408052ms
 #54
-sample batch size 1024
- torch.LongTensor torch.Size([15767])
- torch.LongTensor torch.Size([124222])
- torch.LongTensor torch.Size([352997])
-sample took 58.020592ms
+sample took 57.623625ms
 #55
-sample batch size 1024
- torch.LongTensor torch.Size([15742])
- torch.LongTensor torch.Size([124183])
- torch.LongTensor torch.Size([354184])
-sample took 58.671713ms
+sample took 52.580833ms
 #56
-sample batch size 1024
- torch.LongTensor torch.Size([15746])
- torch.LongTensor torch.Size([124600])
- torch.LongTensor torch.Size([356638])
-sample took 67.132950ms
+sample took 57.257652ms
 #57
-sample batch size 1024
- torch.LongTensor torch.Size([15814])
- torch.LongTensor torch.Size([124442])
- torch.LongTensor torch.Size([356005])
-sample took 71.947098ms
+sample took 54.474831ms
 #58
-sample batch size 1024
- torch.LongTensor torch.Size([15747])
- torch.LongTensor torch.Size([123510])
- torch.LongTensor torch.Size([351059])
-sample took 52.449703ms
+sample took 70.500612ms
 #59
-sample batch size 1024
- torch.LongTensor torch.Size([15862])
- torch.LongTensor torch.Size([124621])
- torch.LongTensor torch.Size([355203])
-sample took 60.211420ms
+sample took 69.536924ms
 #60
-sample batch size 1024
- torch.LongTensor torch.Size([15774])
- torch.LongTensor torch.Size([125609])
- torch.LongTensor torch.Size([356834])
-sample took 63.965321ms
+sample took 53.285837ms
 #61
-sample batch size 1024
- torch.LongTensor torch.Size([15838])
- torch.LongTensor torch.Size([124524])
- torch.LongTensor torch.Size([355139])
-sample took 52.625895ms
+sample took 68.253994ms
 #62
-sample batch size 1024
- torch.LongTensor torch.Size([15825])
- torch.LongTensor torch.Size([124973])
- torch.LongTensor torch.Size([354975])
-sample took 52.701950ms
+sample took 53.929567ms
 #63
-sample batch size 1024
- torch.LongTensor torch.Size([15763])
- torch.LongTensor torch.Size([124155])
- torch.LongTensor torch.Size([354825])
-sample took 57.163477ms
+sample took 67.767382ms
 #64
-sample batch size 1024
- torch.LongTensor torch.Size([15813])
- torch.LongTensor torch.Size([124859])
- torch.LongTensor torch.Size([355958])
-sample took 56.803226ms
+sample took 51.715851ms
 #65
-sample batch size 1024
- torch.LongTensor torch.Size([15816])
- torch.LongTensor torch.Size([123791])
- torch.LongTensor torch.Size([350143])
-sample took 59.221983ms
+sample took 52.096367ms
 #66
-sample batch size 1024
- torch.LongTensor torch.Size([15739])
- torch.LongTensor torch.Size([124055])
- torch.LongTensor torch.Size([353015])
-sample took 58.284283ms
+sample took 52.067041ms
 #67
-sample batch size 1024
- torch.LongTensor torch.Size([15853])
- torch.LongTensor torch.Size([124690])
- torch.LongTensor torch.Size([357112])
-sample took 57.776213ms
+sample took 53.320646ms
 #68
-sample batch size 1024
- torch.LongTensor torch.Size([15812])
- torch.LongTensor torch.Size([123779])
- torch.LongTensor torch.Size([351923])
-sample took 61.342239ms
+sample took 69.664478ms
 #69
-sample batch size 1024
- torch.LongTensor torch.Size([15796])
- torch.LongTensor torch.Size([124868])
- torch.LongTensor torch.Size([355367])
-sample took 59.594154ms
+sample took 52.827835ms
 #70
-sample batch size 1024
- torch.LongTensor torch.Size([15959])
- torch.LongTensor torch.Size([126617])
- torch.LongTensor torch.Size([359467])
-sample took 57.159424ms
+sample took 58.402538ms
 #71
-sample batch size 1024
- torch.LongTensor torch.Size([15841])
- torch.LongTensor torch.Size([124418])
- torch.LongTensor torch.Size([352634])
-sample took 55.676460ms
+sample took 46.741962ms
 #72
-sample batch size 1024
- torch.LongTensor torch.Size([15785])
- torch.LongTensor torch.Size([124946])
- torch.LongTensor torch.Size([356694])
-sample took 57.025194ms
+sample took 62.724829ms
 #73
-sample batch size 1024
- torch.LongTensor torch.Size([15804])
- torch.LongTensor torch.Size([123973])
- torch.LongTensor torch.Size([352543])
-sample took 56.696177ms
+sample took 47.232389ms
 #74
-sample batch size 1024
- torch.LongTensor torch.Size([15768])
- torch.LongTensor torch.Size([124354])
- torch.LongTensor torch.Size([354850])
-sample took 58.985233ms
+sample took 57.748795ms
 #75
-sample batch size 1024
- torch.LongTensor torch.Size([15783])
- torch.LongTensor torch.Size([124601])
- torch.LongTensor torch.Size([353586])
-sample took 73.681831ms
+sample took 51.808834ms
 #76
-sample batch size 1024
- torch.LongTensor torch.Size([15783])
- torch.LongTensor torch.Size([124407])
- torch.LongTensor torch.Size([353847])
-sample took 56.860209ms
+sample took 46.440125ms
 #77
-sample batch size 1024
- torch.LongTensor torch.Size([15843])
- torch.LongTensor torch.Size([124884])
- torch.LongTensor torch.Size([356647])
-sample took 65.676451ms
+sample took 67.408323ms
 #78
-sample batch size 1024
- torch.LongTensor torch.Size([15776])
- torch.LongTensor torch.Size([124353])
- torch.LongTensor torch.Size([355195])
-sample took 58.618546ms
+sample took 52.929163ms
 #79
-sample batch size 1024
- torch.LongTensor torch.Size([15763])
- torch.LongTensor torch.Size([124346])
- torch.LongTensor torch.Size([353329])
-sample took 60.853720ms
+sample took 54.666996ms
 #80
-sample batch size 1024
- torch.LongTensor torch.Size([15782])
- torch.LongTensor torch.Size([124521])
- torch.LongTensor torch.Size([354547])
-sample took 58.194637ms
+sample took 58.078051ms
 #81
-sample batch size 1024
- torch.LongTensor torch.Size([15746])
- torch.LongTensor torch.Size([122972])
- torch.LongTensor torch.Size([349772])
-sample took 60.162783ms
+sample took 58.389187ms
 #82
-sample batch size 1024
- torch.LongTensor torch.Size([15784])
- torch.LongTensor torch.Size([123835])
- torch.LongTensor torch.Size([352517])
-sample took 56.465626ms
+sample took 47.482014ms
 #83
-sample batch size 1024
- torch.LongTensor torch.Size([15791])
- torch.LongTensor torch.Size([124363])
- torch.LongTensor torch.Size([354293])
-sample took 66.980362ms
+sample took 59.826612ms
 #84
-sample batch size 1024
- torch.LongTensor torch.Size([15848])
- torch.LongTensor torch.Size([125090])
- torch.LongTensor torch.Size([357052])
-sample took 71.347952ms
+sample took 52.509069ms
 #85
-sample batch size 1024
- torch.LongTensor torch.Size([15877])
- torch.LongTensor torch.Size([125172])
- torch.LongTensor torch.Size([356978])
-sample took 59.119940ms
+sample took 48.095703ms
 #86
-sample batch size 1024
- torch.LongTensor torch.Size([15863])
- torch.LongTensor torch.Size([125346])
- torch.LongTensor torch.Size([357307])
-sample took 54.061651ms
+sample took 53.087473ms
 #87
-sample batch size 1024
- torch.LongTensor torch.Size([15824])
- torch.LongTensor torch.Size([125483])
- torch.LongTensor torch.Size([357787])
-sample took 59.684753ms
+sample took 51.395655ms
 #88
-sample batch size 1024
- torch.LongTensor torch.Size([15792])
- torch.LongTensor torch.Size([124718])
- torch.LongTensor torch.Size([357270])
-sample took 58.825731ms
+sample took 57.325602ms
 #89
-sample batch size 1024
- torch.LongTensor torch.Size([15820])
- torch.LongTensor torch.Size([125110])
- torch.LongTensor torch.Size([358317])
-sample took 55.497885ms
+sample took 53.084373ms
 #90
-sample batch size 1024
- torch.LongTensor torch.Size([15796])
- torch.LongTensor torch.Size([124126])
- torch.LongTensor torch.Size([353796])
-sample took 52.333117ms
+sample took 52.763224ms
 #91
-sample batch size 1024
- torch.LongTensor torch.Size([15797])
- torch.LongTensor torch.Size([124477])
- torch.LongTensor torch.Size([354528])
-sample took 57.069063ms
+sample took 64.528704ms
 #92
-sample batch size 1024
- torch.LongTensor torch.Size([15747])
- torch.LongTensor torch.Size([123626])
- torch.LongTensor torch.Size([353297])
-sample took 57.415247ms
+sample took 50.482273ms
 #93
-sample batch size 1024
- torch.LongTensor torch.Size([15741])
- torch.LongTensor torch.Size([123080])
- torch.LongTensor torch.Size([350555])
-sample took 70.087433ms
+sample took 52.617550ms
 #94
-sample batch size 1024
- torch.LongTensor torch.Size([15825])
- torch.LongTensor torch.Size([125017])
- torch.LongTensor torch.Size([358485])
-sample took 50.483942ms
+sample took 55.304527ms
 #95
-sample batch size 1024
- torch.LongTensor torch.Size([15793])
- torch.LongTensor torch.Size([123862])
- torch.LongTensor torch.Size([355197])
-sample took 57.173252ms
+sample took 52.760839ms
 #96
-sample batch size 1024
- torch.LongTensor torch.Size([15825])
- torch.LongTensor torch.Size([125431])
- torch.LongTensor torch.Size([357471])
-sample took 57.237864ms
+sample took 56.982994ms
 #97
-sample batch size 1024
- torch.LongTensor torch.Size([15940])
- torch.LongTensor torch.Size([125692])
- torch.LongTensor torch.Size([355839])
-sample took 57.408094ms
+sample took 57.566643ms
 #98
-sample batch size 1024
- torch.LongTensor torch.Size([15828])
- torch.LongTensor torch.Size([125094])
- torch.LongTensor torch.Size([356476])
-sample took 56.368351ms
+sample took 53.001642ms
 #99
-sample batch size 1024
- torch.LongTensor torch.Size([15746])
- torch.LongTensor torch.Size([123903])
- torch.LongTensor torch.Size([351663])
-sample took 52.203417ms
+sample took 58.016300ms
 #100
-sample batch size 1024
- torch.LongTensor torch.Size([15887])
- torch.LongTensor torch.Size([125657])
- torch.LongTensor torch.Size([359032])
-sample took 55.465698ms
+sample took 51.734686ms
 #101
-sample batch size 1024
- torch.LongTensor torch.Size([15852])
- torch.LongTensor torch.Size([124791])
- torch.LongTensor torch.Size([353941])
-sample took 51.953316ms
+sample took 52.730322ms
 #102
-sample batch size 1024
- torch.LongTensor torch.Size([15773])
- torch.LongTensor torch.Size([124475])
- torch.LongTensor torch.Size([354727])
-sample took 58.244467ms
+sample took 57.536125ms
 #103
-sample batch size 1024
- torch.LongTensor torch.Size([15840])
- torch.LongTensor torch.Size([125216])
- torch.LongTensor torch.Size([356216])
-sample took 58.822870ms
+sample took 52.276134ms
 #104
-sample batch size 1024
- torch.LongTensor torch.Size([15878])
- torch.LongTensor torch.Size([124892])
- torch.LongTensor torch.Size([355699])
-sample took 70.133686ms
+sample took 57.716370ms
 #105
-sample batch size 1024
- torch.LongTensor torch.Size([15842])
- torch.LongTensor torch.Size([124160])
- torch.LongTensor torch.Size([353320])
-sample took 67.345619ms
+sample took 52.870512ms
 #106
-sample batch size 1024
- torch.LongTensor torch.Size([15750])
- torch.LongTensor torch.Size([123547])
- torch.LongTensor torch.Size([350361])
-sample took 64.205647ms
+sample took 59.450626ms
 #107
-sample batch size 1024
- torch.LongTensor torch.Size([15795])
- torch.LongTensor torch.Size([124639])
- torch.LongTensor torch.Size([354892])
-sample took 60.605049ms
+sample took 64.498425ms
 #108
-sample batch size 1024
- torch.LongTensor torch.Size([15800])
- torch.LongTensor torch.Size([124139])
- torch.LongTensor torch.Size([355317])
-sample took 57.635546ms
+sample took 60.796499ms
 #109
-sample batch size 1024
- torch.LongTensor torch.Size([15820])
- torch.LongTensor torch.Size([124279])
- torch.LongTensor torch.Size([353372])
-sample took 57.182550ms
+sample took 63.590050ms
 #110
-sample batch size 1024
- torch.LongTensor torch.Size([15847])
- torch.LongTensor torch.Size([124620])
- torch.LongTensor torch.Size([355463])
-sample took 58.560610ms
+sample took 73.385000ms
 #111
-sample batch size 1024
- torch.LongTensor torch.Size([15873])
- torch.LongTensor torch.Size([125943])
- torch.LongTensor torch.Size([359844])
-sample took 62.323809ms
+sample took 63.827276ms
 #112
-sample batch size 1024
- torch.LongTensor torch.Size([15837])
- torch.LongTensor torch.Size([124707])
- torch.LongTensor torch.Size([356937])
-sample took 60.466766ms
+sample took 57.384491ms
 #113
-sample batch size 1024
- torch.LongTensor torch.Size([15727])
- torch.LongTensor torch.Size([123753])
- torch.LongTensor torch.Size([351830])
-sample took 52.053213ms
+sample took 52.874327ms
 #114
-sample batch size 1024
- torch.LongTensor torch.Size([15866])
- torch.LongTensor torch.Size([124948])
- torch.LongTensor torch.Size([356299])
-sample took 71.501493ms
+sample took 52.414417ms
 #115
-sample batch size 1024
- torch.LongTensor torch.Size([15762])
- torch.LongTensor torch.Size([124596])
- torch.LongTensor torch.Size([354326])
-sample took 56.757927ms
+sample took 56.048870ms
 #116
-sample batch size 1024
- torch.LongTensor torch.Size([15786])
- torch.LongTensor torch.Size([124368])
- torch.LongTensor torch.Size([353880])
-sample took 57.150364ms
+sample took 53.308487ms
 #117
-sample batch size 1024
- torch.LongTensor torch.Size([15844])
- torch.LongTensor torch.Size([125634])
- torch.LongTensor torch.Size([357587])
-sample took 67.567825ms
+sample took 70.188284ms
 #118
-sample batch size 1024
- torch.LongTensor torch.Size([15728])
- torch.LongTensor torch.Size([123957])
- torch.LongTensor torch.Size([353207])
-sample took 56.821346ms
+sample took 61.250210ms
 #119
-sample batch size 1024
- torch.LongTensor torch.Size([15780])
- torch.LongTensor torch.Size([123618])
- torch.LongTensor torch.Size([353800])
-sample took 57.629585ms
+sample took 58.106661ms
 #120
-sample batch size 1024
- torch.LongTensor torch.Size([15785])
- torch.LongTensor torch.Size([124008])
- torch.LongTensor torch.Size([354020])
-sample took 57.249784ms
+sample took 58.205366ms
 #121
-sample batch size 1024
- torch.LongTensor torch.Size([15839])
- torch.LongTensor torch.Size([124497])
- torch.LongTensor torch.Size([354143])
-sample took 57.104826ms
+sample took 55.574179ms
 #122
-sample batch size 1024
- torch.LongTensor torch.Size([15785])
- torch.LongTensor torch.Size([124119])
- torch.LongTensor torch.Size([353192])
-sample took 57.422876ms
+sample took 56.458235ms
 #123
-sample batch size 1024
- torch.LongTensor torch.Size([15851])
- torch.LongTensor torch.Size([124686])
- torch.LongTensor torch.Size([353932])
-sample took 58.602810ms
+sample took 55.911541ms
 #124
-sample batch size 1024
- torch.LongTensor torch.Size([15748])
- torch.LongTensor torch.Size([123422])
- torch.LongTensor torch.Size([351465])
-sample took 58.363676ms
+sample took 52.214384ms
 #125
-sample batch size 1024
- torch.LongTensor torch.Size([15876])
- torch.LongTensor torch.Size([124362])
- torch.LongTensor torch.Size([353397])
-sample took 55.932760ms
+sample took 54.891109ms
 #126
-sample batch size 1024
- torch.LongTensor torch.Size([15801])
- torch.LongTensor torch.Size([123924])
- torch.LongTensor torch.Size([352749])
-sample took 57.002544ms
+sample took 56.195974ms
 #127
-sample batch size 1024
- torch.LongTensor torch.Size([15810])
- torch.LongTensor torch.Size([124309])
- torch.LongTensor torch.Size([354633])
-sample took 56.482315ms
+sample took 52.109003ms
 #128
-sample batch size 1024
- torch.LongTensor torch.Size([15823])
- torch.LongTensor torch.Size([124752])
- torch.LongTensor torch.Size([354587])
-sample took 57.566881ms
+sample took 51.635742ms
 #129
-sample batch size 1024
- torch.LongTensor torch.Size([15805])
- torch.LongTensor torch.Size([124699])
- torch.LongTensor torch.Size([356275])
-sample took 57.691813ms
+sample took 53.400517ms
 #130
-sample batch size 1024
- torch.LongTensor torch.Size([15781])
- torch.LongTensor torch.Size([123922])
- torch.LongTensor torch.Size([354611])
-sample took 60.664177ms
+sample took 53.570032ms
 #131
-sample batch size 1024
- torch.LongTensor torch.Size([15725])
- torch.LongTensor torch.Size([122912])
- torch.LongTensor torch.Size([349842])
-sample took 56.017160ms
+sample took 56.282282ms
 #132
-sample batch size 1024
- torch.LongTensor torch.Size([15905])
- torch.LongTensor torch.Size([125371])
- torch.LongTensor torch.Size([359134])
-sample took 57.547331ms
+sample took 55.806875ms
 #133
-sample batch size 1024
- torch.LongTensor torch.Size([15824])
- torch.LongTensor torch.Size([125419])
- torch.LongTensor torch.Size([357676])
-sample took 59.024096ms
+sample took 57.541132ms
 #134
-sample batch size 1024
- torch.LongTensor torch.Size([15822])
- torch.LongTensor torch.Size([125460])
- torch.LongTensor torch.Size([357921])
-sample took 50.884962ms
+sample took 52.707672ms
 #135
-sample batch size 1024
- torch.LongTensor torch.Size([15841])
- torch.LongTensor torch.Size([124517])
- torch.LongTensor torch.Size([352654])
-sample took 56.215048ms
+sample took 51.817417ms
 #136
-sample batch size 1024
- torch.LongTensor torch.Size([15757])
- torch.LongTensor torch.Size([124678])
- torch.LongTensor torch.Size([354528])
-sample took 57.754278ms
+sample took 55.964947ms
 #137
-sample batch size 1024
- torch.LongTensor torch.Size([15776])
- torch.LongTensor torch.Size([124679])
- torch.LongTensor torch.Size([356511])
-sample took 53.545475ms
+sample took 68.320751ms
 #138
-sample batch size 1024
- torch.LongTensor torch.Size([15845])
- torch.LongTensor torch.Size([124598])
- torch.LongTensor torch.Size([352968])
-sample took 51.492214ms
+sample took 58.776140ms
 #139
-sample batch size 1024
- torch.LongTensor torch.Size([15793])
- torch.LongTensor torch.Size([123737])
- torch.LongTensor torch.Size([352619])
-sample took 54.701090ms
+sample took 70.741892ms
 #140
-sample batch size 1024
- torch.LongTensor torch.Size([15841])
- torch.LongTensor torch.Size([124428])
- torch.LongTensor torch.Size([354055])
-sample took 64.345360ms
+sample took 58.495760ms
 #141
-sample batch size 1024
- torch.LongTensor torch.Size([15850])
- torch.LongTensor torch.Size([124942])
- torch.LongTensor torch.Size([355729])
-sample took 52.616835ms
+sample took 58.488369ms
 #142
-sample batch size 1024
- torch.LongTensor torch.Size([15848])
- torch.LongTensor torch.Size([124581])
- torch.LongTensor torch.Size([353592])
-sample took 53.878307ms
+sample took 74.915886ms
 #143
-sample batch size 1024
- torch.LongTensor torch.Size([15794])
- torch.LongTensor torch.Size([124711])
- torch.LongTensor torch.Size([354962])
-sample took 51.615953ms
+sample took 54.900408ms
 #144
-sample batch size 1024
- torch.LongTensor torch.Size([15836])
- torch.LongTensor torch.Size([124549])
- torch.LongTensor torch.Size([355283])
-sample took 57.890415ms
+sample took 74.099064ms
 #145
-sample batch size 1024
- torch.LongTensor torch.Size([15831])
- torch.LongTensor torch.Size([124152])
- torch.LongTensor torch.Size([351409])
-sample took 57.197809ms
+sample took 56.259632ms
 #146
-sample batch size 1024
- torch.LongTensor torch.Size([15851])
- torch.LongTensor torch.Size([125376])
- torch.LongTensor torch.Size([357746])
-sample took 50.866365ms
+sample took 59.386492ms
 #147
-sample batch size 1024
- torch.LongTensor torch.Size([15922])
- torch.LongTensor torch.Size([125412])
- torch.LongTensor torch.Size([357057])
-sample took 54.180622ms
+sample took 52.572012ms
 #148
-sample batch size 1024
- torch.LongTensor torch.Size([15844])
- torch.LongTensor torch.Size([125147])
- torch.LongTensor torch.Size([355795])
-sample took 56.962013ms
+sample took 59.363127ms
 #149
-sample batch size 1024
- torch.LongTensor torch.Size([15819])
- torch.LongTensor torch.Size([124910])
- torch.LongTensor torch.Size([355867])
-sample took 57.615995ms
+sample took 68.285942ms
 #150
-sample batch size 1024
- torch.LongTensor torch.Size([15735])
- torch.LongTensor torch.Size([123447])
- torch.LongTensor torch.Size([351404])
-sample took 56.673288ms
+sample took 59.450388ms
 #151
-sample batch size 1024
- torch.LongTensor torch.Size([15830])
- torch.LongTensor torch.Size([124775])
- torch.LongTensor torch.Size([355791])
-sample took 72.265387ms
+sample took 60.324907ms
 #152
-sample batch size 1024
- torch.LongTensor torch.Size([15763])
- torch.LongTensor torch.Size([124255])
- torch.LongTensor torch.Size([353705])
-sample took 66.637754ms
+sample took 61.324596ms
 #153
-sample batch size 1024
- torch.LongTensor torch.Size([15824])
- torch.LongTensor torch.Size([124129])
- torch.LongTensor torch.Size([350896])
-sample took 58.447838ms
+sample took 60.494900ms
 #154
-sample batch size 1024
- torch.LongTensor torch.Size([15797])
- torch.LongTensor torch.Size([124340])
- torch.LongTensor torch.Size([354899])
-sample took 56.393623ms
+sample took 54.154158ms
 #155
-sample batch size 1024
- torch.LongTensor torch.Size([15795])
- torch.LongTensor torch.Size([124098])
- torch.LongTensor torch.Size([351916])
-sample took 56.408167ms
+sample took 58.627129ms
 #156
-sample batch size 1024
- torch.LongTensor torch.Size([15652])
- torch.LongTensor torch.Size([122878])
- torch.LongTensor torch.Size([351134])
-sample took 62.912226ms
+sample took 62.460184ms
 #157
-sample batch size 1024
- torch.LongTensor torch.Size([15873])
- torch.LongTensor torch.Size([124692])
- torch.LongTensor torch.Size([354212])
-sample took 57.967424ms
+sample took 52.402020ms
 #158
-sample batch size 1024
- torch.LongTensor torch.Size([15847])
- torch.LongTensor torch.Size([124362])
- torch.LongTensor torch.Size([354057])
-sample took 58.359146ms
+sample took 53.398132ms
 #159
-sample batch size 1024
- torch.LongTensor torch.Size([15896])
- torch.LongTensor torch.Size([125106])
- torch.LongTensor torch.Size([355130])
-sample took 57.186127ms
+sample took 58.566332ms
 #160
-sample batch size 1024
- torch.LongTensor torch.Size([15828])
- torch.LongTensor torch.Size([124575])
- torch.LongTensor torch.Size([353955])
-sample took 59.003353ms
+sample took 55.219173ms
 #161
-sample batch size 1024
- torch.LongTensor torch.Size([15818])
- torch.LongTensor torch.Size([125214])
- torch.LongTensor torch.Size([355651])
-sample took 59.560776ms
+sample took 64.587593ms
 #162
-sample batch size 1024
- torch.LongTensor torch.Size([15837])
- torch.LongTensor torch.Size([124716])
- torch.LongTensor torch.Size([355605])
-sample took 58.944225ms
+sample took 52.999735ms
 #163
-sample batch size 1024
- torch.LongTensor torch.Size([15777])
- torch.LongTensor torch.Size([123887])
- torch.LongTensor torch.Size([354140])
-sample took 59.116840ms
+sample took 52.256107ms
 #164
-sample batch size 1024
- torch.LongTensor torch.Size([15845])
- torch.LongTensor torch.Size([123916])
- torch.LongTensor torch.Size([350907])
-sample took 55.477619ms
+sample took 54.785252ms
 #165
-sample batch size 1024
- torch.LongTensor torch.Size([15867])
- torch.LongTensor torch.Size([124950])
- torch.LongTensor torch.Size([356886])
-sample took 73.122501ms
+sample took 56.769848ms
 #166
-sample batch size 1024
- torch.LongTensor torch.Size([15889])
- torch.LongTensor torch.Size([125366])
- torch.LongTensor torch.Size([356358])
-sample took 66.726446ms
+sample took 57.121038ms
 #167
-sample batch size 1024
- torch.LongTensor torch.Size([15673])
- torch.LongTensor torch.Size([122896])
- torch.LongTensor torch.Size([352858])
-sample took 62.424421ms
+sample took 53.200960ms
 #168
-sample batch size 1024
- torch.LongTensor torch.Size([15901])
- torch.LongTensor torch.Size([125883])
- torch.LongTensor torch.Size([358199])
-sample took 57.170868ms
+sample took 61.778069ms
 #169
-sample batch size 1024
- torch.LongTensor torch.Size([15876])
- torch.LongTensor torch.Size([124902])
- torch.LongTensor torch.Size([354999])
-sample took 60.248375ms
+sample took 69.281101ms
 #170
-sample batch size 1024
- torch.LongTensor torch.Size([15656])
- torch.LongTensor torch.Size([122425])
- torch.LongTensor torch.Size([348407])
-sample took 57.120323ms
+sample took 56.647301ms
 #171
-sample batch size 1024
- torch.LongTensor torch.Size([15753])
- torch.LongTensor torch.Size([123825])
- torch.LongTensor torch.Size([353921])
-sample took 59.226036ms
+sample took 52.314043ms
 #172
-sample batch size 1024
- torch.LongTensor torch.Size([15822])
- torch.LongTensor torch.Size([124663])
- torch.LongTensor torch.Size([356057])
-sample took 76.269627ms
+sample took 54.467916ms
 #173
-sample batch size 1024
- torch.LongTensor torch.Size([15819])
- torch.LongTensor torch.Size([125046])
- torch.LongTensor torch.Size([355555])
-sample took 63.344717ms
+sample took 52.976608ms
 #174
-sample batch size 1024
- torch.LongTensor torch.Size([15834])
- torch.LongTensor torch.Size([125378])
- torch.LongTensor torch.Size([356712])
-sample took 59.621334ms
+sample took 80.252647ms
 #175
-sample batch size 1024
- torch.LongTensor torch.Size([15824])
- torch.LongTensor torch.Size([125234])
- torch.LongTensor torch.Size([357978])
-sample took 59.125900ms
+sample took 53.497791ms
 #176
-sample batch size 1024
- torch.LongTensor torch.Size([15728])
- torch.LongTensor torch.Size([124123])
- torch.LongTensor torch.Size([355003])
-sample took 58.450460ms
+sample took 52.769661ms
 #177
-sample batch size 1024
- torch.LongTensor torch.Size([15820])
- torch.LongTensor torch.Size([125417])
- torch.LongTensor torch.Size([358143])
-sample took 59.520960ms
+sample took 58.660507ms
 #178
-sample batch size 1024
- torch.LongTensor torch.Size([15871])
- torch.LongTensor torch.Size([124544])
- torch.LongTensor torch.Size([353755])
-sample took 57.690144ms
+sample took 59.538126ms
 #179
-sample batch size 1024
- torch.LongTensor torch.Size([15909])
- torch.LongTensor torch.Size([125753])
- torch.LongTensor torch.Size([357253])
-sample took 65.560579ms
+sample took 75.109005ms
 #180
-sample batch size 1024
- torch.LongTensor torch.Size([15810])
- torch.LongTensor torch.Size([124720])
- torch.LongTensor torch.Size([356012])
-sample took 80.456734ms
+sample took 71.573019ms
 #181
-sample batch size 1024
- torch.LongTensor torch.Size([15892])
- torch.LongTensor torch.Size([125646])
- torch.LongTensor torch.Size([357752])
-sample took 67.180157ms
+sample took 61.615229ms
 #182
-sample batch size 1024
- torch.LongTensor torch.Size([15805])
- torch.LongTensor torch.Size([124350])
- torch.LongTensor torch.Size([355679])
-sample took 72.165251ms
+sample took 53.924799ms
 #183
-sample batch size 1024
- torch.LongTensor torch.Size([15819])
- torch.LongTensor torch.Size([124307])
- torch.LongTensor torch.Size([353470])
-sample took 71.653128ms
+sample took 67.559481ms
 #184
-sample batch size 1024
- torch.LongTensor torch.Size([15821])
- torch.LongTensor torch.Size([124874])
- torch.LongTensor torch.Size([356217])
-sample took 58.220148ms
+sample took 52.603006ms
 #185
-sample batch size 1024
- torch.LongTensor torch.Size([15864])
- torch.LongTensor torch.Size([124379])
- torch.LongTensor torch.Size([352721])
-sample took 57.553768ms
+sample took 53.319931ms
 #186
-sample batch size 1024
- torch.LongTensor torch.Size([15723])
- torch.LongTensor torch.Size([123893])
- torch.LongTensor torch.Size([353993])
-sample took 60.132504ms
+sample took 71.472406ms
 #187
-sample batch size 1024
- torch.LongTensor torch.Size([15784])
- torch.LongTensor torch.Size([124152])
- torch.LongTensor torch.Size([356441])
-sample took 56.507349ms
+sample took 48.476934ms
 #188
-sample batch size 1024
- torch.LongTensor torch.Size([15831])
- torch.LongTensor torch.Size([124742])
- torch.LongTensor torch.Size([353219])
-sample took 57.827234ms
+sample took 53.139687ms
 #189
-sample batch size 1024
- torch.LongTensor torch.Size([15846])
- torch.LongTensor torch.Size([125074])
- torch.LongTensor torch.Size([356410])
-sample took 57.376623ms
+sample took 67.589045ms
 #190
-sample batch size 1024
- torch.LongTensor torch.Size([15770])
- torch.LongTensor torch.Size([123830])
- torch.LongTensor torch.Size([353507])
-sample took 58.522224ms
+sample took 59.730768ms
 #191
-sample batch size 7
- torch.LongTensor torch.Size([112])
- torch.LongTensor torch.Size([1017])
- torch.LongTensor torch.Size([4359])
-sample took 9.278297ms
+sample took 5.695820ms
 #192

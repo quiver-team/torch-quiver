@@ -7,11 +7,12 @@
 #include <thrust/binary_search.h>
 #include <thrust/device_vector.h>
 
+#include <quiver/cuda_pair.cu.hpp>
 #include <quiver/trace.hpp>
 
 template <typename T>
-__global__ void mask_permutation_kernel(const size_t n, thrust::pair<T, T> *q,
-                                        const size_t m, const T *p)
+__global__ void mask_permutation_kernel_1(const size_t n, thrust::pair<T, T> *q,
+                                          const size_t m, const T *p)
 {
     const int worker_idx = blockIdx.x * blockDim.x + threadIdx.x;
     const int worker_count = gridDim.x * blockDim.x;
@@ -19,28 +20,31 @@ __global__ void mask_permutation_kernel(const size_t n, thrust::pair<T, T> *q,
         q[i].first = m;
         q[i].second = i;
     }
-    for (int i = worker_idx; i < m; i += worker_count) { q[p[i]].first = i; }
 }
 
 template <typename T>
-struct get2nd {
-    __device__ T operator()(const thrust::pair<T, T> &p) const
-    {
-        return p.second;
-    }
-};
+__global__ void mask_permutation_kernel_2(const size_t n, thrust::pair<T, T> *q,
+                                          const size_t m, const T *p)
+{
+    const int worker_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    const int worker_count = gridDim.x * blockDim.x;
+    for (int i = worker_idx; i < m; i += worker_count) { q[p[i]].first = i; }
+}
 
 template <typename T>
 void complete_permutation(thrust::device_vector<T> &p, size_t n)
 {
     const size_t m = p.size();
     thrust::device_vector<thrust::pair<T, T>> q(n);
-    mask_permutation_kernel<<<1024, 16>>>(n, thrust::raw_pointer_cast(q.data()),
-                                          m,
-                                          thrust::raw_pointer_cast(p.data()));
+    mask_permutation_kernel_1<<<1024, 16>>>(
+        n, thrust::raw_pointer_cast(q.data()), m,
+        thrust::raw_pointer_cast(p.data()));
+    mask_permutation_kernel_2<<<1024, 16>>>(
+        n, thrust::raw_pointer_cast(q.data()), m,
+        thrust::raw_pointer_cast(p.data()));
     thrust::sort(q.begin(), q.end());
     p.resize(n);
-    thrust::transform(q.begin(), q.end(), p.begin(), get2nd<T>());
+    thrust::transform(q.begin(), q.end(), p.begin(), thrust_get<1>());
 }
 
 template <typename T>
@@ -164,7 +168,16 @@ void reindex_with_seeds(const thrust::device_vector<T> &a,
 {
     TRACE("reindex_with_seeds<thrust>");
 
-    reindex(a, b, c);
+    // reindex(a, b, c);
+    {
+        b.resize(a.size() + s.size());
+        thrust::copy(a.begin(), a.end(), b.begin());
+        thrust::copy(s.begin(), s.end(), b.begin() + a.size());
+        thrust::sort(b.begin(), b.end());
+        const size_t m = thrust::unique(b.begin(), b.end()) - b.begin();
+        b.resize(m);
+    }
+    _reindex_with(a, b, c);
 
     thrust::device_vector<T> s1;
     s1.reserve(b.size());

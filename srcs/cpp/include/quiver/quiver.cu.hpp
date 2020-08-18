@@ -111,10 +111,21 @@ class quiver<T, CUDA> : public Quiver
             row_ptr_.resize(n);
             col_idx_.resize(edge_index.size());
         }
+
+        using TP = thrust::pair<T, T>;
+        using CP = std::pair<T, T>;
+        static_assert(sizeof(CP) == sizeof(TP), "");
+
         {
-            TRACE("std::sort");
-            // FIXME: sort on GPU
-            std::sort(edge_index.begin(), edge_index.end());
+            TRACE("sort via thrust");
+            thrust::device_vector<TP> ei(edge_index.size());
+            thrust::copy(reinterpret_cast<const TP *>(edge_index.data()),
+                         reinterpret_cast<const TP *>(edge_index.data()) +
+                             edge_index.size(),
+                         ei.begin());
+            thrust::sort(ei.begin(), ei.end());
+            thrust::copy(ei.begin(), ei.end(),
+                         reinterpret_cast<TP *>(edge_index.data()));
         }
         const auto rc_idx = [&] {
             TRACE("unzip");
@@ -131,6 +142,13 @@ class quiver<T, CUDA> : public Quiver
             thrust::copy(row_ptr.begin(), row_ptr.end(), row_ptr_.begin());
             thrust::copy(col_idx.begin(), col_idx.end(), col_idx_.begin());
         }
+        // {
+        //     TRACE("thrust::transform");
+        //     thrust::transform(ei.begin(), ei.end(), row_ptr_.begin(),
+        //                       get1st<T>());
+        //     thrust::transform(ei.begin(), ei.end(), col_idx_.begin(),
+        //                       get2nd<T>());
+        // }
     }
 
     virtual ~quiver() = default;

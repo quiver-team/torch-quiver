@@ -35,7 +35,7 @@ SparseMatrixCuda new_sparse_matrix_cuda_(const T *row_idx, const T *col_idx,
     }
     {
         TRACE("thrust::sort");
-        thrust::device_vector<cuda_pair<int, int>> edges(n);
+        thrust::device_vector<thrust::pair<int, int>> edges(n);
         thrust::sort(edges.begin(), edges.end());
     }
     {
@@ -135,6 +135,11 @@ class TorchQuiver : public torch_quiver_t
         const T tot =
             std::accumulate(output_counts.begin(), output_counts.end(), 0);
 
+        // if (std::find(output_counts.begin(), output_counts.end(), 0) !=
+        //     output_counts.end()) {
+        //     printf("!!! output_counts contains zero!\n");
+        // }
+
         torch::Tensor row_idx = torch::empty(tot, vertices.options());
         torch::Tensor col_idx = torch::empty(tot, vertices.options());
 
@@ -191,8 +196,8 @@ class TorchQuiver : public torch_quiver_t
         }
         {
             TRACE("reindex_cuda::cp2");
-            std::copy(a.begin(), a.begin() + r, row_idx);
-            std::copy(a.begin() + r, a.end(), col_idx);
+            std::copy(c.begin(), c.begin() + r, row_idx);
+            std::copy(c.begin() + r, c.end(), col_idx);
         }
         return b;
     }

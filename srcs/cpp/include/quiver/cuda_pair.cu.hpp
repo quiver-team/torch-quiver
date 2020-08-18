@@ -1,12 +1,11 @@
 #pragma once
+#include <thrust/pair.h>
 
-template <typename T1, typename T2 = T1>
-struct cuda_pair {
-    T1 first;
-    T2 second;
-
-    __device__ bool operator<(const cuda_pair &p) const
+template <int i>
+struct thrust_get {
+    template <typename T>
+    __device__ auto operator()(const T &t) const
     {
-        return first < p.first || first == p.first && second < p.second;
+        return thrust::get<i>(t);
     }
 };

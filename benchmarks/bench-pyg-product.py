@@ -10,6 +10,8 @@ import torch
 import torch_quiver as qv
 from ogb.nodeproppred import PygNodePropPredDataset
 
+from ogbn_products_sage.cuda_sampler import CudaNeighborSampler
+
 
 def info(t, name=None):
     msg = ''
@@ -18,90 +20,6 @@ def info(t, name=None):
     msg += ' ' + str(t.type())
     msg += ' ' + str(t.shape)
     print(msg)
-
-
-class Adj(NamedTuple):
-    edge_index: torch.Tensor
-    e_id: torch.Tensor
-    size: Tuple[int, int]
-
-    def to(self, *args, **kwargs):
-        return Adj(self.edge_index.to(*args, **kwargs),
-                   self.e_id.to(*args, **kwargs), self.size)
-
-
-class CudaNeighborSampler(torch.utils.data.DataLoader):
-    def __init__(self,
-                 edge_index: torch.Tensor,
-                 sizes: List[int],
-                 node_idx: Optional[torch.Tensor] = None,
-                 num_nodes: Optional[int] = None,
-                 **kwargs):
-
-        N = int(edge_index.max() + 1) if num_nodes is None else num_nodes
-        print('building quiver')
-        t0 = time.time()
-        self.quiver = qv.new_quiver_from_edge_index(N, edge_index)
-        d = time.time() - t0
-        print('build quiver took %fms' % (d * 1000))
-
-        if node_idx is None:
-            node_idx = torch.arange(N)
-        elif node_idx.dtype == torch.bool:
-            node_idx = node_idx.nonzero().view(-1)
-
-        self.sizes = sizes
-
-        super(CudaNeighborSampler, self).__init__(node_idx.tolist(),
-                                                  collate_fn=self.sample,
-                                                  **kwargs)
-
-    def sample(self, batch):
-        t0 = time.time()
-        ret = self._sample(batch)
-        d = time.time() - t0
-        print('sample took %fms' % (d * 1000))
-        return ret
-
-    def _sample(self, batch):
-        if not isinstance(batch, torch.Tensor):
-            batch = torch.tensor(batch)
-
-        batch_size: int = len(batch)
-        print('sample batch size %d' % (batch_size))
-
-        adjs: List[Adj] = []
-
-        n_id = batch
-        for size in self.sizes:
-            result, row_idx, col_idx = self.quiver.sample_sub(n_id, size)
-            info(result)
-            n_id = result
-
-            edge_index = torch.stack([row_idx, col_idx], dim=0)
-            size = torch.LongTensor([row_idx.max() + 1, col_idx.max() + 1])
-            # FIXME: also sample e_id
-            e_id = torch.tensor([])
-            adjs.append(Adj(edge_index, e_id, size))
-
-        # return batch_size, batch
-        if len(adjs) > 1:
-            return batch_size, n_id, adjs[::-1]
-        else:
-            return batch_size, n_id, adjs[0]
-
-    def __repr__(self):
-        return '{}(sizes={})'.format(self.__class__.__name__, self.sizes)
-
-
-def load_data():
-    home = os.getenv('HOME')
-    data_dir = os.path.join(home, '.pyg')
-    root = os.path.join(data_dir, 'data', 'products')
-    filename = os.path.join(
-        root, 'ogbn_products_pyg/processed/geometric_data_processed.pt')
-    data, _ = torch.load(filename)
-    return data.edge_index
 
 
 def load_dataset():

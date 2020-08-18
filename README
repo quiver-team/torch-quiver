@@ -2,7 +2,13 @@ Quiver
 
 Graph Neural Network Operators for heterogeneous hardware.
 
-code structure
+Quick Run Benchmark
+
+```
+./U && ./train.sh
+```
+
+Code Structure
 
 *.cu.hpp // cuda template
 *.hpp // c++ header or template

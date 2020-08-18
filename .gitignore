@@ -6,3 +6,4 @@ generated
 *.so
 *.dylib
 /3rdparty
+/logs

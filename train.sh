@@ -21,10 +21,10 @@ train_origin() {
 }
 
 train_cuda_sample() {
-    python3 benchmarks/ogbn_products_sage/cuda_sample.py >logs/train.out.txt 2>logs/train.err.txt
+    python3 benchmarks/ogbn_products_sage/cuda_sample.py >logs/train.cuda.out.txt 2>logs/train.cuda.err.txt
 }
 
-measure train_origin
+# measure train_origin
 measure train_cuda_sample
 
 notify "finished $0"

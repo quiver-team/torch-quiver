@@ -9,6 +9,8 @@ notify() {
 
 p=$(basename $(pwd))
 notify "Running $0"
+
 # export ENABLE_TRACE=1
-./benchmarks/bench-pyg-product.py 2>err-new.txt >out-new.txt
+./benchmarks/bench-pyg-product.py >logs/bench.out.txt 2>logs/bench.err.txt
+
 notify "finished $0"

@@ -106,44 +106,12 @@ thrust::device_vector<T> permute(const thrust::device_vector<T> &p,
 }
 
 template <typename T>
-__device__ size_t binary_search_kernel(size_t n, const T *x, const T v)
-{
-    // thrust::lower_bound(thrust::device, thrust::device_ptr<T>(x),
-    //                     thrust::device_ptr<T>(x + n), v);
-    size_t l = 0;
-    size_t r = n - 1;
-    while (l <= r) {
-        size_t mid = (l + r) / 2;
-        T p = x[mid];
-        if (v == p) { return mid; }
-        if (v < p) {
-            r = mid - 1;
-        } else {
-            l = mid + 1;
-        }
-    }
-    return n;
-}
-
-template <typename T>
-__global__ void reindex_kernel(size_t n, const T *a, size_t m, const T *I, T *c)
-{
-    const int worker_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    const int worker_count = gridDim.x * blockDim.x;
-    for (int i = worker_idx; i < n; i += worker_count) {
-        c[i] = binary_search_kernel(m, I, a[i]);
-    }
-}
-
-template <typename T>
 void _reindex_with(const thrust::device_vector<T> &a,
                    const thrust::device_vector<T> &I,
                    thrust::device_vector<T> &c)
 {
     c.resize(a.size());
-    reindex_kernel<<<64, 16>>>(a.size(), thrust::raw_pointer_cast(a.data()),
-                               I.size(), thrust::raw_pointer_cast(I.data()),
-                               thrust::raw_pointer_cast(c.data()));
+    thrust::lower_bound(I.begin(), I.end(), a.begin(), a.end(), c.begin());
 }
 
 template <typename T>
@@ -170,6 +138,8 @@ void reindex_with_seeds(const thrust::device_vector<T> &a,
 
     // reindex(a, b, c);
     {
+        TRACE("reindex_with_seeds<thrust>::sort unique");
+
         b.resize(a.size() + s.size());
         thrust::copy(a.begin(), a.end(), b.begin());
         thrust::copy(s.begin(), s.end(), b.begin() + a.size());
@@ -177,21 +147,36 @@ void reindex_with_seeds(const thrust::device_vector<T> &a,
         const size_t m = thrust::unique(b.begin(), b.end()) - b.begin();
         b.resize(m);
     }
-    _reindex_with(a, b, c);
+    {
+        TRACE("reindex_with_seeds<thrust>::_reindex_with 1");
+        _reindex_with(a, b, c);
+    }
 
     thrust::device_vector<T> s1;
     s1.reserve(b.size());
-    _reindex_with(s, b, s1);
-    // pprint(s1, "s1");
-    complete_permutation(s1, b.size());
-    // pprint(s1, "s1-completed");
+    {
+        TRACE("reindex_with_seeds<thrust>::_reindex_with 2");
+        _reindex_with(s, b, s1);
+    }
+    {
+        TRACE("reindex_with_seeds<thrust>::complete_permutation");
+        complete_permutation(s1, b.size());
+    }
 
-    b = permute(s1, b);
+    {
+        TRACE("reindex_with_seeds<thrust>::permute");
+        b = permute(s1, b);
+    }
 
     thrust::device_vector<T> s2;
-    inverse_permutation(s1, s2);
-    // pprint(s2, "s2");
-    permute_value(s2, c);
+    {
+        TRACE("reindex_with_seeds<thrust>::inverse_permutation");
+        inverse_permutation(s1, s2);
+    }
+    {
+        TRACE("reindex_with_seeds<thrust>::permute_value");
+        permute_value(s2, c);
+    }
 }
 
 template <typename T>

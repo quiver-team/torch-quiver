@@ -67,21 +67,11 @@ void inverse_permutation(const thrust::device_vector<T> &p,
 }
 
 template <typename T>
-__global__ void permute_value_kernel(const size_t n, const T *p, T *a)
-{
-    const int worker_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    const int worker_count = gridDim.x * blockDim.x;
-    for (int i = worker_idx; i < n; i += worker_count) { a[i] = p[a[i]]; }
-}
-
-template <typename T>
 void permute_value(const thrust::device_vector<T> &p,
                    thrust::device_vector<T> &a)
 {
-    const size_t n = a.size();
-    // for (size_t i = 0; i < n; ++i) { a[i] = p[a[i]]; }
-    permute_value_kernel<<<1024, 16>>>(n, thrust::raw_pointer_cast(p.data()),
-                                       thrust::raw_pointer_cast(a.data()));
+    thrust::transform(a.begin(), a.end(), a.begin(),
+                      value_at<T>(thrust::raw_pointer_cast(p.data())));
 }
 
 template <typename T>

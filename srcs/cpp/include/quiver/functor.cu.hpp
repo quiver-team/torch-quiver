@@ -14,3 +14,14 @@ class cap_by
         return x;
     }
 };
+
+template <typename T>
+class value_at
+{
+    const T *x;
+
+  public:
+    value_at(const T *x) : x(x) {}
+
+    __host__ __device__ T operator()(size_t i) const { return x[i]; }
+};

@@ -9,6 +9,7 @@
 #include <quiver/trace.hpp>
 
 #include <cuda_runtime.h>
+#include <thrust/binary_search.h>
 #include <thrust/device_vector.h>
 
 namespace quiver
@@ -154,52 +155,45 @@ class quiver<T, CUDA> : public Quiver
 
   public:
     quiver(T n, std::vector<std::pair<T, T>> edge_index)
-    // : row_ptr_(n), col_idx_(edge_index.size())
     {
-        TRACE(__func__);
-        {
-            TRACE("resize");
-            row_ptr_.resize(n);
-            col_idx_.resize(edge_index.size());
-        }
-
         using TP = thrust::pair<T, T>;
         using CP = std::pair<T, T>;
         static_assert(sizeof(CP) == sizeof(TP), "");
 
+        TRACE(__func__);
+        thrust::device_vector<T> row_idx_;
+        thrust::device_vector<TP> edge_index_;
         {
-            TRACE("sort via thrust");
-            thrust::device_vector<TP> ei(edge_index.size());
+            TRACE("resize");
+            row_ptr_.resize(n);
+            row_idx_.resize(edge_index.size());
+            col_idx_.resize(edge_index.size());
+            edge_index_.resize(edge_index.size());
+        }
+
+        {
+            TRACE("copy and sort");
             thrust::copy(reinterpret_cast<const TP *>(edge_index.data()),
                          reinterpret_cast<const TP *>(edge_index.data()) +
                              edge_index.size(),
-                         ei.begin());
-            thrust::sort(ei.begin(), ei.end());
-            thrust::copy(ei.begin(), ei.end(),
-                         reinterpret_cast<TP *>(edge_index.data()));
+                         edge_index_.begin());
+            thrust::sort(edge_index_.begin(), edge_index_.end());
         }
-        const auto rc_idx = [&] {
-            TRACE("unzip");
-            return unzip(edge_index);
-        }();
-        auto &row_idx = rc_idx.first;
-        auto &col_idx = rc_idx.second;
-        std::vector<T> row_ptr = [&] {
-            TRACE("compress_row_idx");
-            return compress_row_idx(n, row_idx);
-        }();
+
         {
-            TRACE("thrust::copy");
-            thrust::copy(row_ptr.begin(), row_ptr.end(), row_ptr_.begin());
-            thrust::copy(col_idx.begin(), col_idx.end(), col_idx_.begin());
+            TRACE("unzip");
+            thrust::transform(edge_index_.begin(), edge_index_.end(),
+                              row_idx_.begin(), thrust_get<0>());
+            thrust::transform(edge_index_.begin(), edge_index_.end(),
+                              col_idx_.begin(), thrust_get<1>());
         }
-        // {
-        //     TRACE("thrust::transform");
-        //     thrust::transform(ei.begin(), ei.end(), row_ptr_.begin(),
-        //                       get1st<T>());
-        //     thrust::transform(ei.begin(), ei.end(), col_idx_.begin(),
-        //                       get2nd<T>());
-        // }
+        {
+            TRACE("build ptr");
+            thrust::sequence(row_ptr_.begin(), row_ptr_.end());
+            thrust::lower_bound(row_idx_.begin(), row_idx_.end(),
+                                row_ptr_.begin(), row_ptr_.end(),
+                                row_ptr_.begin());
+        }
     }
 
     virtual ~quiver() = default;

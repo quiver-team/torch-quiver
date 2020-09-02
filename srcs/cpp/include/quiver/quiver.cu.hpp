@@ -2,7 +2,6 @@
 #include <algorithm>
 
 #include <quiver/common.hpp>
-#include <quiver/cuda_kernel_option.hpp>
 #include <quiver/cuda_pair.cu.hpp>
 #include <quiver/cuda_random.cu.hpp>
 #include <quiver/quiver.hpp>

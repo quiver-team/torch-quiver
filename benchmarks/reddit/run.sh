@@ -21,4 +21,5 @@ run_quiver() {
 }
 
 measure run_origin
+echo
 measure run_quiver

@@ -7,9 +7,13 @@ from torch_geometric.datasets import Reddit
 from torch_geometric.nn import SAGEConv
 from tqdm import tqdm
 
+from quiver.profile_utils import StopWatch
+
+w = StopWatch('main')
 path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'Reddit')
 dataset = Reddit(path)
 data = dataset[0]
+w.tick('load data')
 
 num_workers = 1
 train_loader = NeighborSampler(data.edge_index,
@@ -18,12 +22,14 @@ train_loader = NeighborSampler(data.edge_index,
                                batch_size=1024,
                                shuffle=True,
                                num_workers=num_workers)
+w.tick('create train_loader')
 subgraph_loader = NeighborSampler(data.edge_index,
                                   node_idx=None,
                                   sizes=[-1],
                                   batch_size=1024,
                                   shuffle=False,
                                   num_workers=num_workers)
+w.tick('create subgraph_loader')
 
 
 class SAGE(torch.nn.Module):
@@ -85,6 +91,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
 x = data.x.to(device)
 y = data.y.squeeze().to(device)
+w.tick('build model')
 
 
 def train(epoch):
@@ -132,6 +139,7 @@ def test():
     return results
 
 
+w.tick('before train')
 n_epoches = 1
 for epoch in range(1, n_epoches + 1):
     loss, acc = train(epoch)
@@ -142,3 +150,4 @@ for epoch in range(1, n_epoches + 1):
         train_acc, val_acc, test_acc = test()
         print(f'Train: {train_acc:.4f}, Val: {val_acc:.4f}, '
               f'Test: {test_acc:.4f}')
+w.tick('train')

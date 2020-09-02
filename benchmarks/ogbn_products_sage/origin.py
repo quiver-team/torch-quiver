@@ -12,7 +12,7 @@ from torch_geometric.data import NeighborSampler
 from torch_geometric.nn import SAGEConv
 from tqdm import tqdm
 
-from profile_utils import StopWatch
+from quiver.profile_utils import StopWatch
 
 print('loading ... ')
 w = StopWatch('main')

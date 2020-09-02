@@ -1,0 +1,6 @@
+origin
+train one epoch took 98.858s
+
+
+cuda
+train one epoch took 10.967s

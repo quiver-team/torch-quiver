@@ -5,7 +5,10 @@ Graph Neural Network Operators for heterogeneous hardware.
 Quick Run Benchmark
 
 ```
-./U && ./train.sh
+./U # upgrade quiver installation
+
+./benchmarks/ogbn_products_sage/run.sh
+./benchmarks/reddit/run.sh
 ```
 
 Code Structure

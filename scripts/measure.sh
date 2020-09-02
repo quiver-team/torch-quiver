@@ -54,5 +54,6 @@ measure() {
     local end=$(date +%s)
     local duration=$((end - begin))
     local dur=$(show_duration $duration)
-    echo "[done] $name $ $@ took ${dur}" | tee -a $log_dir/profile.log
+    echo "[done] $name $ $@ took ${dur}"
+    # | tee -a $log_dir/profile.log
 }

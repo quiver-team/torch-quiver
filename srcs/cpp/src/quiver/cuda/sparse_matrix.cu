@@ -15,63 +15,6 @@
 
 namespace quiver
 {
-class SparseMatrixCuda
-{
-  public:
-    SparseMatrixCuda(const torch::Tensor &coo) {}
-    ~SparseMatrixCuda() {}
-};
-
-template <typename T>
-SparseMatrixCuda new_sparse_matrix_cuda_(const T *row_idx, const T *col_idx,
-                                         size_t n, const torch::Tensor &_)
-{
-    TRACE(__func__);
-    {
-        TRACE("thrust::copy");
-        thrust::device_vector<T> s(n);
-        thrust::device_vector<T> e(n);
-        thrust::copy(row_idx, row_idx + n, s.begin());
-        thrust::copy(col_idx, col_idx + n, e.begin());
-    }
-    {
-        TRACE("thrust::sort");
-        thrust::device_vector<thrust::pair<int, int>> edges(n);
-        thrust::sort(edges.begin(), edges.end());
-    }
-    {
-        TRACE("std::sort");
-        std::vector<std::pair<T, T>> edges(n);
-        for (size_t i = 0; i < n; ++i) {
-            edges[i].first = row_idx[i];
-            edges[i].second = col_idx[i];
-        }
-        std::sort(edges.begin(), edges.end());
-    }
-    SparseMatrixCuda spm(_);
-    return spm;
-}
-
-SparseMatrixCuda new_sparse_matrix_cuda(const torch::Tensor &coo)
-{
-    check(coo.is_contiguous());
-    check_eq<long>(coo.dim(), 2);
-    check_eq<int64_t>(coo.size(0), 2);
-    const auto n = coo.size(1);
-    const auto dtype = coo.dtype();
-
-    if (dtype.Match<int>()) {
-        const int *p = coo.data_ptr<int>();
-        return new_sparse_matrix_cuda_<int>(p, p + n, n, coo);
-    }
-    if (dtype.Match<long>()) {
-        const long *p = coo.data_ptr<long>();
-        return new_sparse_matrix_cuda_<long>(p, p + n, n, coo);
-    }
-    throw std::runtime_error(std::string("unsupported type: ") +
-                             static_cast<std::string>(dtype.name()));
-}
-
 template <typename T>
 size_t compact(size_t n, size_t k, const T *counts, const T *values, T *outputs)
 {
@@ -339,9 +282,6 @@ TorchQuiver new_quiver_from_edge_index(size_t n,
 
 void register_sparse_matrix_cuda(pybind11::module &m)
 {
-    py::class_<quiver::SparseMatrixCuda>(m, "SparseMatrixCuda");
-    m.def("new_sparse_matrix_cuda", &quiver::new_sparse_matrix_cuda);
-
     m.def("new_quiver_from_edge_index", &quiver::new_quiver_from_edge_index);
     py::class_<quiver::TorchQuiver>(m, "Quiver")
         .def("sample_adj", &quiver::TorchQuiver::sample_adj)

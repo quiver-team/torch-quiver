@@ -48,24 +48,6 @@ class TorchQuiver : public torch_quiver_t
   public:
     using T = int64_t;
 
-    torch::Tensor sample_adj(const torch::Tensor &vertices, int k) const
-    {
-        check_eq<long>(vertices.dim(), 1);
-        const size_t bs = vertices.size(0);
-        std::vector<T> output_counts(bs);
-        std::vector<T> outputs(bs * k);
-        this->sample(vertices.size(0), vertices.data_ptr<T>(), k,
-                     output_counts.data(), outputs.data());
-
-        const T tot =
-            std::accumulate(output_counts.begin(), output_counts.end(), 0);
-        printf("sample[%d] from %d, got %d\n", k, (int)bs, (int)tot);
-        torch::Tensor out_vertices = torch::empty(tot, vertices.options());
-        compact(bs, (size_t)k, output_counts.data(), outputs.data(),
-                out_vertices.data_ptr<T>());
-        return out_vertices;
-    }
-
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
     sample_sub(const torch::Tensor &vertices, int k) const
     {
@@ -157,38 +139,6 @@ class TorchQuiver : public torch_quiver_t
             }
             return std::make_tuple(out_vertices, row_idx, col_idx);
         }
-    }
-
-    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
-    sample_sub_old(const torch::Tensor &vertices, int k) const
-    {
-        check_eq<long>(vertices.dim(), 1);
-        const size_t bs = vertices.size(0);
-        std::vector<T> output_counts(bs);
-        std::vector<T> outputs(bs * k);
-        this->sample(bs, vertices.data_ptr<T>(), k, output_counts.data(),
-                     outputs.data());
-
-        const T tot =
-            std::accumulate(output_counts.begin(), output_counts.end(), 0);
-
-        torch::Tensor row_idx = torch::empty(tot, vertices.options());
-        torch::Tensor col_idx = torch::empty(tot, vertices.options());
-
-        replicate_fill(bs, output_counts.data(), vertices.data_ptr<T>(),
-                       row_idx.data_ptr<T>());
-        compact(bs, (size_t)k, output_counts.data(), outputs.data(),
-                col_idx.data_ptr<T>());
-
-        const auto new_idx =
-            reindex_cuda(bs, vertices.data_ptr<T>(), tot, row_idx.data_ptr<T>(),
-                         col_idx.data_ptr<T>());
-
-        torch::Tensor out_vertices =
-            torch::empty(new_idx.size(), vertices.options());
-        std::copy(new_idx.begin(), new_idx.end(), out_vertices.data_ptr<T>());
-
-        return std::make_tuple(out_vertices, row_idx, col_idx);
     }
 
   private:
@@ -284,7 +234,5 @@ void register_sparse_matrix_cuda(pybind11::module &m)
 {
     m.def("new_quiver_from_edge_index", &quiver::new_quiver_from_edge_index);
     py::class_<quiver::TorchQuiver>(m, "Quiver")
-        .def("sample_adj", &quiver::TorchQuiver::sample_adj)
-        .def("sample_sub", &quiver::TorchQuiver::sample_sub)
-        .def("sample_sub_old", &quiver::TorchQuiver::sample_sub_old);
+        .def("sample_sub", &quiver::TorchQuiver::sample_sub);
 }

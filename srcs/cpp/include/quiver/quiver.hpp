@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <memory>
+#include <stdexcept>
 #include <vector>
 
 namespace quiver
@@ -34,7 +35,10 @@ class Quiver
     Quiver();
     virtual ~Quiver() = default;
 
-    virtual void sample(const std::vector<int> &vertices, int k) const = 0;
+    virtual void sample(const std::vector<int> &vertices, int k) const
+    {
+        throw std::runtime_error("sample not implemented.");
+    }
 
     virtual size_t size() const = 0;
     virtual size_t edge_counts() const = 0;
@@ -71,14 +75,6 @@ void zip(const T *begin1, const T *end1, const T *begin2, T *output)
         *(output++) = *(begin2++);
     }
 }
-
-// template <typename T1, typename T2 = T1>
-// std::vector<std::pair<T1, T2>> zip(const std::vector<T1> &a,
-//                                    const std::vector<T2> &b)
-// {
-//     std::vector<T1, T2> c(a.size());
-//     return c;
-// }
 
 template <typename T>
 std::pair<std::vector<T>, std::vector<T>>

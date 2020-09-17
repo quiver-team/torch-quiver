@@ -23,7 +23,9 @@ def create_extension(with_cuda=False):
     srcs += glob.glob('srcs/cpp/src/quiver/cpu/*.cpp')
     srcs += glob.glob('srcs/cpp/src/quiver/torch/*.cpp')
 
-    include_dirs = ['./srcs/cpp/include']
+    include_dirs = [
+        os.path.join(os.path.dirname(__file__), './srcs/cpp/include')
+    ]
     library_dirs = []
     libraries = []
     extra_cxx_flags = ['-std=c++17']

@@ -3,23 +3,23 @@
 #include <random>
 
 #include <quiver/quiver.hpp>
+#include <quiver/sparse.hpp>
 #include <quiver/zip.hpp>
 
 namespace quiver
 {
 template <typename T>
-void cpu_sample(const T *begin, const T *end, const int k, T *outputs,
-                T *output_count)
+void cpu_sample(const T *begin, const T *end, const int k, T *outputs)
 {
     const T cap = end - begin;
-    if (cap <= k) {
-        *output_count = cap;
-        std::copy(begin, end, outputs);
-    } else {
-        *output_count = k;
+    if (k < cap) {
         thread_local static std::random_device device;
         thread_local static std::mt19937 g(device());
         std::sample(begin, end, outputs, k, g);
+        return k;
+    } else {
+        std::copy(begin, end, outputs);
+        return cap;
     }
 }
 
@@ -62,8 +62,9 @@ class quiver<T, CPU> : public Quiver
             T v = vertices[i];
             T begin = row_ptr_[v];
             const T end = v + 1 < n ? row_ptr_[v + 1] : m;
-            cpu_sample(col_idx_.data() + begin, col_idx_.data() + end, k,
-                       outputs.data() + i * k, output_counts.data() + i);
+            output_counts[i] =
+                cpu_sample(col_idx_.data() + begin, col_idx_.data() + end, k,
+                           outputs.data() + i * k);
         }
     }
 };

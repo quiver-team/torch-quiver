@@ -12,23 +12,10 @@
 #include <quiver/quiver.cu.hpp>
 #include <quiver/reindex.cu.hpp>
 #include <quiver/trace.hpp>
+#include <quiver/zip.hpp>
 
 namespace quiver
 {
-template <typename T>
-size_t compact(size_t n, size_t k, const T *counts, const T *values, T *outputs)
-{
-    size_t off = 0;
-    size_t l = 0;
-    for (size_t i = 0; i < n; ++i) {
-        const size_t c = counts[i];
-        std::copy(values + off, values + off + c, outputs + l);
-        off += k;
-        l += c;
-    }
-    return l;
-}
-
 template <typename T>
 void replicate_fill(size_t n, const T *counts, const T *values, T *outputs)
 {
@@ -139,74 +126,6 @@ class TorchQuiver : public torch_quiver_t
             }
             return std::make_tuple(out_vertices, row_idx, col_idx);
         }
-    }
-
-  private:
-    std::vector<T> reindex_cuda(size_t l, const T *seeds, size_t r, T *row_idx,
-                                T *col_idx) const
-    {
-        TRACE(__func__);
-        std::vector<T> a;
-        std::vector<T> b;
-        std::vector<T> c;
-        {
-            TRACE("reindex_cuda::alloc");
-            a.resize(2 * r);
-            b.resize(2 * r);
-            c.resize(2 * r);
-        }
-        {
-            TRACE("reindex_cuda::cp1");
-            std::copy(row_idx, row_idx + r, a.begin());
-            std::copy(col_idx, col_idx + r, a.begin() + r);
-        }
-        {
-            TRACE("reindex_with_seeds");
-            reindex_with_seeds(l, seeds, a.size(), a.data(), b, c);
-        }
-        {
-            TRACE("reindex_cuda::cp2");
-            std::copy(c.begin(), c.begin() + r, row_idx);
-            std::copy(c.begin() + r, c.end(), col_idx);
-        }
-        return b;
-    }
-
-    std::vector<T> reindex(size_t l, const T *seeds, size_t r, T *row_idx,
-                           T *col_idx) const
-    {
-        TRACE(__func__);
-        std::vector<T> outputs;
-        {
-            TRACE("reindex::reserve");
-            outputs.reserve(l + r);
-        }
-        std::unordered_map<T, T> idx;
-
-        const auto get_idx = [&](T v) {
-            const auto it = idx.find(v);
-            if (it == idx.end()) {
-                const T new_idx = outputs.size();
-                idx[v] = new_idx;
-                outputs.push_back(v);
-                return new_idx;
-            } else {
-                return it->second;
-            }
-        };
-        {
-            TRACE("reindex 0");
-            for (size_t i = 0; i < l; ++i) { get_idx(seeds[i]); }
-        }
-        {
-            TRACE("reindex 1");
-            for (size_t i = 0; i < r; ++i) { row_idx[i] = idx.at(row_idx[i]); }
-        }
-        {
-            TRACE("reindex 2");
-            for (size_t i = 0; i < r; ++i) { col_idx[i] = get_idx(col_idx[i]); }
-        }
-        return outputs;
     }
 };
 

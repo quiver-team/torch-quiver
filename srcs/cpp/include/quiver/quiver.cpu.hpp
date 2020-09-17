@@ -3,6 +3,7 @@
 #include <random>
 
 #include <quiver/quiver.hpp>
+#include <quiver/zip.hpp>
 
 namespace quiver
 {
@@ -18,7 +19,6 @@ void cpu_sample(const T *begin, const T *end, const int k, T *outputs,
         *output_count = k;
         thread_local static std::random_device device;
         thread_local static std::mt19937 g(device());
-        // std::copy(begin, begin + k, outputs);
         std::sample(begin, end, outputs, k, g);
     }
 }

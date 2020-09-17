@@ -1,4 +1,4 @@
-// port several functionalities from <random> for CUDA
+// partially implement <random> for CUDA
 #pragma once
 #include <curand_kernel.h>
 
@@ -27,5 +27,20 @@ __device__ void std_sample(const T *begin, const T *end, T *outputs, int k,
         // FIXME: make the probability correct
         bool replace = g() % 2;
         if (replace) { outputs[g() % k] = begin[i]; }
+    }
+}
+
+// sample at most k elements from [begin, end), returns the sampled count.
+template <typename T, typename N>
+__device__ N safe_sample(const T *begin, const T *end, const N k, T *outputs,
+                         cuda_random_generator &g)
+{
+    const N cap = end - begin;
+    if (k < cap) {
+        std_sample(begin, end, outputs, k, g);
+        return k;
+    } else {
+        for (N i = 0; i < cap; ++i) { outputs[i] = begin[i]; }
+        return cap;
     }
 }

@@ -12,20 +12,6 @@
 namespace quiver
 {
 template <typename T>
-__device__ int safe_sample(const T *begin, const T *end, const int k,
-                           T *outputs, cuda_random_generator &g)
-{
-    const T cap = end - begin;
-    if (cap <= k) {
-        for (int i = 0; i < cap; ++i) { outputs[i] = begin[i]; }
-        return cap;
-    } else {
-        std_sample(begin, end, outputs, k, g);
-        return k;
-    }
-}
-
-template <typename T>
 class get_adj_diff
 {
     const T *x;

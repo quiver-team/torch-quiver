@@ -8,10 +8,11 @@
 
 namespace quiver
 {
-template <typename T>
-void cpu_sample(const T *begin, const T *end, const int k, T *outputs)
+// sample at most k elements from [begin, end), returns the sampled count.
+template <typename T, typename N>
+N safe_sample(const T *begin, const T *end, const N k, T *outputs)
 {
-    const T cap = end - begin;
+    const N cap = end - begin;
     if (k < cap) {
         thread_local static std::random_device device;
         thread_local static std::mt19937 g(device());
@@ -63,8 +64,8 @@ class quiver<T, CPU> : public Quiver
             T begin = row_ptr_[v];
             const T end = v + 1 < n ? row_ptr_[v + 1] : m;
             output_counts[i] =
-                cpu_sample(col_idx_.data() + begin, col_idx_.data() + end, k,
-                           outputs.data() + i * k);
+                safe_sample(col_idx_.data() + begin, col_idx_.data() + end, k,
+                            outputs.data() + i * k);
         }
     }
 };

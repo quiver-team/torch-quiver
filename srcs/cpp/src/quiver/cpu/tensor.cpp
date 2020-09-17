@@ -9,8 +9,6 @@
 
 #include <torch/extension.h>
 
-#include <quiver/logger.hpp>
-
 namespace quiver
 {
 template <typename T>

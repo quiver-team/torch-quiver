@@ -160,7 +160,7 @@ TorchQuiver new_quiver_from_edge_index(size_t n,
 }
 }  // namespace quiver
 
-void register_sparse_matrix_cuda(pybind11::module &m)
+void register_cuda_quiver(pybind11::module &m)
 {
     m.def("new_quiver_from_edge_index", &quiver::new_quiver_from_edge_index);
     py::class_<quiver::TorchQuiver>(m, "Quiver")

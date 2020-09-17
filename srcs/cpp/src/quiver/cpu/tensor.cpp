@@ -73,7 +73,7 @@ void matched()
               << ", sizeof(T) = " << sizeof(T) << std::endl;
 };
 
-void info(const torch::Tensor &t)
+void show_tensor_info(const torch::Tensor &t)
 {
     const auto shape = get_tensor_shape(t);
     const auto dtype = t.dtype();

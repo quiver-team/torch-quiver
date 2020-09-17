@@ -63,62 +63,58 @@ class sample_functor
 };
 
 template <typename T>
-class quiver<T, CUDA> : public Quiver
+void unzip(const thrust::device_vector<thrust::pair<T, T>> &p,
+           thrust::device_vector<T> &x, thrust::device_vector<T> &y)
 {
+    thrust::transform(p.begin(), p.end(), x.begin(), thrust_get<0>());
+    thrust::transform(p.begin(), p.end(), y.begin(), thrust_get<1>());
+}
 
+template <typename T>
+class quiver<T, CUDA>
+{
     thrust::device_vector<T> row_ptr_;
     thrust::device_vector<T> col_idx_;
 
-  public:
-    quiver(T n, std::vector<std::pair<T, T>> edge_index)
+    using TP = thrust::pair<T, T>;
+    using CP = std::pair<T, T>;
+
+    static thrust::device_vector<TP>
+    to_device(const std::vector<CP> &edge_index)
     {
-        using TP = thrust::pair<T, T>;
-        using CP = std::pair<T, T>;
         static_assert(sizeof(CP) == sizeof(TP), "");
+        thrust::device_vector<TP> edge_index_(edge_index.size());
+        thrust::copy(reinterpret_cast<const TP *>(edge_index.data()),
+                     reinterpret_cast<const TP *>(edge_index.data()) +
+                         edge_index.size(),
+                     edge_index_.begin());
+        return std::move(edge_index_);
+    }
 
-        TRACE(__func__);
-        thrust::device_vector<T> row_idx_;
-        thrust::device_vector<TP> edge_index_;
-        {
-            TRACE("resize");
-            row_ptr_.resize(n);
-            row_idx_.resize(edge_index.size());
-            col_idx_.resize(edge_index.size());
-            edge_index_.resize(edge_index.size());
-        }
+  public:
+    quiver(T n, const std::vector<CP> &edge_index)
+        : quiver(n, to_device(edge_index))
+    {
+    }
 
-        {
-            TRACE("copy and sort");
-            thrust::copy(reinterpret_cast<const TP *>(edge_index.data()),
-                         reinterpret_cast<const TP *>(edge_index.data()) +
-                             edge_index.size(),
-                         edge_index_.begin());
-            thrust::sort(edge_index_.begin(), edge_index_.end());
-        }
-
-        {
-            TRACE("unzip");
-            thrust::transform(edge_index_.begin(), edge_index_.end(),
-                              row_idx_.begin(), thrust_get<0>());
-            thrust::transform(edge_index_.begin(), edge_index_.end(),
-                              col_idx_.begin(), thrust_get<1>());
-        }
-        {
-            TRACE("build ptr");
-            thrust::sequence(row_ptr_.begin(), row_ptr_.end());
-            thrust::lower_bound(row_idx_.begin(), row_idx_.end(),
-                                row_ptr_.begin(), row_ptr_.end(),
-                                row_ptr_.begin());
-        }
+    quiver(T n, thrust::device_vector<TP> edge_index)
+        : row_ptr_(n), col_idx_(edge_index.size())
+    {
+        thrust::sort(edge_index.begin(), edge_index.end());
+        thrust::device_vector<T> row_idx_(edge_index.size());
+        unzip(edge_index, row_idx_, col_idx_);
+        thrust::sequence(row_ptr_.begin(), row_ptr_.end());
+        thrust::lower_bound(row_idx_.begin(), row_idx_.end(), row_ptr_.begin(),
+                            row_ptr_.end(), row_ptr_.begin());
     }
 
     virtual ~quiver() = default;
 
-    size_t size() const override { return row_ptr_.size(); }
+    size_t size() const { return row_ptr_.size(); }
 
-    size_t edge_counts() const override { return col_idx_.size(); }
+    size_t edge_counts() const { return col_idx_.size(); }
 
-    device_t device() const override { return CUDA; }
+    // device_t device() const   { return CUDA; }
 
     void degree(thrust::device_ptr<const T> input_begin,
                 thrust::device_ptr<const T> input_end,

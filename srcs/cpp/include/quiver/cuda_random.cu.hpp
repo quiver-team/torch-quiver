@@ -16,7 +16,11 @@ class cuda_random_generator
     __device__ uint32_t operator()() { return curand(&state_); }
 };
 
-// std::sample for CUDA kernel
+// Reservoir sampling
+// Reference:
+// https://en.wikipedia.org/wiki/Reservoir_sampling
+// Random Sampling with a Reservoir
+// (http://www.cs.umd.edu/~samir/498/vitter.pdf)
 template <typename T>
 __device__ void std_sample(const T *begin, const T *end, T *outputs, int k,
                            cuda_random_generator &g)
@@ -24,9 +28,8 @@ __device__ void std_sample(const T *begin, const T *end, T *outputs, int k,
     for (int i = 0; i < k; ++i) { outputs[i] = begin[i]; }
     const int n = end - begin;
     for (int i = k; i < n; ++i) {
-        // FIXME: make the probability correct
-        bool replace = g() % 2;
-        if (replace) { outputs[g() % k] = begin[i]; }
+        const int j = g() % i;
+        if (j < k) { outputs[j] = begin[i]; }
     }
 }
 

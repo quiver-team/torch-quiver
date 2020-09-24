@@ -9,11 +9,10 @@ import os.path as osp
 import torch
 import torch.nn.functional as F
 from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
+from quiver.profile_utils import StopWatch
 from torch_geometric.data import NeighborSampler
 from torch_geometric.nn import SAGEConv
 from tqdm import tqdm
-
-from quiver.profile_utils import StopWatch
 
 p = argparse.ArgumentParser(description='')
 p.add_argument('--num-workers',
@@ -22,6 +21,10 @@ p.add_argument('--num-workers',
                help='number of CPU workers')
 p.add_argument('--runs', type=int, default=10, help='number of runs')
 p.add_argument('--epochs', type=int, default=20, help='number of epochs')
+p.add_argument('--use-kungfu',
+               action='store_true',
+               default=False,
+               help='use kungfu')
 args = p.parse_args()
 
 print('loading ... ')
@@ -190,6 +193,13 @@ for run in range(1, 1 + args.runs):
 
     model.reset_parameters()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
+
+    if args.use_kungfu:
+        import kungfu.torch as kf
+        optimizer = kf.optimizers.SynchronousSGDOptimizer(
+            optimizer, named_parameters=model.named_parameters())
+        # Broadcast parameters from rank 0 to all other processes.
+        kf.broadcast_parameters(model.state_dict())
 
     best_val_acc = final_test_acc = 0.0
     w.tick('?')

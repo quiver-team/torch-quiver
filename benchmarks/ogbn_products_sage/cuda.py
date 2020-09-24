@@ -2,18 +2,27 @@
 # modified from https://github.com/rusty1s/pytorch_geometric/blob/master/examples/ogbn_products_sage.py
 # Reaches around 0.7870 ± 0.0036 test accuracy.
 
+import argparse
 import os
 import os.path as osp
 
 import torch
 import torch.nn.functional as F
 from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
+from quiver.cuda_sampler import CudaNeighborSampler
+from quiver.profile_utils import StopWatch
 from torch_geometric.data import NeighborSampler
 from torch_geometric.nn import SAGEConv
 from tqdm import tqdm
 
-from quiver.cuda_sampler import CudaNeighborSampler
-from quiver.profile_utils import StopWatch
+p = argparse.ArgumentParser(description='')
+p.add_argument('--runs', type=int, default=10, help='number of runs')
+p.add_argument('--epochs', type=int, default=20, help='number of epochs')
+p.add_argument('--use-kungfu',
+               action='store_true',
+               default=False,
+               help='use kungfu')
+args = p.parse_args()
 
 print('loading ... ')
 w = StopWatch('main')
@@ -28,22 +37,17 @@ data = dataset[0]
 train_idx = split_idx['train']
 
 w.tick('load data')
-# num_workers =12
-# num_workers = 1
 train_loader = CudaNeighborSampler(data.edge_index,
                                    node_idx=train_idx,
                                    sizes=[15, 10, 5],
                                    batch_size=1024,
                                    shuffle=True)
-#    num_workers=num_workers)
 w.tick('create train_loader')
 subgraph_loader = CudaNeighborSampler(data.edge_index,
                                       node_idx=None,
                                       sizes=[-1],
                                       batch_size=4096,
                                       shuffle=False)
-#   num_workers=num_workers)
-
 w.tick('create subgraph_loader')
 
 
@@ -118,9 +122,9 @@ w.tick('build model')
 
 
 def train(epoch):
-    w1 = StopWatch('train loop')
+    # w1 = StopWatch('train loop')
     model.train()
-    w1.tick('set mode to train')
+    # w1.tick('set mode to train')
 
     # pbar = tqdm(total=train_idx.size(0))
     # pbar.set_description(f'Epoch {epoch:02d}')
@@ -128,7 +132,7 @@ def train(epoch):
     total_loss = total_correct = 0
     for batch_size, n_id, adjs in train_loader:
         # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
-        w1.tick('prepro')
+        # w1.tick('prepro')
         adjs = [adj.to(device) for adj in adjs]
 
         optimizer.zero_grad()
@@ -136,19 +140,19 @@ def train(epoch):
         loss = F.nll_loss(out, y[n_id[:batch_size]])
         loss.backward()
         optimizer.step()
-        w1.tick('train')
+        # w1.tick('train')
 
         total_loss += float(loss)
         total_correct += int(out.argmax(dim=-1).eq(y[n_id[:batch_size]]).sum())
         # pbar.update(batch_size)
-        print('\n\n')
+        # print('\n\n')
 
     # pbar.close()
 
     loss = total_loss / len(train_loader)
     approx_acc = total_correct / train_idx.size(0)
 
-    del w1
+    # del w1
     return loss, approx_acc
 
 
@@ -178,8 +182,7 @@ def test():
 
 
 test_accs = []
-runs = 1
-for run in range(1, 1 + runs):
+for run in range(1, 1 + args.runs):
     print('')
     print(f'Run {run:02d}:')
     print('')
@@ -187,11 +190,16 @@ for run in range(1, 1 + runs):
     model.reset_parameters()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
 
+    if args.use_kungfu:
+        import kungfu.torch as kf
+        optimizer = kf.optimizers.SynchronousSGDOptimizer(
+            optimizer, named_parameters=model.named_parameters())
+        # Broadcast parameters from rank 0 to all other processes.
+        kf.broadcast_parameters(model.state_dict())
+
     best_val_acc = final_test_acc = 0.0
-    # epochs = 20
-    epochs = 1
     w.tick('before for loop')
-    for epoch in range(1, 1 + epochs):
+    for epoch in range(1, 1 + args.epochs):
         loss, acc = train(epoch)
         print(f'Epoch {epoch:02d}, Loss: {loss:.4f}, Approx. Train: {acc:.4f}')
         w.tick('train one epoch')

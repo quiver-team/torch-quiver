@@ -7,3 +7,4 @@ generated
 *.dylib
 /3rdparty
 /logs
+/KungFu

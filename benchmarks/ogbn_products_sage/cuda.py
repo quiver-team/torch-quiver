@@ -18,11 +18,14 @@ from tqdm import tqdm
 p = argparse.ArgumentParser(description='')
 p.add_argument('--runs', type=int, default=10, help='number of runs')
 p.add_argument('--epochs', type=int, default=20, help='number of epochs')
-p.add_argument('--use-kungfu',
-               action='store_true',
-               default=False,
-               help='use kungfu')
+p.add_argument('--distribute', type=str, default='', help='kungfu | horovod')
 args = p.parse_args()
+
+if args.distribute == 'horovod':
+    import horovod.torch as hvd
+    hvd.init()
+    if torch.cuda.is_available():
+        torch.cuda.set_device(hvd.local_rank())
 
 print('loading ... ')
 w = StopWatch('main')
@@ -190,12 +193,16 @@ for run in range(1, 1 + args.runs):
     model.reset_parameters()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
 
-    if args.use_kungfu:
+    if args.distribute == 'kungfu':
         import kungfu.torch as kf
         optimizer = kf.optimizers.SynchronousSGDOptimizer(
             optimizer, named_parameters=model.named_parameters())
         # Broadcast parameters from rank 0 to all other processes.
         kf.broadcast_parameters(model.state_dict())
+    elif args.distribute == 'horovod':
+        optimizer = hvd.DistributedOptimizer(optimizer)
+        hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+        hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 
     best_val_acc = final_test_acc = 0.0
     w.tick('before for loop')

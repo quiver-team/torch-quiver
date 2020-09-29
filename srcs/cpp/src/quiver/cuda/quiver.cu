@@ -100,13 +100,13 @@ class TorchQuiver : public torch_quiver_t
                 thrust::sort(policy, subset.begin(), subset.end());
                 subset.erase(thrust::unique(subset.begin(), subset.end()),
                              subset.end());
-                _reindex_with(outputs, subset, outputs);
+                _reindex_with(policy, outputs, subset, outputs);
             }
             {
                 TRACE("permute");
                 thrust::device_vector<T> s1;
                 s1.reserve(subset.size());
-                _reindex_with(inputs, subset, s1);
+                _reindex_with(policy, inputs, subset, s1);
                 complete_permutation(s1, subset.size());
                 subset = permute(s1, subset);
 

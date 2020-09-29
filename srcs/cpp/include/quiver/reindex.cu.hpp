@@ -104,6 +104,16 @@ void _reindex_with(const thrust::device_vector<T> &a,
     thrust::lower_bound(I.begin(), I.end(), a.begin(), a.end(), c.begin());
 }
 
+template <typename T, typename P>
+void _reindex_with(const P &policy, const thrust::device_vector<T> &a,
+                   const thrust::device_vector<T> &I,
+                   thrust::device_vector<T> &c)
+{
+    c.resize(a.size());
+    thrust::lower_bound(policy, I.begin(), I.end(), a.begin(), a.end(),
+                        c.begin());
+}
+
 template <typename T>
 void reindex(const thrust::device_vector<T> &a, thrust::device_vector<T> &b,
              thrust::device_vector<T> &c)

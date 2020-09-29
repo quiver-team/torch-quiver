@@ -40,8 +40,8 @@ class TorchQuiver : public torch_quiver_t
     }
 
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
-    sample_sub_with_stream(cudaStream_t stream, const torch::Tensor &vertices,
-                           int k) const
+    sample_sub_with_stream(const cudaStream_t stream,
+                           const torch::Tensor &vertices, int k) const
     {
         TRACE(__func__);
         const auto policy = thrust::cuda::par.on(stream);
@@ -63,9 +63,9 @@ class TorchQuiver : public torch_quiver_t
         T tot = 0;
         {
             TRACE("prepare");
-            thrust::copy(policy, vertices.data_ptr<long>(),
+            thrust::copy(vertices.data_ptr<long>(),
                          vertices.data_ptr<long>() + bs, inputs.begin());
-            this->degree(inputs.data(), inputs.data() + inputs.size(),
+            this->degree(stream, inputs.data(), inputs.data() + inputs.size(),
                          output_counts.data());
             if (k >= 0) {
                 thrust::transform(policy, output_counts.begin(),
@@ -83,8 +83,9 @@ class TorchQuiver : public torch_quiver_t
         }
         {
             TRACE("sample");
-            this->sample(inputs.begin(), inputs.end(), output_ptr.begin(),
-                         output_counts.begin(), outputs.data());
+            this->sample(stream, inputs.begin(), inputs.end(),
+                         output_ptr.begin(), output_counts.begin(),
+                         outputs.data());
         }
 
         // reindex

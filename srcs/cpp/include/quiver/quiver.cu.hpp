@@ -116,19 +116,20 @@ class quiver<T, CUDA>
 
     // device_t device() const   { return CUDA; }
 
-    void degree(thrust::device_ptr<const T> input_begin,
+    void degree(const cudaStream_t stream,
+                thrust::device_ptr<const T> input_begin,
                 thrust::device_ptr<const T> input_end,
                 thrust::device_ptr<T> output_begin) const
     {
         thrust::transform(
-            input_begin, input_end, output_begin,
+            thrust::cuda::par.on(stream), input_begin, input_end, output_begin,
             get_adj_diff<T>(thrust::raw_pointer_cast(row_ptr_.data()),
                             row_ptr_.size(), col_idx_.size()));
     }
 
     template <typename Iter>
-    void sample(Iter input_begin, Iter input_end, Iter output_ptr_begin,
-                Iter output_count_begin,
+    void sample(const cudaStream_t stream, Iter input_begin, Iter input_end,
+                Iter output_ptr_begin, Iter output_count_begin,
                 thrust::device_ptr<T> output_begin) const
     {
         const size_t len = input_end - input_begin;
@@ -139,7 +140,7 @@ class quiver<T, CUDA>
             thrust::make_tuple(i + len, input_end, output_count_begin + len,
                                output_ptr_begin + len));
         thrust::for_each(
-            begin, end,
+            thrust::cuda::par.on(stream), begin, end,
             sample_functor<T>(
                 thrust::raw_pointer_cast(row_ptr_.data()), row_ptr_.size(),
                 thrust::raw_pointer_cast(col_idx_.data()), col_idx_.size(),

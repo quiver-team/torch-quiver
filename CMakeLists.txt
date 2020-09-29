@@ -35,16 +35,9 @@ IF(ENABLE_CUDA)
     ADD_SOURCE(quiver ${CMAKE_SOURCE_DIR}/srcs/cpp/src/quiver/cuda/quiver.cu)
 ENDIF()
 
-# ADD_EXECUTABLE(example examples/cpp/torch-example.cpp)
-# TARGET_LINK_LIBRARIES(example c10) TARGET_LINK_LIBRARIES(example torch)
-
-ADD_EXECUTABLE(cpu-sample examples/cpu_sample.cpp)
-ADD_EXECUTABLE(quiver-example examples/quiver_example.cpp)
-TARGET_LINK_LIBRARIES(quiver-example quiver)
-TARGET_USE_STDTRACER(quiver-example)
 
 IF(ENABLE_CUDA)
-    ADD_EXECUTABLE(cuda-sample examples/cuda_sample.cpp)
+    # ADD_EXECUTABLE(cuda-sample examples/cuda_sample.cpp)
 ENDIF()
 
 ENABLE_TESTING()

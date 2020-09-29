@@ -2,4 +2,6 @@
 set -e
 
 cd $(dirname $0)/..
-pip3 install horovod
+
+export HOROVOD_GPU_OPERATIONS=NCCL
+pip3 install -U horovod

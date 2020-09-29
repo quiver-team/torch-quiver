@@ -18,7 +18,7 @@ p=$(basename $(pwd))
 notify "Building $p from $(hostname)"
 
 git add -A
-# measure quick_build
+measure quick_build
 git clean -fdx
 
 # [done] q $ pip3 install --no-index -U . took 42s

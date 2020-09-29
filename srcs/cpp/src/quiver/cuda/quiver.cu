@@ -36,7 +36,15 @@ class TorchQuiver : public torch_quiver_t
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
     sample_sub(const torch::Tensor &vertices, int k) const
     {
+        return sample_sub_with_stream(0, vertices, k);
+    }
+
+    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
+    sample_sub_with_stream(cudaStream_t stream, const torch::Tensor &vertices,
+                           int k) const
+    {
         TRACE(__func__);
+        const auto policy = thrust::cuda::par.on(stream);
 
         thrust::device_vector<T> inputs;
         thrust::device_vector<T> output_counts;
@@ -55,17 +63,19 @@ class TorchQuiver : public torch_quiver_t
         T tot = 0;
         {
             TRACE("prepare");
-            thrust::copy(vertices.data_ptr<long>(),
+            thrust::copy(policy, vertices.data_ptr<long>(),
                          vertices.data_ptr<long>() + bs, inputs.begin());
             this->degree(inputs.data(), inputs.data() + inputs.size(),
                          output_counts.data());
             if (k >= 0) {
-                thrust::transform(output_counts.begin(), output_counts.end(),
-                                  output_counts.begin(), cap_by<T>(k));
+                thrust::transform(policy, output_counts.begin(),
+                                  output_counts.end(), output_counts.begin(),
+                                  cap_by<T>(k));
             }
-            thrust::exclusive_scan(output_counts.begin(), output_counts.end(),
-                                   output_ptr.begin());
-            tot = thrust::reduce(output_counts.begin(), output_counts.end());
+            thrust::exclusive_scan(policy, output_counts.begin(),
+                                   output_counts.end(), output_ptr.begin());
+            tot = thrust::reduce(policy, output_counts.begin(),
+                                 output_counts.end());
         }
         {
             TRACE("alloc_2");
@@ -82,10 +92,11 @@ class TorchQuiver : public torch_quiver_t
             {
                 TRACE("reindex 0");
                 subset.resize(inputs.size() + outputs.size());
-                thrust::copy(inputs.begin(), inputs.end(), subset.begin());
-                thrust::copy(outputs.begin(), outputs.end(),
+                thrust::copy(policy, inputs.begin(), inputs.end(),
+                             subset.begin());
+                thrust::copy(policy, outputs.begin(), outputs.end(),
                              subset.begin() + inputs.size());
-                thrust::sort(subset.begin(), subset.end());
+                thrust::sort(policy, subset.begin(), subset.end());
                 subset.erase(thrust::unique(subset.begin(), subset.end()),
                              subset.end());
                 _reindex_with(outputs, subset, outputs);

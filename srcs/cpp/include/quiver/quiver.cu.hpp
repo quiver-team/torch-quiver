@@ -31,6 +31,24 @@ class get_adj_diff
     }
 };
 
+struct zip_id_functor
+{
+    template <typename T>
+    __device__ void operator()(T tup) {
+        thrust::get<0>(tup) = thrust::make_tuple(thrust::get<1>(tup), thrust::get<2>(tup));
+    }
+};
+
+struct unzip_id_functor
+{
+    template <typename T>
+    __device__ void operator()(T tup) {
+        auto zip_ = thrust::get<0>(tup);
+        thrust::get<1>(tup) = thrust::get<0>(zip_);
+        thrust::get<2>(tup) = thrust::get<1>(zip_);
+    }
+};
+
 template <typename T>
 class sample_functor
 {
@@ -84,32 +102,20 @@ class quiver<T, CUDA>
     using TP = thrust::pair<T, T>;
     using CP = std::pair<T, T>;
 
-    static thrust::device_vector<TP>
-    to_device(const std::vector<CP> &edge_index)
+    // copy std::vector<Tx> thrust::device_vecrtor<Ty>
+    template <typename Ty, typename Tx>
+    thrust::device_vector<Ty> to_device(const std::vector<Tx> &x)
     {
-        static_assert(sizeof(CP) == sizeof(TP), "");
-        thrust::device_vector<TP> edge_index_(edge_index.size());
-        thrust::copy(reinterpret_cast<const TP *>(edge_index.data()),
-                     reinterpret_cast<const TP *>(edge_index.data()) +
-                         edge_index.size(),
-                     edge_index_.begin());
-        return std::move(edge_index_);
+        static_assert(sizeof(Tx) == sizeof(Ty), "");
+        thrust::device_vector<Ty> y(x.size());
+        thrust::copy(reinterpret_cast<const Ty *>(x.data()),
+                    reinterpret_cast<const Ty *>(x.data()) + x.size(), y.begin());
+        return std::move(y);
     }
-
-    static thrust::device_vector<T>
-    to_device(const std::vector<T> &edge_id)
-    {
-        thrust::device_vector<T> edge_id_(edge_id.size());
-        thrust::copy(reinterpret_cast<const T *>(edge_id.data()),
-                     reinterpret_cast<const T *>(edge_id.data()) +
-                         edge_id.size(),
-                     edge_id_.begin());
-        return std::move(edge_id_);
-    }
-
+    
   public:
     quiver(T n, const std::vector<CP> &edge_index, const std::vector<T> &edge_id)
-        : quiver(n, to_device(edge_index), to_device(edge_id))
+        : quiver(n, to_device<TP>(edge_index), to_device<T>(edge_id))
     {
     }
 
@@ -117,7 +123,16 @@ class quiver<T, CUDA>
     quiver(T n, thrust::device_vector<TP> edge_index, thrust::device_vector<T> edge_id)
         : row_ptr_(n), col_idx_(edge_index.size()), edge_id_(std::move(edge_id))
     {
-        thrust::sort(edge_index.begin(), edge_index.end());
+        thrust::device_vector<thrust::tuple<TP, T>> to_sort(edge_index.size());
+        thrust::for_each(
+            thrust::make_zip_iterator(thrust::make_tuple(to_sort.begin(), edge_index.begin(), edge_id_.begin())),
+            thrust::make_zip_iterator(thrust::make_tuple(to_sort.end(), edge_index.end(), edge_id_.end())),
+            zip_id_functor());
+        thrust::sort(to_sort.begin(), to_sort.end());
+        thrust::for_each(
+            thrust::make_zip_iterator(thrust::make_tuple(to_sort.begin(), edge_index.begin(), edge_id_.begin())),
+            thrust::make_zip_iterator(thrust::make_tuple(to_sort.end(), edge_index.end(), edge_id_.end())),
+            unzip_id_functor());
         thrust::device_vector<T> row_idx_(edge_index.size());
         unzip(edge_index, row_idx_, col_idx_);
         thrust::sequence(row_ptr_.begin(), row_ptr_.end());

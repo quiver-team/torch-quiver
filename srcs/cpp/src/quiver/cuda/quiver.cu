@@ -39,28 +39,38 @@ class TorchQuiver : public torch_quiver_t
         return sample_sub_with_stream(0, vertices, k);
     }
 
-    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
-    sample_sub_with_stream(const cudaStream_t stream,
-                           const torch::Tensor &vertices, int k) const
+    std::tuple<torch::Tensor, torch::Tensor>
+    sample_id(const torch::Tensor &vertices, int k) const
     {
         TRACE(__func__);
-        const auto policy = thrust::cuda::par.on(stream);
 
         thrust::device_vector<T> inputs;
-        thrust::device_vector<T> output_counts;
-        thrust::device_vector<T> output_ptr;
         thrust::device_vector<T> outputs;
-        thrust::device_vector<T> subset;
+        thrust::device_vector<T> output_counts;
+
+        return uniform_sample_kernel(0, vertices, k, inputs, outputs, output_counts);
+    }
+
+    std::tuple<torch::Tensor, torch::Tensor>
+    uniform_sample_kernel(const cudaStream_t stream,
+        const torch::Tensor &vertices, int k, thrust::device_vector<T> &inputs,
+        thrust::device_vector<T> &outputs, thrust::device_vector<T> &output_counts) const
+    {
+        T tot = 0;
+        const auto policy = thrust::cuda::par.on(stream);
+        thrust::device_vector<T> output_ptr;
+        thrust::device_vector<T> output_eid;
 
         check_eq<long>(vertices.dim(), 1);
         const size_t bs = vertices.size(0);
+
         {
             TRACE("alloc_1");
             inputs.resize(bs);
             output_counts.resize(bs);
             output_ptr.resize(bs);
         }
-        T tot = 0;
+        // output_ptr is exclusive prefix sum of output_counts(neighbor counts <= k)
         {
             TRACE("prepare");
             thrust::copy(vertices.data_ptr<long>(),
@@ -80,14 +90,38 @@ class TorchQuiver : public torch_quiver_t
         {
             TRACE("alloc_2");
             outputs.resize(tot);
+            output_eid.resize(tot);
         }
+        // outputs[outptr[i], outptr[i + 1]) are unique neighbors of inputs[i]
         {
             TRACE("sample");
             this->sample(stream, inputs.begin(), inputs.end(),
                          output_ptr.begin(), output_counts.begin(),
-                         outputs.data());
+                         outputs.data(), output_eid.data());
         }
+        torch::Tensor neighbor = torch::empty(tot, vertices.options());
+        torch::Tensor eid = torch::empty(tot, vertices.options());
+        thrust::copy(outputs.begin(), outputs.end(), neighbor.data_ptr<T>());
+        thrust::copy(output_eid.begin(), output_eid.end(), eid.data_ptr<T>());
+        return std::make_tuple(neighbor, eid);
+    }
 
+    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
+    sample_sub_with_stream(const cudaStream_t stream,
+                           const torch::Tensor &vertices, int k) const
+    {
+        TRACE(__func__);
+        const auto policy = thrust::cuda::par.on(stream);
+        const size_t bs = vertices.size(0);
+
+        thrust::device_vector<T> inputs;
+        thrust::device_vector<T> outputs;
+        thrust::device_vector<T> output_counts;
+        thrust::device_vector<T> subset;
+
+        uniform_sample_kernel(stream, vertices, k, inputs, outputs, output_counts);
+        T tot = outputs.size();
+        
         // reindex
         {
             {
@@ -140,7 +174,8 @@ class TorchQuiver : public torch_quiver_t
 };
 
 TorchQuiver new_quiver_from_edge_index(size_t n,
-                                       const torch::Tensor &edge_index)
+                                       const torch::Tensor &edge_index,
+                                       const torch::Tensor &edge_id)
 {
     TRACE(__func__);
     using T = typename TorchQuiver::T;
@@ -155,7 +190,10 @@ TorchQuiver new_quiver_from_edge_index(size_t n,
         TRACE("zip edge_index");
         zip(p, p + m, p + m, &ei[0].first);
     }
-    return TorchQuiver((T)n, std::move(ei));
+    const T *p_id = edge_id.data_ptr<T>();
+    std::vector<T> eid(m);
+    thrust::copy(p_id, p_id + m, eid.begin());
+    return TorchQuiver((T)n, std::move(ei), std::move(eid));
 }
 }  // namespace quiver
 
@@ -163,5 +201,6 @@ void register_cuda_quiver(pybind11::module &m)
 {
     m.def("new_quiver_from_edge_index", &quiver::new_quiver_from_edge_index);
     py::class_<quiver::TorchQuiver>(m, "Quiver")
-        .def("sample_sub", &quiver::TorchQuiver::sample_sub);
+        .def("sample_sub", &quiver::TorchQuiver::sample_sub)
+        .def("sample_id", &quiver::TorchQuiver::sample_id);
 }

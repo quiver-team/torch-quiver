@@ -92,6 +92,34 @@ void unzip(const thrust::device_vector<thrust::pair<T, T>> &p,
     thrust::transform(p.begin(), p.end(), y.begin(), thrust_get<1>());
 }
 
+template <typename Ty, typename Tx>
+thrust::device_vector<Ty> to_device(const std::vector<Tx> &x)
+{
+    static_assert(sizeof(Tx) == sizeof(Ty), "");
+    thrust::device_vector<Ty> y(x.size());
+    thrust::copy(reinterpret_cast<const Ty *>(x.data()),
+                reinterpret_cast<const Ty *>(x.data()) + x.size(), y.begin());
+    return std::move(y);
+}
+
+template <typename S, typename E, typename ID>
+void zip_id(S &to_sort, E &edge_index, ID &edge_id_)
+{
+    thrust::for_each(
+        thrust::make_zip_iterator(thrust::make_tuple(to_sort.begin(), edge_index.begin(), edge_id_.begin())),
+        thrust::make_zip_iterator(thrust::make_tuple(to_sort.end(), edge_index.end(), edge_id_.end())),
+        zip_id_functor());
+}
+
+template <typename S, typename E, typename ID>
+void unzip_id(S &to_sort, E &edge_index, ID &edge_id_)
+{
+    thrust::for_each(
+        thrust::make_zip_iterator(thrust::make_tuple(to_sort.begin(), edge_index.begin(), edge_id_.begin())),
+        thrust::make_zip_iterator(thrust::make_tuple(to_sort.end(), edge_index.end(), edge_id_.end())),
+        unzip_id_functor());
+}
+
 template <typename T>
 class quiver<T, CUDA>
 {
@@ -101,17 +129,6 @@ class quiver<T, CUDA>
 
     using TP = thrust::pair<T, T>;
     using CP = std::pair<T, T>;
-
-    // copy std::vector<Tx> thrust::device_vecrtor<Ty>
-    template <typename Ty, typename Tx>
-    thrust::device_vector<Ty> to_device(const std::vector<Tx> &x)
-    {
-        static_assert(sizeof(Tx) == sizeof(Ty), "");
-        thrust::device_vector<Ty> y(x.size());
-        thrust::copy(reinterpret_cast<const Ty *>(x.data()),
-                    reinterpret_cast<const Ty *>(x.data()) + x.size(), y.begin());
-        return std::move(y);
-    }
     
   public:
     quiver(T n, const std::vector<CP> &edge_index, const std::vector<T> &edge_id)
@@ -124,15 +141,9 @@ class quiver<T, CUDA>
         : row_ptr_(n), col_idx_(edge_index.size()), edge_id_(std::move(edge_id))
     {
         thrust::device_vector<thrust::tuple<TP, T>> to_sort(edge_index.size());
-        thrust::for_each(
-            thrust::make_zip_iterator(thrust::make_tuple(to_sort.begin(), edge_index.begin(), edge_id_.begin())),
-            thrust::make_zip_iterator(thrust::make_tuple(to_sort.end(), edge_index.end(), edge_id_.end())),
-            zip_id_functor());
+        zip_id(to_sort, edge_index, edge_id_);
         thrust::sort(to_sort.begin(), to_sort.end());
-        thrust::for_each(
-            thrust::make_zip_iterator(thrust::make_tuple(to_sort.begin(), edge_index.begin(), edge_id_.begin())),
-            thrust::make_zip_iterator(thrust::make_tuple(to_sort.end(), edge_index.end(), edge_id_.end())),
-            unzip_id_functor());
+        unzip_id(to_sort, edge_index, edge_id_);
         thrust::device_vector<T> row_idx_(edge_index.size());
         unzip(edge_index, row_idx_, col_idx_);
         thrust::sequence(row_ptr_.begin(), row_ptr_.end());

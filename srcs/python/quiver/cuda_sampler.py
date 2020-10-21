@@ -28,7 +28,8 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
         N = int(edge_index.max() + 1) if num_nodes is None else num_nodes
         # print('building quiver')
         t0 = time.time()
-        self.quiver = qv.new_quiver_from_edge_index(N, edge_index)
+        edge_id = torch.zeros(edge_index.size(0), dtype=torch.Long)
+        self.quiver = qv.new_quiver_from_edge_index(N, edge_index, edge_id)
         d = time.time() - t0
         # print('build quiver took %fms' % (d * 1000))
 

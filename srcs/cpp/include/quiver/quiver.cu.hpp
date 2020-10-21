@@ -31,6 +31,13 @@ class get_adj_diff
     }
 };
 
+struct sample_option {
+    sample_option(bool w): weighted(w) {
+
+    }
+    bool weighted;
+};
+
 struct zip_id_functor
 {
     template <typename T>
@@ -47,23 +54,53 @@ struct zip_id_weight_functor
     }
 };
 
-template <typename T>
+template<typename T, typename W>
+class bucket_weight_functor
+{
+    const W *src_;
+    W *dst_;
+public:
+    bucket_weight_functor(const W *src, W *dst): src_(src), dst_(dst) {
+
+    }
+    template<typename P>
+    __device__ void operator()(P ptrs) {
+        T prev = thrust::get<0>(ptrs);
+        T next = thrust::get<1>(ptrs);
+        if (prev == next) {
+            return;
+        }
+        W sum = 0;
+        for (T temp = prev; temp != next; temp++) {
+            dst_[temp] = sum;
+            sum += src_[temp];
+        }
+        for (T temp = prev; temp != next; temp++) {
+            dst_[temp] /= sum;
+        }
+    }
+};
+
+template <typename T, typename W>
 class sample_functor
 {
     const T *row_ptr;
     const size_t n;
     const T *col_idx;
     const T *edge_id;
+    const W *edge_weight;
     const size_t m;
 
     T *output;
     T *output_id;
 
+    bool weighted;
+
   public:
-    sample_functor(const T *row_ptr, size_t n, const T *col_idx, const T *edge_id, size_t m,
-                   T *output, T *output_id)
-        : row_ptr(row_ptr), n(n), col_idx(col_idx), edge_id(edge_id), m(m),
-        output(output), output_id(output_id)
+    sample_functor(const T *row_ptr, size_t n, const T *col_idx, const T *edge_id, const W *edge_weight, size_t m,
+                   T *output, T *output_id, bool weighted)
+        : row_ptr(row_ptr), n(n), col_idx(col_idx), edge_id(edge_id), edge_weight(edge_weight), m(m),
+        output(output), output_id(output_id), weighted(weighted)
     {
     }
 
@@ -76,8 +113,9 @@ class sample_functor
 
         const T begin = row_ptr[v];
         const T end = v + 1 < n ? row_ptr[v + 1] : m;
+        const W *begin_weight = weighted ? edge_weight + begin : nullptr;
 
-        safe_sample(col_idx + begin, col_idx + end, edge_id + begin, count,
+        safe_sample(col_idx + begin, col_idx + end, edge_id + begin, begin_weight, count,
         output + out_ptr, output_id + out_ptr, g);
     }
 };
@@ -139,6 +177,16 @@ void unzip_id_weight(const thrust::device_vector<thrust::tuple<T, T, T, W>> &t,
     thrust::transform(t.begin(), t.end(), w.begin(), thrust_get<3>());
 }
 
+template <typename T, typename W>
+void bucket_weight(const thrust::device_vector<T> &prev, const thrust::device_vector<T> &next,
+            const thrust::device_vector<W> &src, thrust::device_vector<W> &dst)
+{
+    thrust::for_each(
+        thrust::make_zip_iterator(thrust::make_tuple(prev.begin(), next.begin())),
+        thrust::make_zip_iterator(thrust::make_tuple(prev.end(), next.end())),
+        bucket_weight_functor<T, W>(thrust::raw_pointer_cast(src.data()), thrust::raw_pointer_cast(dst.data())));
+}
+
 template <typename T>
 class quiver<T, CUDA>
 {
@@ -150,6 +198,7 @@ class quiver<T, CUDA>
     thrust::device_vector<T> col_idx_;
     thrust::device_vector<T> edge_id_;
     thrust::device_vector<W> edge_weight_;
+    thrust::device_vector<W> bucket_edge_weight_;
     
   public:
     quiver(T n, const std::vector<CP> &edge_index, const std::vector<T> &edge_id)
@@ -177,16 +226,22 @@ class quiver<T, CUDA>
     }
 
     quiver(T n, thrust::device_vector<TP> edge_index, thrust::device_vector<T> edge_id, thrust::device_vector<W> edge_weight)
-        : row_ptr_(n), col_idx_(edge_index.size()), edge_id_(std::move(edge_id)), edge_weight_(std::move(edge_weight))
+        : row_ptr_(n), col_idx_(edge_index.size()), edge_id_(std::move(edge_id)), edge_weight_(std::move(edge_weight)), 
+        bucket_edge_weight_(edge_index.size())
     {
         thrust::device_vector<thrust::tuple<T, T, T, W>> to_sort(edge_index.size());
         zip_id_weight(to_sort, edge_index, edge_id_, edge_weight_);
         thrust::sort(to_sort.begin(), to_sort.end());
         thrust::device_vector<T> row_idx_(edge_index.size());
+        thrust::device_vector<T> row_ptr_next(edge_index.size());
         unzip_id_weight(to_sort, row_idx_, col_idx_, edge_id_, edge_weight_);
         thrust::sequence(row_ptr_.begin(), row_ptr_.end());
+        thrust::sequence(row_ptr_next.begin(), row_ptr_next.end());
         thrust::lower_bound(row_idx_.begin(), row_idx_.end(), row_ptr_.begin(),
                             row_ptr_.end(), row_ptr_.begin());
+        thrust::upper_bound(row_idx_.begin(), row_idx_.end(), row_ptr_next.begin(),
+                            row_ptr_next.end(), row_ptr_next.begin());
+        bucket_weight(row_ptr_, row_ptr_next, edge_weight_, bucket_edge_weight_);
     }
 
     virtual ~quiver() = default;
@@ -212,7 +267,7 @@ class quiver<T, CUDA>
     void sample(const cudaStream_t stream, Iter input_begin, Iter input_end,
                 Iter output_ptr_begin, Iter output_count_begin,
                 thrust::device_ptr<T> output_begin, 
-                thrust::device_ptr<T> output_id_begin) const
+                thrust::device_ptr<T> output_id_begin, sample_option opt) const
     {
         const size_t len = input_end - input_begin;
         thrust::counting_iterator<size_t> i(0);
@@ -223,11 +278,13 @@ class quiver<T, CUDA>
                                output_ptr_begin + len));
         thrust::for_each(
             thrust::cuda::par.on(stream), begin, end,
-            sample_functor<T>(
+            sample_functor<T, W>(
                 thrust::raw_pointer_cast(row_ptr_.data()), row_ptr_.size(),
                 thrust::raw_pointer_cast(col_idx_.data()), 
-                thrust::raw_pointer_cast(edge_id_.data()), col_idx_.size(),
-                thrust::raw_pointer_cast(output_begin), thrust::raw_pointer_cast(output_id_begin)));
+                thrust::raw_pointer_cast(edge_id_.data()),
+                thrust::raw_pointer_cast(bucket_edge_weight_.data()), col_idx_.size(),
+                thrust::raw_pointer_cast(output_begin), thrust::raw_pointer_cast(output_id_begin),
+                opt.weighted));
     }
 };
 }  // namespace quiver

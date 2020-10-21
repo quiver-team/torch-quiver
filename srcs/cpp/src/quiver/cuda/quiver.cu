@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <numeric>
+#include <stdexcept>
 
 #include <thrust/device_vector.h>
 
@@ -49,13 +50,28 @@ class TorchQuiver : public torch_quiver_t
         thrust::device_vector<T> outputs;
         thrust::device_vector<T> output_counts;
 
-        return uniform_sample_kernel(0, vertices, k, inputs, outputs, output_counts);
+        return sample_kernel(0, vertices, k, inputs, outputs, output_counts, sample_option(false));
     }
 
     std::tuple<torch::Tensor, torch::Tensor>
-    uniform_sample_kernel(const cudaStream_t stream,
+    sample_id_weight(const torch::Tensor &vertices, int k) const
+    {
+        // if (edge_weight_.empty()) {
+        //     throw std::runtime_error("no edge weight");
+        // }
+        TRACE(__func__);
+
+        thrust::device_vector<T> inputs;
+        thrust::device_vector<T> outputs;
+        thrust::device_vector<T> output_counts;
+
+        return sample_kernel(0, vertices, k, inputs, outputs, output_counts, sample_option(true));
+    }
+
+    std::tuple<torch::Tensor, torch::Tensor>
+    sample_kernel(const cudaStream_t stream,
         const torch::Tensor &vertices, int k, thrust::device_vector<T> &inputs,
-        thrust::device_vector<T> &outputs, thrust::device_vector<T> &output_counts) const
+        thrust::device_vector<T> &outputs, thrust::device_vector<T> &output_counts, sample_option opt) const
     {
         T tot = 0;
         const auto policy = thrust::cuda::par.on(stream);
@@ -98,7 +114,7 @@ class TorchQuiver : public torch_quiver_t
             TRACE("sample");
             this->sample(stream, inputs.begin(), inputs.end(),
                          output_ptr.begin(), output_counts.begin(),
-                         outputs.data(), output_eid.data());
+                         outputs.data(), output_eid.data(), opt);
         }
         torch::Tensor neighbor = torch::empty(tot, vertices.options());
         torch::Tensor eid = torch::empty(tot, vertices.options());
@@ -120,7 +136,7 @@ class TorchQuiver : public torch_quiver_t
         thrust::device_vector<T> output_counts;
         thrust::device_vector<T> subset;
 
-        uniform_sample_kernel(stream, vertices, k, inputs, outputs, output_counts);
+        sample_kernel(stream, vertices, k, inputs, outputs, output_counts, sample_option(false));
         T tot = outputs.size();
         
         // reindex
@@ -232,5 +248,6 @@ void register_cuda_quiver(pybind11::module &m)
     m.def("new_quiver_from_edge_index_weight", &quiver::new_quiver_from_edge_index_weight);
     py::class_<quiver::TorchQuiver>(m, "Quiver")
         .def("sample_sub", &quiver::TorchQuiver::sample_sub)
-        .def("sample_id", &quiver::TorchQuiver::sample_id);
+        .def("sample_id", &quiver::TorchQuiver::sample_id)
+        .def("sample_id_weight", &quiver::TorchQuiver::sample_id_weight);
 }

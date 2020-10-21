@@ -1,6 +1,8 @@
 // partially implement <random> for CUDA
 #pragma once
 #include <curand_kernel.h>
+#include <thrust/binary_search.h>
+#include <thrust/device_vector.h>
 
 class cuda_random_generator
 {
@@ -14,6 +16,17 @@ class cuda_random_generator
     }
 
     __device__ uint32_t operator()() { return curand(&state_); }
+    __device__ float gen_uniform_float() { return curand_uniform(&state_); }
+};
+
+template<typename T>
+class divide_op {
+    T to_div;
+public:
+    divide_op(T d): to_div(d) {
+
+    }
+    __device__ T operator() (const T &t) { return t / to_div; }
 };
 
 // Reservoir sampling
@@ -33,17 +46,45 @@ __device__ void std_sample(const T *begin, const T *end, const T *begin_id, T *o
     }
 }
 
+template <typename T, typename W>
+__device__ void weight_sample(const T *begin, const T *end, const T *begin_id, const W *begin_weight,
+                              T *outputs, T *output_id, int k, cuda_random_generator &g)
+{
+    const int n = end - begin;
+    if (!k || !n) {
+        return;
+    }
+    for (int i = 0; i < k; i++) {
+        float r = g.gen_uniform_float();
+        int lo = 0, hi = n - 1;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (begin_weight[mid] < r) {
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        outputs[i] = begin[hi];
+        output_id[i] = begin_id[hi];
+    }
+}
+
 // sample at most k elements from [begin, end), returns the sampled count.
-template <typename T, typename N>
-__device__ N safe_sample(const T *begin, const T *end, const T *begin_id, const N k, T *outputs,
-                         T *output_id, cuda_random_generator &g)
+template <typename T, typename N, typename W>
+__device__ N safe_sample(const T *begin, const T *end, const T *begin_id, const W *begin_weight, const N k,
+                         T *outputs, T *output_id, cuda_random_generator &g)
 {
     const N cap = end - begin;
-    if (k < cap) {
-        std_sample(begin, end, begin_id, outputs, output_id, k, g);
-        return k;
+    if (begin_weight == nullptr) {
+        if (k < cap) {
+            std_sample(begin, end, begin_id, outputs, output_id, k, g);
+            return k;
+        } else {
+            for (N i = 0; i < cap; ++i) { outputs[i] = begin[i]; output_id[i] = begin_id[i]; }
+            return cap;
+        }
     } else {
-        for (N i = 0; i < cap; ++i) { outputs[i] = begin[i]; output_id[i] = begin_id[i]; }
-        return cap;
+        weight_sample(begin, end, begin_id, begin_weight, outputs, output_id, k, g);
     }
 }

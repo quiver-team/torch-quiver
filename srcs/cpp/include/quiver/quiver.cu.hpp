@@ -39,6 +39,14 @@ struct zip_id_functor
     }
 };
 
+struct zip_id_weight_functor
+{
+    template <typename T>
+    __device__ void operator()(T tup) {
+        thrust::get<0>(tup) = thrust::make_tuple(thrust::get<1>(tup).first, thrust::get<1>(tup).second, thrust::get<2>(tup), thrust::get<3>(tup));
+    }
+};
+
 template <typename T>
 class sample_functor
 {
@@ -111,16 +119,37 @@ void unzip_id(const thrust::device_vector<thrust::tuple<T, T, T>> &t,
     thrust::transform(t.begin(), t.end(), z.begin(), thrust_get<2>());
 }
 
+template <typename T, typename W>
+void zip_id_weight(thrust::device_vector<thrust::tuple<T, T, T, W>> &t,
+           const thrust::device_vector<thrust::pair<T, T>> &x, const thrust::device_vector<T> &y, const thrust::device_vector<W> &z)
+{
+    thrust::for_each(
+        thrust::make_zip_iterator(thrust::make_tuple(t.begin(), x.begin(), y.begin(), z.begin())),
+        thrust::make_zip_iterator(thrust::make_tuple(t.end(), x.end(), y.end(), z.end())),
+        zip_id_weight_functor());
+}
+
+template <typename T, typename W>
+void unzip_id_weight(const thrust::device_vector<thrust::tuple<T, T, T, W>> &t,
+           thrust::device_vector<T> &x, thrust::device_vector<T> &y, thrust::device_vector<T> &z, thrust::device_vector<W> &w)
+{
+    thrust::transform(t.begin(), t.end(), x.begin(), thrust_get<0>());
+    thrust::transform(t.begin(), t.end(), y.begin(), thrust_get<1>());
+    thrust::transform(t.begin(), t.end(), z.begin(), thrust_get<2>());
+    thrust::transform(t.begin(), t.end(), w.begin(), thrust_get<3>());
+}
+
 template <typename T>
 class quiver<T, CUDA>
 {
+    using TP = thrust::pair<T, T>;
+    using CP = std::pair<T, T>;
+    using W = float;
+
     thrust::device_vector<T> row_ptr_;
     thrust::device_vector<T> col_idx_;
     thrust::device_vector<T> edge_id_;
-    thrust::device_vector<T> edge_weight_;
-
-    using TP = thrust::pair<T, T>;
-    using CP = std::pair<T, T>;
+    thrust::device_vector<W> edge_weight_;
     
   public:
     quiver(T n, const std::vector<CP> &edge_index, const std::vector<T> &edge_id)
@@ -128,8 +157,8 @@ class quiver<T, CUDA>
     {
     }
 
-    quiver(T n, const std::vector<CP> &edge_index, const std::vector<T> &edge_id, const std::vector<float> &edge_weight)
-        : quiver(n, to_device<TP>(edge_index), to_device<T>(edge_id), to_device<float>(edge_id))
+    quiver(T n, const std::vector<CP> &edge_index, const std::vector<T> &edge_id, const std::vector<W> &edge_weight)
+        : quiver(n, to_device<TP>(edge_index), to_device<T>(edge_id), to_device<W>(edge_weight))
     {
     }
 
@@ -142,6 +171,19 @@ class quiver<T, CUDA>
         thrust::sort(to_sort.begin(), to_sort.end());
         thrust::device_vector<T> row_idx_(edge_index.size());
         unzip_id(to_sort, row_idx_, col_idx_, edge_id_);
+        thrust::sequence(row_ptr_.begin(), row_ptr_.end());
+        thrust::lower_bound(row_idx_.begin(), row_idx_.end(), row_ptr_.begin(),
+                            row_ptr_.end(), row_ptr_.begin());
+    }
+
+    quiver(T n, thrust::device_vector<TP> edge_index, thrust::device_vector<T> edge_id, thrust::device_vector<W> edge_weight)
+        : row_ptr_(n), col_idx_(edge_index.size()), edge_id_(std::move(edge_id)), edge_weight_(std::move(edge_weight))
+    {
+        thrust::device_vector<thrust::tuple<T, T, T, W>> to_sort(edge_index.size());
+        zip_id_weight(to_sort, edge_index, edge_id_, edge_weight_);
+        thrust::sort(to_sort.begin(), to_sort.end());
+        thrust::device_vector<T> row_idx_(edge_index.size());
+        unzip_id_weight(to_sort, row_idx_, col_idx_, edge_id_, edge_weight_);
         thrust::sequence(row_ptr_.begin(), row_ptr_.end());
         thrust::lower_bound(row_idx_.begin(), row_idx_.end(), row_ptr_.begin(),
                             row_ptr_.end(), row_ptr_.begin());

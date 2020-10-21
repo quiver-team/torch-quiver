@@ -32,6 +32,7 @@ class TorchQuiver : public torch_quiver_t
 
   public:
     using T = int64_t;
+    using W = float;
 
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
     sample_sub(const torch::Tensor &vertices, int k) const
@@ -195,11 +196,40 @@ TorchQuiver new_quiver_from_edge_index(size_t n,
     thrust::copy(p_id, p_id + m, eid.begin());
     return TorchQuiver((T)n, std::move(ei), std::move(eid));
 }
+
+TorchQuiver new_quiver_from_edge_index_weight(size_t n,
+                                              const torch::Tensor &edge_index,
+                                              const torch::Tensor &edge_id,
+                                              const torch::Tensor &edge_weight)
+{
+    TRACE(__func__);
+    using T = typename TorchQuiver::T;
+    using W = typename TorchQuiver::W;
+    check(edge_index.is_contiguous());
+    check_eq<int64_t>(edge_index.dim(), 2);
+    check_eq<int64_t>(edge_index.size(0), 2);
+    const size_t m = edge_index.size(1);
+    const T *p = edge_index.data_ptr<T>();
+    using vec = std::vector<std::pair<T, T>>;
+    vec ei(m);
+    {
+    TRACE("zip edge_index");
+    zip(p, p + m, p + m, &ei[0].first);
+    }
+    const T *p_id = edge_id.data_ptr<T>();
+    const W *p_weight = edge_weight.data_ptr<W>();
+    std::vector<T> eid(m);
+    std::vector<W> weight(m);
+    thrust::copy(p_id, p_id + m, eid.begin());
+    thrust::copy(p_weight, p_weight + m, weight.begin());
+    return TorchQuiver((T)n, std::move(ei), std::move(eid), std::move(weight));
+}
 }  // namespace quiver
 
 void register_cuda_quiver(pybind11::module &m)
 {
     m.def("new_quiver_from_edge_index", &quiver::new_quiver_from_edge_index);
+    m.def("new_quiver_from_edge_index_weight", &quiver::new_quiver_from_edge_index_weight);
     py::class_<quiver::TorchQuiver>(m, "Quiver")
         .def("sample_sub", &quiver::TorchQuiver::sample_sub)
         .def("sample_id", &quiver::TorchQuiver::sample_id);

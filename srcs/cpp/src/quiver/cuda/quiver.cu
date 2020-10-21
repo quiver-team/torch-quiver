@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <numeric>
-#include <stdexcept>
 
 #include <thrust/device_vector.h>
 

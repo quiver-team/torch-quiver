@@ -54,6 +54,7 @@ struct zip_id_weight_functor
     }
 };
 
+// make edge weight a nomalized prefix sum within each node
 template<typename T, typename W>
 class bucket_weight_functor
 {

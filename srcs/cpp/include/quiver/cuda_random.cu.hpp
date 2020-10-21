@@ -1,8 +1,6 @@
 // partially implement <random> for CUDA
 #pragma once
 #include <curand_kernel.h>
-#include <thrust/binary_search.h>
-#include <thrust/device_vector.h>
 
 class cuda_random_generator
 {
@@ -46,6 +44,7 @@ __device__ void std_sample(const T *begin, const T *end, const T *begin_id, T *o
     }
 }
 
+// binary search in exclusive prefix sum
 template <typename T, typename W>
 __device__ void weight_sample(const T *begin, const T *end, const T *begin_id, const W *begin_weight,
                               T *outputs, T *output_id, int k, cuda_random_generator &g)

@@ -17,16 +17,6 @@ class cuda_random_generator
     __device__ float gen_uniform_float() { return curand_uniform(&state_); }
 };
 
-template<typename T>
-class divide_op {
-    T to_div;
-public:
-    divide_op(T d): to_div(d) {
-
-    }
-    __device__ T operator() (const T &t) { return t / to_div; }
-};
-
 // Reservoir sampling
 // Reference:
 // https://en.wikipedia.org/wiki/Reservoir_sampling

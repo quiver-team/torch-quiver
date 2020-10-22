@@ -6,6 +6,20 @@
 
 namespace quiver
 {
+template <typename... T>
+struct zipper {
+    using Tuple = thrust::tuple<T...>;
+
+    template <typename... X>
+    void operator()(thrust::device_vector<Tuple> &t, const X &... xs)
+    {
+        thrust::copy(
+            thrust::make_zip_iterator(thrust::make_tuple(xs.begin()...)),
+            thrust::make_zip_iterator(thrust::make_tuple(xs.end()...)),
+            t.begin());
+    }
+};
+
 template <typename T0, typename T1>
 void unzip(const thrust::device_vector<thrust::pair<T0, T1>> &p,
            thrust::device_vector<T0> &x, thrust::device_vector<T1> &y)
@@ -29,11 +43,7 @@ void zip(const thrust::device_vector<T0> &x, const thrust::device_vector<T1> &y,
          const thrust::device_vector<T2> &z,
          thrust::device_vector<thrust::tuple<T0, T1, T2>> &t)
 {
-    thrust::copy(thrust::make_zip_iterator(
-                     thrust::make_tuple(x.begin(), y.begin(), z.begin())),
-                 thrust::make_zip_iterator(
-                     thrust::make_tuple(x.end(), y.end(), z.end())),
-                 t.begin());
+    zipper<T0, T1, T2>()(t, x, y, z);
 }
 
 template <typename T0, typename T1, typename T2>
@@ -51,11 +61,7 @@ void zip(const thrust::device_vector<T0> &x, const thrust::device_vector<T1> &y,
          const thrust::device_vector<T2> &z, const thrust::device_vector<T3> &w,
          thrust::device_vector<thrust::tuple<T0, T1, T2, T3>> &t)
 {
-    thrust::copy(thrust::make_zip_iterator(thrust::make_tuple(
-                     x.begin(), y.begin(), z.begin(), w.begin())),
-                 thrust::make_zip_iterator(
-                     thrust::make_tuple(x.end(), y.end(), z.end(), w.end())),
-                 t.begin());
+    zipper<T0, T1, T2, T3>()(t, x, y, z, w);
 }
 
 template <typename T0, typename T1, typename T2, typename T3>

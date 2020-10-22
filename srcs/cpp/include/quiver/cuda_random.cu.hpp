@@ -87,7 +87,8 @@ __device__ N safe_sample(const T *begin, const T *end, const T *begin_id,
   const N cap = end - begin;
   if (begin_weight == nullptr) {
     if (k < cap) {
-      std_sample(begin, end, begin_id, outputs, output_id, k, reinterpret_cast<cuda_random_generator *>(g));
+      std_sample(begin, end, begin_id, outputs, output_id, k,
+                 reinterpret_cast<cuda_random_generator *>(g));
       return k;
     } else {
       for (N i = 0; i < cap; ++i) {
@@ -97,7 +98,8 @@ __device__ N safe_sample(const T *begin, const T *end, const T *begin_id,
       return cap;
     }
   } else {
-    weight_sample(begin, end, begin_id, begin_weight, outputs, output_id, k, reinterpret_cast<cuda_uniform_generator *>(g));
+    weight_sample(begin, end, begin_id, begin_weight, outputs, output_id, k,
+                  reinterpret_cast<cuda_uniform_generator *>(g));
     return k;
   }
 }

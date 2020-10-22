@@ -7,7 +7,6 @@
 #include <quiver/zip.cu.hpp>
 
 #include <cuda_runtime.h>
-#include <memory>
 #include <thrust/binary_search.h>
 #include <thrust/device_vector.h>
 
@@ -89,11 +88,11 @@ public:
     if (!weighted) {
       cuda_random_generator g(thrust::get<0>(t));
       safe_sample(col_idx + begin, col_idx + end, edge_id + begin, begin_weight,
-                count, output + out_ptr, output_id + out_ptr, &g);
+                  count, output + out_ptr, output_id + out_ptr, &g);
     } else {
       cuda_uniform_generator g(thrust::get<0>(t));
       safe_sample(col_idx + begin, col_idx + end, edge_id + begin, begin_weight,
-                count, output + out_ptr, output_id + out_ptr, &g);
+                  count, output + out_ptr, output_id + out_ptr, &g);
     }
   }
 };
@@ -134,7 +133,8 @@ public:
   // row_ptr and col_idx make CSR
   quiver(T n, thrust::device_vector<TP> edge_index,
          thrust::device_vector<T> edge_id)
-      : row_ptr_(n), col_idx_(edge_index.size()), edge_id_(std::move(edge_id)), opt_(false) {
+      : row_ptr_(n), col_idx_(edge_index.size()), edge_id_(std::move(edge_id)),
+        opt_(false) {
     thrust::device_vector<thrust::tuple<T, T, T>> to_sort(edge_index.size());
     zip(to_sort, edge_index, edge_id_);
     thrust::sort(to_sort.begin(), to_sort.end());

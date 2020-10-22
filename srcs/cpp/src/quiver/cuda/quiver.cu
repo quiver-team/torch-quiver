@@ -31,13 +31,14 @@ public:
   using T = int64_t;
   using W = float;
 
+  // deprecated, not compatible with AliGraph
   std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
   sample_sub(const torch::Tensor &vertices, int k) const {
     return sample_sub_with_stream(0, vertices, k);
   }
 
   std::tuple<torch::Tensor, torch::Tensor>
-  sample_id(const torch::Tensor &vertices, int k) const {
+  sample_once(const torch::Tensor &vertices, int k) const {
     TRACE(__func__);
 
     thrust::device_vector<T> inputs;
@@ -45,28 +46,14 @@ public:
     thrust::device_vector<T> output_counts;
 
     return sample_kernel(0, vertices, k, inputs, outputs, output_counts,
-                         sample_option(false));
+                         get_option());
   }
 
   std::tuple<torch::Tensor, torch::Tensor>
-  sample_id_weight(const torch::Tensor &vertices, int k) const {
-    // if (edge_weight_.empty()) {
-    //     throw std::runtime_error("no edge weight");
-    // }
-    TRACE(__func__);
-
-    thrust::device_vector<T> inputs;
-    thrust::device_vector<T> outputs;
-    thrust::device_vector<T> output_counts;
-
-    return sample_kernel(0, vertices, k, inputs, outputs, output_counts,
-                         sample_option(true));
-  }
-
-  std::tuple<torch::Tensor, torch::Tensor> sample_kernel(
-      const cudaStream_t stream, const torch::Tensor &vertices, int k,
-      thrust::device_vector<T> &inputs, thrust::device_vector<T> &outputs,
-      thrust::device_vector<T> &output_counts, sample_option opt) const {
+  sample_kernel(const cudaStream_t stream, const torch::Tensor &vertices, int k,
+                thrust::device_vector<T> &inputs,
+                thrust::device_vector<T> &outputs,
+                thrust::device_vector<T> &output_counts) const {
     T tot = 0;
     const auto policy = thrust::cuda::par.on(stream);
     thrust::device_vector<T> output_ptr;
@@ -105,8 +92,7 @@ public:
     {
       TRACE("sample");
       this->sample(stream, inputs.begin(), inputs.end(), output_ptr.begin(),
-                   output_counts.begin(), outputs.data(), output_eid.data(),
-                   opt);
+                   output_counts.begin(), outputs.data(), output_eid.data());
     }
     torch::Tensor neighbor = torch::empty(tot, vertices.options());
     torch::Tensor eid = torch::empty(tot, vertices.options());
@@ -127,8 +113,7 @@ public:
     thrust::device_vector<T> output_counts;
     thrust::device_vector<T> subset;
 
-    sample_kernel(stream, vertices, k, inputs, outputs, output_counts,
-                  sample_option(false));
+    sample_kernel(stream, vertices, k, inputs, outputs, output_counts);
     T tot = outputs.size();
 
     // reindex
@@ -234,6 +219,5 @@ void register_cuda_quiver(pybind11::module &m) {
         &quiver::new_quiver_from_edge_index_weight);
   py::class_<quiver::TorchQuiver>(m, "Quiver")
       .def("sample_sub", &quiver::TorchQuiver::sample_sub)
-      .def("sample_id", &quiver::TorchQuiver::sample_id)
-      .def("sample_id_weight", &quiver::TorchQuiver::sample_id_weight);
+      .def("sample", &quiver::TorchQuiver::sample_once);
 }

@@ -118,15 +118,18 @@ template <typename T> class quiver<T, CUDA> {
   thrust::device_vector<T> edge_id_;
   thrust::device_vector<W> edge_weight_;
   thrust::device_vector<W> bucket_edge_weight_;
+  sample_option opt_;
 
 public:
   quiver(T n, const std::vector<CP> &edge_index, const std::vector<T> &edge_id)
-      : quiver(n, to_device<TP>(edge_index), to_device<T>(edge_id)) {}
+      : quiver(n, to_device<TP>(edge_index), to_device<T>(edge_id)),
+        opt_(false) {}
 
   quiver(T n, const std::vector<CP> &edge_index, const std::vector<T> &edge_id,
          const std::vector<W> &edge_weight)
       : quiver(n, to_device<TP>(edge_index), to_device<T>(edge_id),
-               to_device<W>(edge_weight)) {}
+               to_device<W>(edge_weight)),
+        opt_(true) {}
 
   // row_ptr and col_idx make CSR
   quiver(T n, thrust::device_vector<TP> edge_index,
@@ -168,6 +171,8 @@ public:
 
   size_t edge_counts() const { return col_idx_.size(); }
 
+  sample_option get_option() const { return opt_; }
+
   // device_t device() const   { return CUDA; }
 
   void degree(const cudaStream_t stream,
@@ -184,7 +189,7 @@ public:
   void sample(const cudaStream_t stream, Iter input_begin, Iter input_end,
               Iter output_ptr_begin, Iter output_count_begin,
               thrust::device_ptr<T> output_begin,
-              thrust::device_ptr<T> output_id_begin, sample_option opt) const {
+              thrust::device_ptr<T> output_id_begin) const {
     const size_t len = input_end - input_begin;
     thrust::counting_iterator<size_t> i(0);
     auto begin = thrust::make_zip_iterator(thrust::make_tuple(
@@ -199,7 +204,7 @@ public:
             thrust::raw_pointer_cast(edge_id_.data()),
             thrust::raw_pointer_cast(bucket_edge_weight_.data()),
             col_idx_.size(), thrust::raw_pointer_cast(output_begin),
-            thrust::raw_pointer_cast(output_id_begin), opt.weighted));
+            thrust::raw_pointer_cast(output_id_begin), opt_.weighted));
   }
 };
 } // namespace quiver

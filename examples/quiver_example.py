@@ -51,12 +51,14 @@ def test_quiver_bench():
     print('weight')
     t0 = time.time()
     for i in range(1000):
-        g.sample_id_weight(torch.randint(0, 1000, (1000,), dtype=torch.int64), 10)
+        g.sample(torch.randint(0, 1000, (1000,), dtype=torch.int64), 10)
     print(time.time() - t0)
+
+    g = qv.new_quiver_from_edge_index(n, ei, eid)
     print('uniform')
     t0 = time.time()
     for i in range(1000):
-        g.sample_id(torch.randint(0, 1000, (1000,), dtype=torch.int64), 10)
+        g.sample(torch.randint(0, 1000, (1000,), dtype=torch.int64), 10)
     print(time.time() - t0)
 
 

@@ -85,14 +85,16 @@ public:
     const T begin = row_ptr[v];
     const T end = v + 1 < n ? row_ptr[v + 1] : m;
     const W *begin_weight = weighted ? edge_weight + begin : nullptr;
-    std::unique_ptr<cuda_base_generator> g =
-        weighted ? std::unique_ptr<cuda_base_generator>(
-                       cuda_uniform_generator(thrust::get<0>(t)))
-                 : std::unique_ptr<cuda_base_generator>(
-                       cuda_random_generator(thrust::get<0>(t)));
 
-    safe_sample(col_idx + begin, col_idx + end, edge_id + begin, begin_weight,
-                count, output + out_ptr, output_id + out_ptr, g.get());
+    if (!weighted) {
+      cuda_random_generator g(thrust::get<0>(t));
+      safe_sample(col_idx + begin, col_idx + end, edge_id + begin, begin_weight,
+                count, output + out_ptr, output_id + out_ptr, &g);
+    } else {
+      cuda_uniform_generator g(thrust::get<0>(t));
+      safe_sample(col_idx + begin, col_idx + end, edge_id + begin, begin_weight,
+                count, output + out_ptr, output_id + out_ptr, &g);
+    }
   }
 };
 
@@ -122,19 +124,17 @@ template <typename T> class quiver<T, CUDA> {
 
 public:
   quiver(T n, const std::vector<CP> &edge_index, const std::vector<T> &edge_id)
-      : quiver(n, to_device<TP>(edge_index), to_device<T>(edge_id)),
-        opt_(false) {}
+      : quiver(n, to_device<TP>(edge_index), to_device<T>(edge_id)) {}
 
   quiver(T n, const std::vector<CP> &edge_index, const std::vector<T> &edge_id,
          const std::vector<W> &edge_weight)
       : quiver(n, to_device<TP>(edge_index), to_device<T>(edge_id),
-               to_device<W>(edge_weight)),
-        opt_(true) {}
+               to_device<W>(edge_weight)) {}
 
   // row_ptr and col_idx make CSR
   quiver(T n, thrust::device_vector<TP> edge_index,
          thrust::device_vector<T> edge_id)
-      : row_ptr_(n), col_idx_(edge_index.size()), edge_id_(std::move(edge_id)) {
+      : row_ptr_(n), col_idx_(edge_index.size()), edge_id_(std::move(edge_id)), opt_(false) {
     thrust::device_vector<thrust::tuple<T, T, T>> to_sort(edge_index.size());
     zip(to_sort, edge_index, edge_id_);
     thrust::sort(to_sort.begin(), to_sort.end());
@@ -149,7 +149,7 @@ public:
          thrust::device_vector<T> edge_id, thrust::device_vector<W> edge_weight)
       : row_ptr_(n), col_idx_(edge_index.size()), edge_id_(std::move(edge_id)),
         edge_weight_(std::move(edge_weight)),
-        bucket_edge_weight_(edge_index.size()) {
+        bucket_edge_weight_(edge_index.size()), opt_(true) {
     thrust::device_vector<thrust::tuple<T, T, T, W>> to_sort(edge_index.size());
     zip(to_sort, edge_index, edge_id_, edge_weight_);
     thrust::sort(to_sort.begin(), to_sort.end());

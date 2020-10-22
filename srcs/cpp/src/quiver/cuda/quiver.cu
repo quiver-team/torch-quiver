@@ -45,8 +45,7 @@ public:
     thrust::device_vector<T> outputs;
     thrust::device_vector<T> output_counts;
 
-    return sample_kernel(0, vertices, k, inputs, outputs, output_counts,
-                         get_option());
+    return sample_kernel(0, vertices, k, inputs, outputs, output_counts);
   }
 
   std::tuple<torch::Tensor, torch::Tensor>

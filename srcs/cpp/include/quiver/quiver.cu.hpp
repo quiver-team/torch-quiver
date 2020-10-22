@@ -7,6 +7,7 @@
 #include <quiver/zip.cu.hpp>
 
 #include <cuda_runtime.h>
+#include <memory>
 #include <thrust/binary_search.h>
 #include <thrust/device_vector.h>
 
@@ -77,7 +78,6 @@ public:
         weighted(weighted) {}
 
   __device__ void operator()(const thrust::tuple<size_t, T, T, T> &t) const {
-    cuda_random_generator g(thrust::get<0>(t));
     const T &v = thrust::get<1>(t);
     const T &count = thrust::get<2>(t);
     const T &out_ptr = thrust::get<3>(t);
@@ -85,9 +85,14 @@ public:
     const T begin = row_ptr[v];
     const T end = v + 1 < n ? row_ptr[v + 1] : m;
     const W *begin_weight = weighted ? edge_weight + begin : nullptr;
+    std::unique_ptr<cuda_base_generator> g =
+        weighted ? std::unique_ptr<cuda_base_generator>(
+                       cuda_uniform_generator(thrust::get<0>(t)))
+                 : std::unique_ptr<cuda_base_generator>(
+                       cuda_random_generator(thrust::get<0>(t)));
 
     safe_sample(col_idx + begin, col_idx + end, edge_id + begin, begin_weight,
-                count, output + out_ptr, output_id + out_ptr, g);
+                count, output + out_ptr, output_id + out_ptr, g.get());
   }
 };
 

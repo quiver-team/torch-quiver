@@ -133,61 +133,79 @@ void bucket_weight(const thrust::device_vector<T> &prev,
 template <typename T>
 class quiver<T, CUDA>
 {
+    using self = quiver<T, CUDA>;
     using W = float;
 
-    thrust::device_vector<T> row_ptr_;
-    thrust::device_vector<T> col_idx_;
+    const thrust::device_vector<T> row_ptr_;
+    const thrust::device_vector<T> col_idx_;
+    const thrust::device_vector<T> edge_idx_;  // TODO: make it optional
 
-    thrust::device_vector<T> edge_idx_;            // optional
-    thrust::device_vector<W> edge_weight_;         // optional
-    thrust::device_vector<W> bucket_edge_weight_;  // optional
+    const thrust::device_vector<W> edge_weight_;         // optional
+    const thrust::device_vector<W> bucket_edge_weight_;  // optional
 
-    sample_option opt_;
+    const sample_option opt_;
 
-  public:
-    // row_ptr and col_idx make CSR
-    quiver(T n, thrust::device_vector<T> row_idx_,
-           thrust::device_vector<T> col_idx, thrust::device_vector<T> edge_idx)
-        : row_ptr_(n),
+    quiver(thrust::device_vector<T> row_ptr, thrust::device_vector<T> col_idx,
+           thrust::device_vector<T> edge_idx)
+        : row_ptr_(std::move(row_ptr)),
           col_idx_(std::move(col_idx)),
           edge_idx_(std::move(edge_idx)),
           opt_(false)
     {
-        thrust::device_vector<thrust::tuple<T, T, T>> edges(edge_idx_.size());
-        zip(row_idx_, col_idx_, edge_idx_, edges);
-        thrust::sort(edges.begin(), edges.end());
-        unzip(edges, row_idx_, col_idx_, edge_idx_);
-        thrust::sequence(row_ptr_.begin(), row_ptr_.end());
-        thrust::lower_bound(row_idx_.begin(), row_idx_.end(), row_ptr_.begin(),
-                            row_ptr_.end(), row_ptr_.begin());
     }
 
-    quiver(T n, thrust::device_vector<T> row_idx_,
-           thrust::device_vector<T> col_idx, thrust::device_vector<T> edge_idx,
-           thrust::device_vector<W> edge_weight)
-        : row_ptr_(n),
+    quiver(thrust::device_vector<T> row_ptr, thrust::device_vector<T> col_idx,
+           thrust::device_vector<T> edge_idx,
+           thrust::device_vector<W> edge_weight,
+           thrust::device_vector<W> bucket_edge_weight)
+        : row_ptr_(std::move(row_ptr)),
           col_idx_(std::move(col_idx)),
           edge_idx_(std::move(edge_idx)),
           edge_weight_(std::move(edge_weight)),
-          bucket_edge_weight_(edge_weight.size()),
+          bucket_edge_weight_(std::move(bucket_edge_weight)),
           opt_(true)
     {
-        thrust::device_vector<thrust::tuple<T, T, T, W>> edges(
-            edge_idx_.size());
-        zip(row_idx_, col_idx_, edge_idx_, edge_weight_, edges);
-        thrust::sort(edges.begin(), edges.end());
-        unzip(edges, row_idx_, col_idx_, edge_idx_, edge_weight_);
+    }
 
-        thrust::device_vector<T> row_ptr_next(edge_idx_.size());
-        thrust::sequence(row_ptr_.begin(), row_ptr_.end());
+  public:
+    static self New(T n, thrust::device_vector<T> row_idx,
+                    thrust::device_vector<T> col_idx,
+                    thrust::device_vector<T> edge_idx)
+    {
+        thrust::device_vector<thrust::tuple<T, T, T>> edges(edge_idx.size());
+        zip(row_idx, col_idx, edge_idx, edges);
+        thrust::sort(edges.begin(), edges.end());
+        unzip(edges, row_idx, col_idx, edge_idx);
+        thrust::device_vector<T> row_ptr(n);
+        thrust::sequence(row_ptr.begin(), row_ptr.end());
+        thrust::lower_bound(row_idx.begin(), row_idx.end(), row_ptr.begin(),
+                            row_ptr.end(), row_ptr.begin());
+        return self(row_ptr, col_idx, edge_idx);
+    }
+
+    static self New(T n, thrust::device_vector<T> row_idx,
+                    thrust::device_vector<T> col_idx,
+                    thrust::device_vector<T> edge_idx,
+                    thrust::device_vector<W> edge_weight)
+    {
+        thrust::device_vector<thrust::tuple<T, T, T, W>> edges(edge_idx.size());
+        zip(row_idx, col_idx, edge_idx, edge_weight, edges);
+        thrust::sort(edges.begin(), edges.end());
+        unzip(edges, row_idx, col_idx, edge_idx, edge_weight);
+
+        thrust::device_vector<T> row_ptr(n);
+        thrust::device_vector<T> row_ptr_next(edge_idx.size());
+        thrust::device_vector<W> bucket_edge_weight(edge_idx.size());
+        thrust::sequence(row_ptr.begin(), row_ptr.end());
         thrust::sequence(row_ptr_next.begin(), row_ptr_next.end());
-        thrust::lower_bound(row_idx_.begin(), row_idx_.end(), row_ptr_.begin(),
-                            row_ptr_.end(), row_ptr_.begin());
-        thrust::upper_bound(row_idx_.begin(), row_idx_.end(),
+        thrust::lower_bound(row_idx.begin(), row_idx.end(), row_ptr.begin(),
+                            row_ptr.end(), row_ptr.begin());
+        thrust::upper_bound(row_idx.begin(), row_idx.end(),
                             row_ptr_next.begin(), row_ptr_next.end(),
                             row_ptr_next.begin());
-        bucket_weight(row_ptr_, row_ptr_next, edge_weight_,
-                      bucket_edge_weight_);
+        bucket_weight(row_ptr, row_ptr_next, edge_weight, bucket_edge_weight);
+        return self(row_ptr, col_idx, edge_idx, edge_weight,
+                    bucket_edge_weight);
     }
 
     virtual ~quiver() = default;

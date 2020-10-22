@@ -133,67 +133,52 @@ void bucket_weight(const thrust::device_vector<T> &prev,
 template <typename T>
 class quiver<T, CUDA>
 {
-    using TP = thrust::pair<T, T>;
-    using CP = std::pair<T, T>;
     using W = float;
 
     thrust::device_vector<T> row_ptr_;
     thrust::device_vector<T> col_idx_;
-    thrust::device_vector<T> edge_id_;
-    thrust::device_vector<W> edge_weight_;
-    thrust::device_vector<W> bucket_edge_weight_;
+
+    thrust::device_vector<T> edge_idx_;            // optional
+    thrust::device_vector<W> edge_weight_;         // optional
+    thrust::device_vector<W> bucket_edge_weight_;  // optional
+
     sample_option opt_;
 
   public:
-    quiver(T n, const std::vector<CP> &edge_index,
-           const std::vector<T> &edge_id)
-        : quiver(n, to_device<TP>(edge_index), to_device<T>(edge_id))
-    {
-    }
-
-    quiver(T n, const std::vector<CP> &edge_index,
-           const std::vector<T> &edge_id, const std::vector<W> &edge_weight)
-        : quiver(n, to_device<TP>(edge_index), to_device<T>(edge_id),
-                 to_device<W>(edge_weight))
-    {
-    }
-
     // row_ptr and col_idx make CSR
-    quiver(T n, thrust::device_vector<TP> edge_index,
-           thrust::device_vector<T> edge_id)
+    quiver(T n, thrust::device_vector<T> row_idx_,
+           thrust::device_vector<T> col_idx, thrust::device_vector<T> edge_idx)
         : row_ptr_(n),
-          col_idx_(edge_index.size()),
-          edge_id_(std::move(edge_id)),
+          col_idx_(std::move(col_idx)),
+          edge_idx_(std::move(edge_idx)),
           opt_(false)
     {
-        thrust::device_vector<thrust::tuple<T, T, T>> to_sort(
-            edge_index.size());
-        zip(to_sort, edge_index, edge_id_);
-        thrust::sort(to_sort.begin(), to_sort.end());
-        thrust::device_vector<T> row_idx_(edge_index.size());
-        unzip(to_sort, row_idx_, col_idx_, edge_id_);
+        thrust::device_vector<thrust::tuple<T, T, T>> edges(edge_idx_.size());
+        zip(row_idx_, col_idx_, edge_idx_, edges);
+        thrust::sort(edges.begin(), edges.end());
+        unzip(edges, row_idx_, col_idx_, edge_idx_);
         thrust::sequence(row_ptr_.begin(), row_ptr_.end());
         thrust::lower_bound(row_idx_.begin(), row_idx_.end(), row_ptr_.begin(),
                             row_ptr_.end(), row_ptr_.begin());
     }
 
-    quiver(T n, thrust::device_vector<TP> edge_index,
-           thrust::device_vector<T> edge_id,
+    quiver(T n, thrust::device_vector<T> row_idx_,
+           thrust::device_vector<T> col_idx, thrust::device_vector<T> edge_idx,
            thrust::device_vector<W> edge_weight)
         : row_ptr_(n),
-          col_idx_(edge_index.size()),
-          edge_id_(std::move(edge_id)),
+          col_idx_(std::move(col_idx)),
+          edge_idx_(std::move(edge_idx)),
           edge_weight_(std::move(edge_weight)),
-          bucket_edge_weight_(edge_index.size()),
+          bucket_edge_weight_(edge_weight.size()),
           opt_(true)
     {
-        thrust::device_vector<thrust::tuple<T, T, T, W>> to_sort(
-            edge_index.size());
-        zip(to_sort, edge_index, edge_id_, edge_weight_);
-        thrust::sort(to_sort.begin(), to_sort.end());
-        thrust::device_vector<T> row_idx_(edge_index.size());
-        thrust::device_vector<T> row_ptr_next(edge_index.size());
-        unzip(to_sort, row_idx_, col_idx_, edge_id_, edge_weight_);
+        thrust::device_vector<thrust::tuple<T, T, T, W>> edges(
+            edge_idx_.size());
+        zip(row_idx_, col_idx_, edge_idx_, edge_weight_, edges);
+        thrust::sort(edges.begin(), edges.end());
+        unzip(edges, row_idx_, col_idx_, edge_idx_, edge_weight_);
+
+        thrust::device_vector<T> row_ptr_next(edge_idx_.size());
         thrust::sequence(row_ptr_.begin(), row_ptr_.end());
         thrust::sequence(row_ptr_next.begin(), row_ptr_next.end());
         thrust::lower_bound(row_idx_.begin(), row_idx_.end(), row_ptr_.begin(),
@@ -244,7 +229,7 @@ class quiver<T, CUDA>
             sample_functor<T, W>(
                 thrust::raw_pointer_cast(row_ptr_.data()), row_ptr_.size(),
                 thrust::raw_pointer_cast(col_idx_.data()),
-                thrust::raw_pointer_cast(edge_id_.data()),
+                thrust::raw_pointer_cast(edge_idx_.data()),
                 thrust::raw_pointer_cast(bucket_edge_weight_.data()),
                 col_idx_.size(), thrust::raw_pointer_cast(output_begin),
                 thrust::raw_pointer_cast(output_id_begin), opt_.weighted));

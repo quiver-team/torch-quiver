@@ -32,7 +32,9 @@ class TorchQuiver : public torch_quiver_t
 
   public:
     using T = int64_t;
+    using W = float;
 
+    // deprecated, not compatible with AliGraph
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
     sample_sub(const torch::Tensor &vertices, int k) const
     {
@@ -40,7 +42,7 @@ class TorchQuiver : public torch_quiver_t
     }
 
     std::tuple<torch::Tensor, torch::Tensor>
-    sample_id(const torch::Tensor &vertices, int k) const
+    sample_once(const torch::Tensor &vertices, int k) const
     {
         TRACE(__func__);
 
@@ -48,13 +50,14 @@ class TorchQuiver : public torch_quiver_t
         thrust::device_vector<T> outputs;
         thrust::device_vector<T> output_counts;
 
-        return uniform_sample_kernel(0, vertices, k, inputs, outputs, output_counts);
+        return sample_kernel(0, vertices, k, inputs, outputs, output_counts);
     }
 
     std::tuple<torch::Tensor, torch::Tensor>
-    uniform_sample_kernel(const cudaStream_t stream,
-        const torch::Tensor &vertices, int k, thrust::device_vector<T> &inputs,
-        thrust::device_vector<T> &outputs, thrust::device_vector<T> &output_counts) const
+    sample_kernel(const cudaStream_t stream, const torch::Tensor &vertices,
+                  int k, thrust::device_vector<T> &inputs,
+                  thrust::device_vector<T> &outputs,
+                  thrust::device_vector<T> &output_counts) const
     {
         T tot = 0;
         const auto policy = thrust::cuda::par.on(stream);
@@ -70,7 +73,8 @@ class TorchQuiver : public torch_quiver_t
             output_counts.resize(bs);
             output_ptr.resize(bs);
         }
-        // output_ptr is exclusive prefix sum of output_counts(neighbor counts <= k)
+        // output_ptr is exclusive prefix sum of output_counts(neighbor counts
+        // <= k)
         {
             TRACE("prepare");
             thrust::copy(vertices.data_ptr<long>(),
@@ -119,9 +123,9 @@ class TorchQuiver : public torch_quiver_t
         thrust::device_vector<T> output_counts;
         thrust::device_vector<T> subset;
 
-        uniform_sample_kernel(stream, vertices, k, inputs, outputs, output_counts);
+        sample_kernel(stream, vertices, k, inputs, outputs, output_counts);
         T tot = outputs.size();
-        
+
         // reindex
         {
             {
@@ -195,12 +199,42 @@ TorchQuiver new_quiver_from_edge_index(size_t n,
     thrust::copy(p_id, p_id + m, eid.begin());
     return TorchQuiver((T)n, std::move(ei), std::move(eid));
 }
+
+TorchQuiver new_quiver_from_edge_index_weight(size_t n,
+                                              const torch::Tensor &edge_index,
+                                              const torch::Tensor &edge_id,
+                                              const torch::Tensor &edge_weight)
+{
+    TRACE(__func__);
+    using T = typename TorchQuiver::T;
+    using W = typename TorchQuiver::W;
+    check(edge_index.is_contiguous());
+    check_eq<int64_t>(edge_index.dim(), 2);
+    check_eq<int64_t>(edge_index.size(0), 2);
+    const size_t m = edge_index.size(1);
+    const T *p = edge_index.data_ptr<T>();
+    using vec = std::vector<std::pair<T, T>>;
+    vec ei(m);
+    {
+        TRACE("zip edge_index");
+        zip(p, p + m, p + m, &ei[0].first);
+    }
+    const T *p_id = edge_id.data_ptr<T>();
+    const W *p_weight = edge_weight.data_ptr<W>();
+    std::vector<T> eid(m);
+    std::vector<W> weight(m);
+    thrust::copy(p_id, p_id + m, eid.begin());
+    thrust::copy(p_weight, p_weight + m, weight.begin());
+    return TorchQuiver((T)n, std::move(ei), std::move(eid), std::move(weight));
+}
 }  // namespace quiver
 
 void register_cuda_quiver(pybind11::module &m)
 {
     m.def("new_quiver_from_edge_index", &quiver::new_quiver_from_edge_index);
+    m.def("new_quiver_from_edge_index_weight",
+          &quiver::new_quiver_from_edge_index_weight);
     py::class_<quiver::TorchQuiver>(m, "Quiver")
         .def("sample_sub", &quiver::TorchQuiver::sample_sub)
-        .def("sample_id", &quiver::TorchQuiver::sample_id);
+        .def("sample", &quiver::TorchQuiver::sample_once);
 }

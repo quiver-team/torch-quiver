@@ -43,12 +43,10 @@ template <typename T>
 class map_functor
 {
     const std::unordered_map<T, T> *map_;
+
   public:
-    map_functor(const std::unordered_map<T, T> *m): map_(m) {}
-    T operator()(T t) const
-    {
-        return map_->find(t)->second;
-    }
+    map_functor(const std::unordered_map<T, T> *m) : map_(m) {}
+    T operator()(T t) const { return map_->find(t)->second; }
 };
 
 // make edge weight a nomalized prefix sum within each node
@@ -145,96 +143,102 @@ void bucket_weight(const thrust::device_vector<T> &prev,
 }
 
 template <typename T>
-void handle_partition(thrust::device_vector<T> &row_idx, thrust::device_vector<T> &local_map_,
+void handle_partition(thrust::device_vector<T> &row_idx,
+                      thrust::device_vector<T> &local_map_,
                       std::unordered_map<T, T> &m)
 {
     local_map_.resize(row_idx.size());
-    auto last = thrust::unique_copy(row_idx.begin(), row_idx.end(), local_map_.begin());
+    auto last =
+        thrust::unique_copy(row_idx.begin(), row_idx.end(), local_map_.begin());
     int len = last - local_map_.begin();
     local_map_.resize(len);
-    thrust::lower_bound(local_map_.begin(), local_map_.end(), row_idx.begin(), row_idx.end(), row_idx.begin());
-    for (int i = 0; i < len; i++) {
-        m[local_map_[i]] = i;
-    }
+    thrust::lower_bound(local_map_.begin(), local_map_.end(), row_idx.begin(),
+                        row_idx.end(), row_idx.begin());
+    for (int i = 0; i < len; i++) { m[local_map_[i]] = i; }
 }
 
 template <typename T>
 class quiver<T, CUDA>
 {
-    using TP = thrust::pair<T, T>;
-    using CP = std::pair<T, T>;
+    using self = quiver<T, CUDA>;
     using W = float;
 
-    thrust::device_vector<T> row_ptr_;
-    thrust::device_vector<T> col_idx_;
-    thrust::device_vector<T> edge_id_;
-    thrust::device_vector<W> edge_weight_;
-    thrust::device_vector<W> bucket_edge_weight_;
+    const thrust::device_vector<T> row_ptr_;
+    const thrust::device_vector<T> col_idx_;
+    const thrust::device_vector<T> edge_idx_;  // TODO: make it optional
+
+    const thrust::device_vector<W> edge_weight_;         // optional
+    const thrust::device_vector<W> bucket_edge_weight_;  // optional
+
     thrust::device_vector<T> local_map_;
     std::unordered_map<T, T> remote_map_;
-    sample_option opt_;
 
-  public:
-    quiver(T n, const std::vector<CP> &edge_index,
-           const std::vector<T> &edge_id)
-        : quiver(n, to_device<TP>(edge_index), to_device<T>(edge_id))
-    {
-    }
+    const sample_option opt_;
 
-    quiver(T n, const std::vector<CP> &edge_index,
-           const std::vector<T> &edge_id, const std::vector<W> &edge_weight)
-        : quiver(n, to_device<TP>(edge_index), to_device<T>(edge_id),
-                 to_device<W>(edge_weight))
-    {
-    }
-
-    // row_ptr and col_idx make CSR
-    quiver(T n, thrust::device_vector<TP> edge_index,
-           thrust::device_vector<T> edge_id)
-        : row_ptr_(n),
-          col_idx_(edge_index.size()),
-          edge_id_(std::move(edge_id)),
+    quiver(thrust::device_vector<T> row_ptr, thrust::device_vector<T> col_idx,
+           thrust::device_vector<T> edge_idx)
+        : row_ptr_(std::move(row_ptr)),
+          col_idx_(std::move(col_idx)),
+          edge_idx_(std::move(edge_idx)),
           opt_(false, true)
     {
-        thrust::device_vector<thrust::tuple<T, T, T>> to_sort(
-            edge_index.size());
-        zip(to_sort, edge_index, edge_id_);
-        thrust::sort(to_sort.begin(), to_sort.end());
-        thrust::device_vector<T> row_idx_(edge_index.size());
-        unzip(to_sort, row_idx_, col_idx_, edge_id_);
-        handle_partition(row_idx_, local_map_, remote_map_);
-        thrust::sequence(row_ptr_.begin(), row_ptr_.end());
-        thrust::lower_bound(row_idx_.begin(), row_idx_.end(), row_ptr_.begin(),
-                            row_ptr_.end(), row_ptr_.begin());
     }
 
-    quiver(T n, thrust::device_vector<TP> edge_index,
-           thrust::device_vector<T> edge_id,
-           thrust::device_vector<W> edge_weight)
-        : row_ptr_(n),
-          col_idx_(edge_index.size()),
-          edge_id_(std::move(edge_id)),
+    quiver(thrust::device_vector<T> row_ptr, thrust::device_vector<T> col_idx,
+           thrust::device_vector<T> edge_idx,
+           thrust::device_vector<W> edge_weight,
+           thrust::device_vector<W> bucket_edge_weight)
+        : row_ptr_(std::move(row_ptr)),
+          col_idx_(std::move(col_idx)),
+          edge_idx_(std::move(edge_idx)),
           edge_weight_(std::move(edge_weight)),
-          bucket_edge_weight_(edge_index.size()),
+          bucket_edge_weight_(std::move(bucket_edge_weight)),
           opt_(true, true)
     {
-        thrust::device_vector<thrust::tuple<T, T, T, W>> to_sort(
-            edge_index.size());
-        zip(to_sort, edge_index, edge_id_, edge_weight_);
-        thrust::sort(to_sort.begin(), to_sort.end());
-        thrust::device_vector<T> row_idx_(edge_index.size());
-        thrust::device_vector<T> row_ptr_next(edge_index.size());
-        unzip(to_sort, row_idx_, col_idx_, edge_id_, edge_weight_);
+    }
+
+  public:
+    static self New(T n, thrust::device_vector<T> row_idx,
+                    thrust::device_vector<T> col_idx,
+                    thrust::device_vector<T> edge_idx)
+    {
+        thrust::device_vector<thrust::tuple<T, T, T>> edges(edge_idx.size());
+        zip(row_idx, col_idx, edge_idx, edges);
+        thrust::sort(edges.begin(), edges.end());
+        unzip(edges, row_idx, col_idx, edge_idx);
         handle_partition(row_idx_, local_map_, remote_map_);
-        thrust::sequence(row_ptr_.begin(), row_ptr_.end());
+
+        thrust::device_vector<T> row_ptr(n);
+        thrust::sequence(row_ptr.begin(), row_ptr.end());
+        thrust::lower_bound(row_idx.begin(), row_idx.end(), row_ptr.begin(),
+                            row_ptr.end(), row_ptr.begin());
+        return self(row_ptr, col_idx, edge_idx);
+    }
+
+    static self New(T n, thrust::device_vector<T> row_idx,
+                    thrust::device_vector<T> col_idx,
+                    thrust::device_vector<T> edge_idx,
+                    thrust::device_vector<W> edge_weight)
+    {
+        thrust::device_vector<thrust::tuple<T, T, T, W>> edges(edge_idx.size());
+        zip(row_idx, col_idx, edge_idx, edge_weight, edges);
+        thrust::sort(edges.begin(), edges.end());
+        unzip(edges, row_idx, col_idx, edge_idx, edge_weight);
+        handle_partition(row_idx_, local_map_, remote_map_);
+
+        thrust::device_vector<T> row_ptr(n);
+        thrust::device_vector<T> row_ptr_next(edge_idx.size());
+        thrust::device_vector<W> bucket_edge_weight(edge_idx.size());
+        thrust::sequence(row_ptr.begin(), row_ptr.end());
         thrust::sequence(row_ptr_next.begin(), row_ptr_next.end());
-        thrust::lower_bound(row_idx_.begin(), row_idx_.end(), row_ptr_.begin(),
-                            row_ptr_.end(), row_ptr_.begin());
-        thrust::upper_bound(row_idx_.begin(), row_idx_.end(),
+        thrust::lower_bound(row_idx.begin(), row_idx.end(), row_ptr.begin(),
+                            row_ptr.end(), row_ptr.begin());
+        thrust::upper_bound(row_idx.begin(), row_idx.end(),
                             row_ptr_next.begin(), row_ptr_next.end(),
                             row_ptr_next.begin());
-        bucket_weight(row_ptr_, row_ptr_next, edge_weight_,
-                      bucket_edge_weight_);
+        bucket_weight(row_ptr, row_ptr_next, edge_weight, bucket_edge_weight);
+        return self(row_ptr, col_idx, edge_idx, edge_weight,
+                    bucket_edge_weight);
     }
 
     virtual ~quiver() = default;
@@ -245,7 +249,10 @@ class quiver<T, CUDA>
 
     sample_option get_option() const { return opt_; }
 
-    const std::unordered_map<T, T> *get_remote_map() const { return &remote_map_; }
+    const std::unordered_map<T, T> *get_remote_map() const
+    {
+        return &remote_map_;
+    }
 
     // device_t device() const   { return CUDA; }
 
@@ -278,7 +285,7 @@ class quiver<T, CUDA>
             sample_functor<T, W>(
                 thrust::raw_pointer_cast(row_ptr_.data()), row_ptr_.size(),
                 thrust::raw_pointer_cast(col_idx_.data()),
-                thrust::raw_pointer_cast(edge_id_.data()),
+                thrust::raw_pointer_cast(edge_idx_.data()),
                 thrust::raw_pointer_cast(bucket_edge_weight_.data()),
                 col_idx_.size(), thrust::raw_pointer_cast(output_begin),
                 thrust::raw_pointer_cast(output_id_begin), opt_.weighted));

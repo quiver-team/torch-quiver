@@ -242,7 +242,7 @@ TorchQuiver new_quiver_from_edge_index_weight(size_t n,
     }
     thrust::device_vector<W> edge_weight_(m);
     {
-        const T *p = edge_weight.data_ptr<T>();
+        const W *p = edge_weight.data_ptr<W>();
         thrust::copy(p, p + m, edge_weight_.begin());
     }
     using Q = quiver<int64_t, CUDA>;

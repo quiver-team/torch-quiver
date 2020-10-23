@@ -24,13 +24,14 @@ void replicate_fill(size_t n, const T *counts, const T *values, T *outputs)
     }
 }
 
-using torch_quiver_t = quiver<int64_t, CUDA>;
-
-class TorchQuiver : public torch_quiver_t
+class TorchQuiver
 {
-    using torch_quiver_t::torch_quiver_t;
+    using torch_quiver_t = quiver<int64_t, CUDA>;
+    torch_quiver_t quiver_;
 
   public:
+    TorchQuiver(torch_quiver_t quiver) : quiver_(std::move(quiver)) {}
+
     using T = int64_t;
     using W = float;
 
@@ -79,8 +80,8 @@ class TorchQuiver : public torch_quiver_t
             TRACE("prepare");
             thrust::copy(vertices.data_ptr<long>(),
                          vertices.data_ptr<long>() + bs, inputs.begin());
-            this->degree(stream, inputs.data(), inputs.data() + inputs.size(),
-                         output_counts.data());
+            quiver_.degree(stream, inputs.data(), inputs.data() + inputs.size(),
+                           output_counts.data());
             if (k >= 0) {
                 thrust::transform(policy, output_counts.begin(),
                                   output_counts.end(), output_counts.begin(),
@@ -99,9 +100,9 @@ class TorchQuiver : public torch_quiver_t
         // outputs[outptr[i], outptr[i + 1]) are unique neighbors of inputs[i]
         {
             TRACE("sample");
-            this->sample(stream, inputs.begin(), inputs.end(),
-                         output_ptr.begin(), output_counts.begin(),
-                         outputs.data(), output_eid.data());
+            quiver_.sample(stream, inputs.begin(), inputs.end(),
+                           output_ptr.begin(), output_counts.begin(),
+                           outputs.data(), output_eid.data());
         }
         torch::Tensor neighbor = torch::empty(tot, vertices.options());
         torch::Tensor eid = torch::empty(tot, vertices.options());
@@ -177,55 +178,73 @@ class TorchQuiver : public torch_quiver_t
     }
 };
 
-TorchQuiver new_quiver_from_edge_index(size_t n,
-                                       const torch::Tensor &edge_index,
-                                       const torch::Tensor &edge_id)
+TorchQuiver new_quiver_from_edge_index(size_t n,  //
+                                       const torch::Tensor &edges,
+                                       const torch::Tensor &edge_idx)
 {
     TRACE(__func__);
     using T = typename TorchQuiver::T;
-    check(edge_index.is_contiguous());
-    check_eq<int64_t>(edge_index.dim(), 2);
-    check_eq<int64_t>(edge_index.size(0), 2);
-    const size_t m = edge_index.size(1);
-    const T *p = edge_index.data_ptr<T>();
-    using vec = std::vector<std::pair<T, T>>;
-    vec ei(m);
+    check(edges.is_contiguous());
+    check_eq<int64_t>(edges.dim(), 2);
+    check_eq<int64_t>(edges.size(0), 2);
+    const size_t m = edges.size(1);
+    check_eq<int64_t>(edge_idx.dim(), 1);
+    check_eq<int64_t>(edge_idx.size(0), m);
+
+    thrust::device_vector<T> row_idx(m);
+    thrust::device_vector<T> col_idx(m);
     {
-        TRACE("zip edge_index");
-        zip(p, p + m, p + m, &ei[0].first);
+        const T *p = edges.data_ptr<T>();
+        thrust::copy(p, p + m, row_idx.begin());
+        thrust::copy(p + m, p + m * 2, col_idx.begin());
     }
-    const T *p_id = edge_id.data_ptr<T>();
-    std::vector<T> eid(m);
-    thrust::copy(p_id, p_id + m, eid.begin());
-    return TorchQuiver((T)n, std::move(ei), std::move(eid));
+    thrust::device_vector<T> edge_idx_(m);
+    {
+        const T *p = edge_idx.data_ptr<T>();
+        thrust::copy(p, p + m, edge_idx_.begin());
+    }
+    using Q = quiver<int64_t, CUDA>;
+    Q quiver = Q::New(static_cast<T>(n), std::move(row_idx), std::move(col_idx),
+                      std::move(edge_idx_));
+    return TorchQuiver(std::move(quiver));
 }
 
 TorchQuiver new_quiver_from_edge_index_weight(size_t n,
-                                              const torch::Tensor &edge_index,
-                                              const torch::Tensor &edge_id,
+                                              const torch::Tensor &edges,
+                                              const torch::Tensor &edge_idx,
                                               const torch::Tensor &edge_weight)
 {
     TRACE(__func__);
     using T = typename TorchQuiver::T;
     using W = typename TorchQuiver::W;
-    check(edge_index.is_contiguous());
-    check_eq<int64_t>(edge_index.dim(), 2);
-    check_eq<int64_t>(edge_index.size(0), 2);
-    const size_t m = edge_index.size(1);
-    const T *p = edge_index.data_ptr<T>();
-    using vec = std::vector<std::pair<T, T>>;
-    vec ei(m);
+    check(edges.is_contiguous());
+    check_eq<int64_t>(edges.dim(), 2);
+    check_eq<int64_t>(edges.size(0), 2);
+    const size_t m = edges.size(1);
+    check_eq<int64_t>(edge_idx.dim(), 1);
+    check_eq<int64_t>(edge_idx.size(0), m);
+
+    thrust::device_vector<T> row_idx(m);
+    thrust::device_vector<T> col_idx(m);
     {
-        TRACE("zip edge_index");
-        zip(p, p + m, p + m, &ei[0].first);
+        const T *p = edges.data_ptr<T>();
+        thrust::copy(p, p + m, row_idx.begin());
+        thrust::copy(p + m, p + m * 2, col_idx.begin());
     }
-    const T *p_id = edge_id.data_ptr<T>();
-    const W *p_weight = edge_weight.data_ptr<W>();
-    std::vector<T> eid(m);
-    std::vector<W> weight(m);
-    thrust::copy(p_id, p_id + m, eid.begin());
-    thrust::copy(p_weight, p_weight + m, weight.begin());
-    return TorchQuiver((T)n, std::move(ei), std::move(eid), std::move(weight));
+    thrust::device_vector<T> edge_idx_(m);
+    {
+        const T *p = edge_idx.data_ptr<T>();
+        thrust::copy(p, p + m, edge_idx_.begin());
+    }
+    thrust::device_vector<W> edge_weight_(m);
+    {
+        const T *p = edge_weight.data_ptr<T>();
+        thrust::copy(p, p + m, edge_weight_.begin());
+    }
+    using Q = quiver<int64_t, CUDA>;
+    Q quiver = Q::New(static_cast<T>(n), std::move(row_idx), std::move(col_idx),
+                      std::move(edge_idx_), std::move(edge_weight_));
+    return TorchQuiver(std::move(quiver));
 }
 }  // namespace quiver
 

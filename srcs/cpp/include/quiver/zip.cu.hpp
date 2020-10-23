@@ -7,6 +7,25 @@
 
 namespace quiver
 {
+template <typename Ty, typename Tx>
+thrust::device_vector<Ty> to_device(const std::vector<Tx> &x)
+{
+    static_assert(sizeof(Tx) == sizeof(Ty), "");
+    thrust::device_vector<Ty> y(x.size());
+    thrust::copy(reinterpret_cast<const Ty *>(x.data()),
+                 reinterpret_cast<const Ty *>(x.data()) + x.size(), y.begin());
+    return std::move(y);
+}
+
+struct zip_functor {
+    template <typename T>
+    __device__ void operator()(T tup)
+    {
+        thrust::get<0>(tup) =
+            thrust::make_pair(thrust::get<1>(tup), thrust::get<2>(tup));
+    }
+};
+
 struct zip_id_functor {
     template <typename T>
     __device__ void operator()(T tup)
@@ -28,21 +47,22 @@ struct zip_id_weight_functor {
 };
 
 template <typename T>
+void zip(thrust::device_vector<thrust::pair<T, T>> &p,
+        const thrust::device_vector<T> &x, thrust::device_vector<T> &y)
+{
+    thrust::for_each(thrust::make_zip_iterator(
+                         thrust::make_tuple(p.begin(), x.begin(), y.begin())),
+                     thrust::make_zip_iterator(
+                         thrust::make_tuple(p.end(), x.end(), y.end())),
+                     zip_functor());
+}
+
+template <typename T>
 void unzip(const thrust::device_vector<thrust::pair<T, T>> &p,
            thrust::device_vector<T> &x, thrust::device_vector<T> &y)
 {
     thrust::transform(p.begin(), p.end(), x.begin(), thrust_get<0>());
     thrust::transform(p.begin(), p.end(), y.begin(), thrust_get<1>());
-}
-
-template <typename Ty, typename Tx>
-thrust::device_vector<Ty> to_device(const std::vector<Tx> &x)
-{
-    static_assert(sizeof(Tx) == sizeof(Ty), "");
-    thrust::device_vector<Ty> y(x.size());
-    thrust::copy(reinterpret_cast<const Ty *>(x.data()),
-                 reinterpret_cast<const Ty *>(x.data()) + x.size(), y.begin());
-    return std::move(y);
 }
 
 template <typename T>

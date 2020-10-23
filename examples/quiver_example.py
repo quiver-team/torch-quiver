@@ -9,6 +9,10 @@ def gen_non_uniform_adj(n, index):
     return range(index)
 
 
+def gen_spec_adj(n, index):
+    return [index * 2, index * 3, index * 5]
+
+
 def gen_edge_index(n, gen_adj):
     a = []
     b = []
@@ -22,11 +26,25 @@ def gen_edge_index(n, gen_adj):
     return n, torch.LongTensor(ei)
 
 
+def gen_spec_edge_index(n):
+    a = []
+    b = []
+    for i in range(n):
+        s = -i if i < n // 2 else i
+        dst = gen_spec_adj(n, s)
+        if dst is not None:
+            src = len(dst) * [s]
+            a.extend(src)
+            b.extend(dst)
+    ei = [a, b]
+    return n, torch.LongTensor(ei)
+
+
 def test_quiver():
-    n, ei = gen_edge_index(10, gen_non_uniform_adj)
+    n, ei = gen_spec_edge_index(10)
     eid = torch.LongTensor([100 * ei[0][i] + ei[1][i] for i in range(ei.size(1))])
     g = qv.new_quiver_from_edge_index(n, ei, eid)
-    neighbor, eid = g.sample_id(torch.LongTensor([7, 5, 3]), 3)
+    neighbor, eid = g.sample(torch.LongTensor([-3, 7, -1]), 3)
     print(neighbor)
     print(eid)
 
@@ -62,6 +80,6 @@ def test_quiver_bench():
     print(time.time() - t0)
 
 
-# test_quiver()
+test_quiver()
 # test_quiver_weighted(5)
-test_quiver_bench()
+# test_quiver_bench()

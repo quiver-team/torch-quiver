@@ -77,8 +77,11 @@ class TorchQuiver : public torch_quiver_t
         // <= k)
         {
             TRACE("prepare");
-            thrust::copy(vertices.data_ptr<long>(),
-                         vertices.data_ptr<long>() + bs, inputs.begin());
+            thrust::transform(vertices.data_ptr<int64_t>(),
+                              vertices.data_ptr<int64_t>() + bs,
+                              vertices.data_ptr<int64_t>(), map_functor<T>(get_remote_map()));
+            thrust::copy(vertices.data_ptr<int64_t>(),
+                         vertices.data_ptr<int64_t>() + bs, inputs.begin());
             this->degree(stream, inputs.data(), inputs.data() + inputs.size(),
                          output_counts.data());
             if (k >= 0) {

@@ -80,7 +80,7 @@ class TorchQuiver
             TRACE("prepare");
             thrust::transform(
                 vertices.data_ptr<T>(), vertices.data_ptr<T>() + bs,
-                vertices.data_ptr<T>(), map_functor<T>(get_remote_map()));
+                vertices.data_ptr<T>(), map_functor<T>(quiver_.get_remote_map()));
             thrust::copy(vertices.data_ptr<T>(), vertices.data_ptr<T>() + bs,
                          inputs.begin());
             quiver_.degree(stream, inputs.data(), inputs.data() + inputs.size(),
@@ -181,6 +181,7 @@ class TorchQuiver
     }
 };
 
+// TODO: remove `n` and reuse code
 TorchQuiver new_quiver_from_edge_index(size_t n,  //
                                        const torch::Tensor &edges,
                                        const torch::Tensor &edge_idx)

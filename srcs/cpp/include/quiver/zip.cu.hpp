@@ -20,6 +20,14 @@ struct zipper {
     }
 };
 
+template <typename T0, typename T1>
+void unzip(const thrust::device_vector<thrust::pair<T0, T1>> &p,
+           thrust::device_vector<T0> &x, thrust::device_vector<T1> &y)
+{
+    thrust::transform(p.begin(), p.end(), x.begin(), thrust_get<0>());
+    thrust::transform(p.begin(), p.end(), y.begin(), thrust_get<1>());
+}
+
 template <typename Ty, typename Tx>
 thrust::device_vector<Ty> to_device(const std::vector<Tx> &x)
 {

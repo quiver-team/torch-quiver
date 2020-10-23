@@ -26,5 +26,4 @@ jobs:
 
     - run: pip install --no-index .
     - run: python examples/e1.py
-    - run: python examples/quiver_example.py
     - run: pytest

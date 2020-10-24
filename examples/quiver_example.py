@@ -55,7 +55,7 @@ def test_quiver_weighted(target):
     eid = torch.LongTensor([100 * ei[0][i] + ei[1][i] for i in range(ei.size(1))])
     weight = torch.Tensor([0.01 * ei[0][i] + 0.99 / (abs(target - ei[1][i]) + 0.01) for i in range(ei.size(1))])
     g = qv.new_quiver_from_edge_index_weight(n, ei, eid, weight)
-    neighbor, eid = g.sample(torch.LongTensor([9]), 10)
+    neighbor, eid = g.sample(torch.LongTensor(range(0, 9)), 10)
     print(neighbor)
     print(eid)
 
@@ -69,17 +69,17 @@ def test_quiver_bench():
     print('weight')
     t0 = time.time()
     for i in range(1000):
-        g.sample(torch.randint(0, 1000, (1000,), dtype=torch.int64), 10)
+        g.sample(torch.arange(1, 1000), 10)
     print(time.time() - t0)
 
     g = qv.new_quiver_from_edge_index(n, ei, eid)
     print('uniform')
     t0 = time.time()
     for i in range(1000):
-        g.sample(torch.randint(0, 1000, (1000,), dtype=torch.int64), 10)
+        g.sample(torch.arange(1, 1000), 10)
     print(time.time() - t0)
 
 
 test_quiver()
-test_quiver_weighted(5)
+# test_quiver_weighted(5)
 # test_quiver_bench()

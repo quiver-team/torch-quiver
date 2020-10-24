@@ -78,11 +78,13 @@ class TorchQuiver
         // <= k)
         {
             TRACE("prepare");
-            thrust::transform(
-                vertices.data_ptr<T>(), vertices.data_ptr<T>() + bs,
-                vertices.data_ptr<T>(), map_functor<T>(quiver_.get_remote_map()));
             thrust::copy(vertices.data_ptr<T>(), vertices.data_ptr<T>() + bs,
                          inputs.begin());
+            auto local_map = quiver_.get_local_map();
+            thrust::lower_bound(local_map->cbegin(), local_map->cend(), inputs.begin(),
+                                inputs.end(), inputs.begin());
+            // thrust::transform(inputs.begin(), inputs.end(), inputs.begin(),
+            //                   map_functor<T, T>(thrust::raw_pointer_cast(local_map->data())));
             quiver_.degree(stream, inputs.data(), inputs.data() + inputs.size(),
                            output_counts.data());
             if (k >= 0) {

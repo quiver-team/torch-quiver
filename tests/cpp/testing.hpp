@@ -8,6 +8,7 @@ template <typename T>
 std::vector<T> sorted(const std::vector<T> &x)
 {
     std::vector<T> y(x.size());
+    std::copy(x.begin(), x.end(), y.begin());
     std::sort(y.begin(), y.end());
     return y;
 }

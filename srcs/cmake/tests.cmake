@@ -10,7 +10,6 @@ ENDFUNCTION()
 
 FUNCTION(ADD_UNIT_TEST target)
     ADD_EXECUTABLE(${target} ${ARGN} ${CMAKE_SOURCE_DIR}/tests/cpp/main.cpp)
-    # LINK_KUNGFU_LIBS(${target})
     LINK_GTEST(${target})
     ADD_TEST(NAME ${target} COMMAND ${target})
     TARGET_COMPILE_DEFINITIONS(${target} PRIVATE -DQUIVER_TEST=1)

@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches:
+    # https://docs.github.com/en/free-pro-team@latest/actions/reference/workflow-syntax-for-github-actions#excluding-paths
+    - '*'
     - '!**gpu'
 
 jobs:

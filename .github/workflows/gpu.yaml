@@ -1,0 +1,43 @@
+name: GPU
+
+on:
+  push:
+    branches:
+      - '**gpu'
+
+  # pull_request:
+  #   branches:
+  #     - master
+
+jobs:
+  test:
+    # https://help.github.com/en/articles/virtual-environments-for-github-actions#supported-virtual-environments
+    runs-on:
+    - gpu
+    - self-hosted
+
+    # https://help.github.com/en/actions/automating-your-workflow-with-github-actions/using-environment-variables
+    env:
+      PYTHONWARNINGS: 'ignore'
+
+    steps:
+    - uses: actions/checkout@v1
+
+    - run: hostname
+    - run: python --version
+    - run: python3 --version
+
+    # - name: Set up Python
+    #   uses: actions/setup-python@v1
+    #   with:
+    #     python-version: 3.6
+
+    # - run: pip install -U pytest
+    # - run: pip install -f https://download.pytorch.org/whl/torch_stable.html torch==1.6.0+cpu
+
+    # - run: ./configure && make -j $(nproc)
+    # - run: git clean -fdx
+
+    - run: python3 -m pip install --no-index .
+    # - run: python examples/e1.py
+    - run: pytest tests/cuda

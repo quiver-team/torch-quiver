@@ -21,7 +21,7 @@ jobs:
 
     - run: ./configure
     - run: make
-    - run: ./bin/test-quiver
+    - run: make test
 
   test-py:
     # https://help.github.com/en/articles/virtual-environments-for-github-actions#supported-virtual-environments

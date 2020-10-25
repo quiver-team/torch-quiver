@@ -1,7 +1,9 @@
-#include <quiver/quiver.cu.hpp>
-
 #include <map>
 #include <vector>
+
+#include <quiver/quiver.cu.hpp>
+
+#include "testing.hpp"
 
 template <size_t i>
 struct std_get {
@@ -125,9 +127,6 @@ void test_construct_2()
     printf("|V|=%d, |E|=%d\n", (int)q.size(), (int)q.edge_counts());
 }
 
-int main()
-{
-    test_construct_1();
-    test_construct_2();
-    return 0;
-}
+TEST(test_quiver, test_1) { test_construct_1(); }
+
+TEST(test_quiver, test_2) { test_construct_2(); }

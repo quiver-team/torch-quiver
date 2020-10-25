@@ -20,7 +20,7 @@ config() {
 }
 
 add_cmake_prefixes() {
-    true
+    add_cmake_prefix $HOME/local/gtest
 }
 
 add_cmake_flags() {
@@ -31,6 +31,7 @@ add_cmake_flags() {
     fi
     # add_cmake_flag BUILD_TORCH_EXTENSION 1
     add_cmake_flag BUILD_TESTS 1
+    add_cmake_flag CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH}
 }
 
 main() {

@@ -78,8 +78,13 @@ class TorchQuiver
         // <= k)
         {
             TRACE("prepare");
-            thrust::copy(vertices.data_ptr<long>(),
-                         vertices.data_ptr<long>() + bs, inputs.begin());
+            thrust::copy(vertices.data_ptr<T>(), vertices.data_ptr<T>() + bs,
+                         inputs.begin());
+            auto local_map = quiver_.get_local_map();
+            thrust::lower_bound(local_map->cbegin(), local_map->cend(), inputs.begin(),
+                                inputs.end(), inputs.begin());
+            // thrust::transform(inputs.begin(), inputs.end(), inputs.begin(),
+            //                   map_functor<T, T>(thrust::raw_pointer_cast(local_map->data())));
             quiver_.degree(stream, inputs.data(), inputs.data() + inputs.size(),
                            output_counts.data());
             if (k >= 0) {
@@ -178,6 +183,7 @@ class TorchQuiver
     }
 };
 
+// TODO: remove `n` and reuse code
 TorchQuiver new_quiver_from_edge_index(size_t n,  //
                                        const torch::Tensor &edges,
                                        const torch::Tensor &edge_idx)
@@ -238,7 +244,7 @@ TorchQuiver new_quiver_from_edge_index_weight(size_t n,
     }
     thrust::device_vector<W> edge_weight_(m);
     {
-        const T *p = edge_weight.data_ptr<T>();
+        const W *p = edge_weight.data_ptr<W>();
         thrust::copy(p, p + m, edge_weight_.begin());
     }
     using Q = quiver<int64_t, CUDA>;

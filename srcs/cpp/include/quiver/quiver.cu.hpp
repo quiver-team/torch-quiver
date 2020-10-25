@@ -9,6 +9,7 @@
 #include <cuda_runtime.h>
 #include <thrust/binary_search.h>
 #include <thrust/device_vector.h>
+#include <unordered_map>
 
 namespace quiver
 {
@@ -33,9 +34,21 @@ class get_adj_diff
 };
 
 struct sample_option {
-    sample_option(bool w) : weighted(w) {}
+    sample_option(bool w, bool p) : weighted(w), partitioned(p) {}
     bool weighted;
+    bool partitioned;
 };
+
+// template <typename K, typename V>
+// class map_functor
+// {
+//     const V *map_;
+
+//   public:
+//     map_functor(const V *m) : map_(m) {}
+
+//     __device__ V operator()(K key) const { return map_[key]; }
+// };
 
 // make edge weight a nomalized prefix sum within each node
 template <typename T, typename W>
@@ -131,6 +144,19 @@ void bucket_weight(const thrust::device_vector<T> &prev,
 }
 
 template <typename T>
+void handle_partition(thrust::device_vector<T> &row_idx,
+                      thrust::device_vector<T> &local_map_)
+{
+    local_map_.resize(row_idx.size());
+    auto last =
+        thrust::unique_copy(row_idx.begin(), row_idx.end(), local_map_.begin());
+    int len = last - local_map_.begin();
+    local_map_.resize(len);
+    thrust::lower_bound(local_map_.begin(), local_map_.end(), row_idx.begin(),
+                        row_idx.end(), row_idx.begin());
+}
+
+template <typename T>
 class quiver<T, CUDA>
 {
     using self = quiver<T, CUDA>;
@@ -143,27 +169,33 @@ class quiver<T, CUDA>
     const thrust::device_vector<W> edge_weight_;         // optional
     const thrust::device_vector<W> bucket_edge_weight_;  // optional
 
+    const thrust::device_vector<T> local_map_;
+
     const sample_option opt_;
 
-    quiver(thrust::device_vector<T> row_ptr, thrust::device_vector<T> col_idx,
+    quiver(thrust::device_vector<T> local_map,
+           thrust::device_vector<T> row_ptr, thrust::device_vector<T> col_idx,
            thrust::device_vector<T> edge_idx)
-        : row_ptr_(std::move(row_ptr)),
+        : local_map_(std::move(local_map)),
+          row_ptr_(std::move(row_ptr)),
           col_idx_(std::move(col_idx)),
           edge_idx_(std::move(edge_idx)),
-          opt_(false)
+          opt_(false, true)
     {
     }
 
-    quiver(thrust::device_vector<T> row_ptr, thrust::device_vector<T> col_idx,
+    quiver(thrust::device_vector<T> local_map,
+           thrust::device_vector<T> row_ptr, thrust::device_vector<T> col_idx,
            thrust::device_vector<T> edge_idx,
            thrust::device_vector<W> edge_weight,
            thrust::device_vector<W> bucket_edge_weight)
-        : row_ptr_(std::move(row_ptr)),
+        : local_map_(std::move(local_map)),
+          row_ptr_(std::move(row_ptr)),
           col_idx_(std::move(col_idx)),
           edge_idx_(std::move(edge_idx)),
           edge_weight_(std::move(edge_weight)),
           bucket_edge_weight_(std::move(bucket_edge_weight)),
-          opt_(true)
+          opt_(true, true)
     {
     }
 
@@ -176,11 +208,15 @@ class quiver<T, CUDA>
         zip(row_idx, col_idx, edge_idx, edges);
         thrust::sort(edges.begin(), edges.end());
         unzip(edges, row_idx, col_idx, edge_idx);
+
+        thrust::device_vector<T> local_map;
+        handle_partition(row_idx, local_map);
+
         thrust::device_vector<T> row_ptr(n);
         thrust::sequence(row_ptr.begin(), row_ptr.end());
         thrust::lower_bound(row_idx.begin(), row_idx.end(), row_ptr.begin(),
                             row_ptr.end(), row_ptr.begin());
-        return self(row_ptr, col_idx, edge_idx);
+        return self(local_map, row_ptr, col_idx, edge_idx);
     }
 
     static self New(T n, thrust::device_vector<T> row_idx,
@@ -193,6 +229,9 @@ class quiver<T, CUDA>
         thrust::sort(edges.begin(), edges.end());
         unzip(edges, row_idx, col_idx, edge_idx, edge_weight);
 
+        thrust::device_vector<T> local_map;
+        handle_partition(row_idx, local_map);
+
         thrust::device_vector<T> row_ptr(n);
         thrust::device_vector<T> row_ptr_next(edge_idx.size());
         thrust::device_vector<W> bucket_edge_weight(edge_idx.size());
@@ -204,7 +243,7 @@ class quiver<T, CUDA>
                             row_ptr_next.begin(), row_ptr_next.end(),
                             row_ptr_next.begin());
         bucket_weight(row_ptr, row_ptr_next, edge_weight, bucket_edge_weight);
-        return self(row_ptr, col_idx, edge_idx, edge_weight,
+        return self(local_map, row_ptr, col_idx, edge_idx, edge_weight,
                     bucket_edge_weight);
     }
 
@@ -215,6 +254,11 @@ class quiver<T, CUDA>
     size_t edge_counts() const { return col_idx_.size(); }
 
     sample_option get_option() const { return opt_; }
+
+    const thrust::device_vector<T> *get_local_map() const
+    {
+        return &local_map_;
+    }
 
     // device_t device() const   { return CUDA; }
 

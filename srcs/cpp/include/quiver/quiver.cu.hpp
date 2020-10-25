@@ -1,5 +1,6 @@
 #pragma once
 #include <quiver/common.hpp>
+#include <quiver/copy.cu.hpp>
 #include <quiver/cuda_random.cu.hpp>
 #include <quiver/functor.cu.hpp>
 #include <quiver/quiver.hpp>
@@ -26,7 +27,7 @@ class get_adj_diff
     {
     }
 
-    __device__ T operator()(T i) const
+    __host__ __device__ T operator()(T i) const
     {
         const T end = i + 1 < n ? x[i + 1] : tot;
         return end - x[i];
@@ -294,5 +295,31 @@ class quiver<T, CUDA>
                 col_idx_.size(), thrust::raw_pointer_cast(output_begin),
                 thrust::raw_pointer_cast(output_id_begin), opt_.weighted));
     }
+
+#ifdef QUIVER_TEST
+    void get_edges(std::vector<T> &u, std::vector<T> &v) const
+    {
+        const auto row_idx = from_device<T>(local_map_);
+        const auto row_ptr = from_device<T>(row_ptr_);
+        const auto col_idx = from_device<T>(col_idx_);
+
+        const int n = row_ptr.size();
+        const int m = col_idx.size();
+        u.clear();
+        v.clear();
+        u.reserve(m);
+        v.reserve(m);
+
+        get_adj_diff<T> count(thrust::raw_pointer_cast(row_ptr.data()), n, m);
+
+        for (int i = 0; i < n; ++i) {
+            const int c = count(i);
+            for (int j = 0; j < c; ++j) {
+                u.push_back(row_idx.at(i));
+                v.push_back(col_idx[row_ptr.at(i) + j]);
+            }
+        }
+    }
+#endif
 };
 }  // namespace quiver

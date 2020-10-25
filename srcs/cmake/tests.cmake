@@ -13,6 +13,7 @@ FUNCTION(ADD_UNIT_TEST target)
     # LINK_KUNGFU_LIBS(${target})
     LINK_GTEST(${target})
     ADD_TEST(NAME ${target} COMMAND ${target})
+    TARGET_COMPILE_DEFINITIONS(${target} PRIVATE -DQUIVER_TEST=1)
 ENDFUNCTION()
 
 FILE(GLOB tests ${CMAKE_SOURCE_DIR}/tests/cpp/test_*.cu)

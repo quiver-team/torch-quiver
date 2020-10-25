@@ -64,6 +64,16 @@ class graph
             w[i] = adj_.at(x).at(y);
         }
     }
+
+    bool operator==(const graph &g) const
+    {
+        if (n_ != g.n_) { return false; }
+        if (m_ != g.m_) { return false; }
+        if (!same_content(edges_, g.edges_)) { return false; }
+        // TODO: test weight
+        // if (adj_ != g.adj_) { return false; }
+        return true;
+    }
 };
 
 graph gen_random_graph(int n, int m)
@@ -74,7 +84,7 @@ graph gen_random_graph(int n, int m)
         for (int j = 0; j < max_trials; ++j) {
             int x = rand() % n;
             int y = rand() % n;
-            if (g.add_edge(x, y)) { break; }
+            if (g.add_edge(x, y, i + 1)) { break; }
         }
     }
     return g;
@@ -82,6 +92,19 @@ graph gen_random_graph(int n, int m)
 
 using V = int64_t;
 using Quiver = quiver::quiver<V, quiver::CUDA>;
+
+graph export_graph(const Quiver &q, bool &ok)
+{
+    std::vector<V> u;
+    std::vector<V> v;
+    q.get_edges(u, v);
+    graph g(q.size());
+    const int m = u.size();
+    for (int i = 0; i < m; ++i) {
+        if (u[i] < v[i]) { ok &= g.add_edge(u[i], v[i]); }
+    }
+    return g;
+}
 
 void test_construct_1()
 {
@@ -101,6 +124,10 @@ void test_construct_1()
     Quiver q = Quiver::New(g.N(), row_idx, col_idx, edge_idx);
 
     printf("|V|=%d, |E|=%d\n", (int)q.size(), (int)q.edge_counts());
+    bool ok = true;
+    auto g1 = export_graph(q, ok);
+    ASSERT_TRUE(ok);
+    ASSERT_EQ(g, g1);
 }
 
 void test_construct_2()
@@ -125,6 +152,10 @@ void test_construct_2()
     Quiver q = Quiver::New(g.N(), row_idx, col_idx, edge_idx, edge_weight);
 
     printf("|V|=%d, |E|=%d\n", (int)q.size(), (int)q.edge_counts());
+    bool ok = true;
+    auto g1 = export_graph(q, ok);
+    ASSERT_TRUE(ok);
+    ASSERT_EQ(g, g1);
 }
 
 TEST(test_quiver, test_1) { test_construct_1(); }

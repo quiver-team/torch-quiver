@@ -13,7 +13,7 @@ IF(USE_STRICT)
     ADD_DEFINITIONS(-Wfatal-errors)
 ENDIF()
 
-INCLUDE_DIRECTORIES(cuda-sample ${CMAKE_SOURCE_DIR}/srcs/cpp/include)
+INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/srcs/cpp/include)
 
 FIND_PACKAGE(stdtracer REQUIRED)
 
@@ -28,16 +28,16 @@ FUNCTION(ADD_SOURCE target)
     TARGET_SOURCES(${target} PRIVATE ${ARGN})
 ENDFUNCTION()
 
-ADD_LIBRARY(quiver SHARED)
-ADD_SOURCE(quiver ${CMAKE_SOURCE_DIR}/srcs/cpp/src/quiver/quiver.cpp)
-ADD_SOURCE(quiver ${CMAKE_SOURCE_DIR}/srcs/cpp/src/quiver/trace.cpp)
-IF(ENABLE_CUDA)
-    ADD_SOURCE(quiver ${CMAKE_SOURCE_DIR}/srcs/cpp/src/quiver/cuda/quiver.cu)
-ENDIF()
-
+# ADD_LIBRARY(quiver SHARED) ADD_SOURCE(quiver
+# ${CMAKE_SOURCE_DIR}/srcs/cpp/src/quiver/quiver.cpp) ADD_SOURCE(quiver
+# ${CMAKE_SOURCE_DIR}/srcs/cpp/src/quiver/trace.cpp) IF(ENABLE_CUDA)
+# ADD_SOURCE(quiver ${CMAKE_SOURCE_DIR}/srcs/cpp/src/quiver/cuda/quiver.cu)
+# ENDIF()
 
 IF(ENABLE_CUDA)
     # ADD_EXECUTABLE(cuda-sample examples/cuda_sample.cpp)
 ENDIF()
 
-ENABLE_TESTING()
+IF(BUILD_TESTS)
+    INCLUDE(srcs/cmake/tests.cmake)
+ENDIF()

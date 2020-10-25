@@ -1,15 +1,15 @@
 #pragma once
 #include <quiver/common.hpp>
-#include <quiver/cuda_pair.cu.hpp>
 #include <quiver/cuda_random.cu.hpp>
+#include <quiver/functor.cu.hpp>
 #include <quiver/quiver.hpp>
 #include <quiver/trace.hpp>
 #include <quiver/zip.cu.hpp>
-
-#include <cuda_runtime.h>
 #include <thrust/binary_search.h>
 #include <thrust/device_vector.h>
 #include <unordered_map>
+
+#include <cuda_runtime.h>
 
 namespace quiver
 {
@@ -173,9 +173,8 @@ class quiver<T, CUDA>
 
     const sample_option opt_;
 
-    quiver(thrust::device_vector<T> local_map,
-           thrust::device_vector<T> row_ptr, thrust::device_vector<T> col_idx,
-           thrust::device_vector<T> edge_idx)
+    quiver(thrust::device_vector<T> local_map, thrust::device_vector<T> row_ptr,
+           thrust::device_vector<T> col_idx, thrust::device_vector<T> edge_idx)
         : local_map_(std::move(local_map)),
           row_ptr_(std::move(row_ptr)),
           col_idx_(std::move(col_idx)),
@@ -184,9 +183,8 @@ class quiver<T, CUDA>
     {
     }
 
-    quiver(thrust::device_vector<T> local_map,
-           thrust::device_vector<T> row_ptr, thrust::device_vector<T> col_idx,
-           thrust::device_vector<T> edge_idx,
+    quiver(thrust::device_vector<T> local_map, thrust::device_vector<T> row_ptr,
+           thrust::device_vector<T> col_idx, thrust::device_vector<T> edge_idx,
            thrust::device_vector<W> edge_weight,
            thrust::device_vector<W> bucket_edge_weight)
         : local_map_(std::move(local_map)),

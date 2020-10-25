@@ -10,7 +10,20 @@ on:
   #     - master
 
 jobs:
-  test:
+  test-cpp:
+    # https://help.github.com/en/articles/virtual-environments-for-github-actions#supported-virtual-environments
+    runs-on:
+    - gpu
+    - self-hosted
+
+    steps:
+    - uses: actions/checkout@v1
+
+    - run: ./configure
+    - run: make
+    - run: ./bin/test-quiver
+
+  test-py:
     # https://help.github.com/en/articles/virtual-environments-for-github-actions#supported-virtual-environments
     runs-on:
     - gpu

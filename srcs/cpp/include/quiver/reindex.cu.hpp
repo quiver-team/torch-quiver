@@ -7,7 +7,7 @@
 #include <thrust/binary_search.h>
 #include <thrust/device_vector.h>
 
-#include <quiver/cuda_pair.cu.hpp>
+#include <quiver/functor.cu.hpp>
 #include <quiver/trace.hpp>
 
 template <typename T>

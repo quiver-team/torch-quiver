@@ -28,4 +28,4 @@ jobs:
 
     - run: pip install --no-index .
     - run: python examples/e1.py
-    - run: pytest tests/cpu
+    - run: pytest tests/python/cpu

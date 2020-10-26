@@ -127,12 +127,9 @@ void test_construct_1()
     std::vector<V> v(g.M());
     g.get_edges(u, v);
 
-    thrust::device_vector<V> row_idx(g.M());
-    thrust::device_vector<V> col_idx(g.M());
+    thrust::device_vector<V> row_idx = to_device<V>(u);
+    thrust::device_vector<V> col_idx = to_device<V>(v);
     thrust::device_vector<V> edge_idx(g.M());
-
-    thrust::copy(u.begin(), u.end(), row_idx.begin());
-    thrust::copy(v.begin(), v.end(), col_idx.begin());
     thrust::sequence(edge_idx.begin(), edge_idx.end());
     Quiver q = Quiver::New(g.N(), row_idx, col_idx, edge_idx);
 
@@ -151,15 +148,11 @@ void test_construct_2()
     std::vector<W> w(g.M());
     g.get_edges(u, v, w);
 
-    thrust::device_vector<V> row_idx(g.M());
-    thrust::device_vector<V> col_idx(g.M());
+    thrust::device_vector<V> row_idx = to_device<V>(u);
+    thrust::device_vector<V> col_idx = to_device<V>(v);
+    thrust::device_vector<W> edge_weight = to_device<W>(w);
     thrust::device_vector<V> edge_idx(g.M());
-    thrust::device_vector<W> edge_weight(g.M());
-
-    thrust::copy(u.begin(), u.end(), row_idx.begin());
-    thrust::copy(v.begin(), v.end(), col_idx.begin());
     thrust::sequence(edge_idx.begin(), edge_idx.end());
-    thrust::copy(w.begin(), w.end(), edge_weight.begin());
     Quiver q = Quiver::New(g.N(), row_idx, col_idx, edge_idx, edge_weight);
 
     printf("|V|=%d, |E|=%d\n", (int)q.size(), (int)q.edge_counts());

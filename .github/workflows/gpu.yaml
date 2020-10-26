@@ -10,7 +10,20 @@ on:
   #     - master
 
 jobs:
-  test:
+  test-cpp:
+    # https://help.github.com/en/articles/virtual-environments-for-github-actions#supported-virtual-environments
+    runs-on:
+    - gpu
+    - self-hosted
+
+    steps:
+    - uses: actions/checkout@v1
+
+    - run: ./configure
+    - run: make
+    - run: make test
+
+  test-py:
     # https://help.github.com/en/articles/virtual-environments-for-github-actions#supported-virtual-environments
     runs-on:
     - gpu
@@ -40,4 +53,4 @@ jobs:
 
     - run: python3 -m pip install --no-index .
     # - run: python examples/e1.py
-    - run: pytest tests/cuda
+    - run: pytest tests/python/cuda

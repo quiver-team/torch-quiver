@@ -1,5 +1,4 @@
 #pragma once
-
 #include <thrust/device_vector.h>
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/tuple.h>
@@ -26,16 +25,6 @@ void unzip(const thrust::device_vector<thrust::pair<T0, T1>> &p,
 {
     thrust::transform(p.begin(), p.end(), x.begin(), thrust_get<0>());
     thrust::transform(p.begin(), p.end(), y.begin(), thrust_get<1>());
-}
-
-template <typename Ty, typename Tx>
-thrust::device_vector<Ty> to_device(const std::vector<Tx> &x)
-{
-    static_assert(sizeof(Tx) == sizeof(Ty), "");
-    thrust::device_vector<Ty> y(x.size());
-    thrust::copy(reinterpret_cast<const Ty *>(x.data()),
-                 reinterpret_cast<const Ty *>(x.data()) + x.size(), y.begin());
-    return std::move(y);
 }
 
 template <typename T0, typename T1, typename T2>

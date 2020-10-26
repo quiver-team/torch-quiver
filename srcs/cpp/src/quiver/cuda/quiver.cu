@@ -4,6 +4,7 @@
 #include <thrust/device_vector.h>
 
 #include <torch/extension.h>
+#include <pybind11/numpy.h>
 
 #include <quiver/common.hpp>
 #include <quiver/functor.cu.hpp>
@@ -37,13 +38,13 @@ class TorchQuiver
 
     // deprecated, not compatible with AliGraph
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
-    sample_sub(const py::array_t<T> &input_vertices, int k) const
+    sample_sub(const torch::Tensor &vertices, int k) const
     {
         return sample_sub_with_stream(0, vertices, k);
     }
 
     std::tuple<py::array_t<T>, py::array_t<T>>
-    sample_once(const py::array_t<T> &input_vertices, int k) const
+    sample_once(py::array_t<T>input_vertices, int k) const
     {
         TRACE(__func__);
 
@@ -51,11 +52,11 @@ class TorchQuiver
         thrust::device_vector<T> outputs;
         thrust::device_vector<T> output_counts;
 
-        return sample_kernel(0, vertices, k, inputs, outputs, output_counts);
+        return sample_kernel(0, input_vertices, k, inputs, outputs, output_counts);
     }
 
     std::tuple<py::array_t<T>, py::array_t<T>>
-    sample_kernel(const cudaStream_t stream, py::array_t<T> &input_vertices,
+    sample_kernel(const cudaStream_t stream, py::array_t<T>input_vertices,
                   int k, thrust::device_vector<T> &inputs,
                   thrust::device_vector<T> &outputs,
                   thrust::device_vector<T> &output_counts) const
@@ -65,7 +66,7 @@ class TorchQuiver
         thrust::device_vector<T> output_ptr;
         thrust::device_vector<T> output_eid;
 
-        const py::buffer_info vertices = input_vertices.request();
+        py::buffer_info vertices = input_vertices.request();
         const T *p = reinterpret_cast<const T *>(vertices.ptr);
         check_eq<long>(vertices.ndim, 1);
         const size_t bs = vertices.shape[0];
@@ -111,14 +112,14 @@ class TorchQuiver
                            output_ptr.begin(), output_counts.begin(),
                            outputs.data(), output_eid.data());
         }
-        auto output_neighbor = py::array_t<T>(tot);
-        py::buffer_info neighbor = output_neighbor.request();
-        auto output_eid = py::array_t<T>(tot);
-        py::buffer_info eid = output_eid.request();
+        auto out_neighbor = py::array_t<T>(tot);
+        py::buffer_info neighbor = out_neighbor.request();
+        auto out_eid = py::array_t<T>(tot);
+        py::buffer_info eid = out_eid.request();
 
-        thrust::copy(outputs.begin(), outputs.end(), reinterpret_cast<T *>(neighbor.ptr);
+        thrust::copy(outputs.begin(), outputs.end(), reinterpret_cast<T *>(neighbor.ptr));
         thrust::copy(output_eid.begin(), output_eid.end(), reinterpret_cast<T *>(eid.ptr));
-        return std::make_tuple(output_neighbor, output_eid);
+        return std::make_tuple(out_neighbor, out_eid);
     }
 
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
@@ -129,12 +130,17 @@ class TorchQuiver
         const auto policy = thrust::cuda::par.on(stream);
         const size_t bs = vertices.size(0);
 
+        auto input_vertices = py::array_t<T>(bs);
+        py::buffer_info vs = input_vertices.request();
+        thrust::copy(vertices.data_ptr<T>(), vertices.data_ptr<T>() + bs,
+                     reinterpret_cast<T *>(vs.ptr));
+
         thrust::device_vector<T> inputs;
         thrust::device_vector<T> outputs;
         thrust::device_vector<T> output_counts;
         thrust::device_vector<T> subset;
 
-        sample_kernel(stream, vertices, k, inputs, outputs, output_counts);
+        sample_kernel(stream, input_vertices, k, inputs, outputs, output_counts);
         T tot = outputs.size();
 
         // reindex
@@ -191,13 +197,13 @@ class TorchQuiver
 // TODO: remove `n` and reuse code
 TorchQuiver
 new_quiver_from_edge_index(size_t n,  //
-                           const py::array_t<int64_t> &input_edges,
-                           const py::array_t<int64_t> &input_edge_idx)
+                           py::array_t<int64_t> &input_edges,
+                           py::array_t<int64_t> &input_edge_idx)
 {
     TRACE(__func__);
     using T = typename TorchQuiver::T;
-    const py::buffer_info edges = input_edges.request();
-    const py::buffer_info edge_idx = input_edge_idx.request();
+    py::buffer_info edges = input_edges.request();
+    py::buffer_info edge_idx = input_edge_idx.request();
     check_eq<int64_t>(edges.ndim, 2);
     check_eq<int64_t>(edges.shape[0], 2);
     const size_t m = edges.shape[1];
@@ -217,23 +223,23 @@ new_quiver_from_edge_index(size_t n,  //
         thrust::copy(p, p + m, edge_idx_.begin());
     }
     using Q = quiver<int64_t, CUDA>;
-    Q quiver = Q::New(reinterpret_cast<T>(n), std::move(row_idx),
+    Q quiver = Q::New(static_cast<T>(n), std::move(row_idx),
                       std::move(col_idx), std::move(edge_idx_));
     return TorchQuiver(std::move(quiver));
 }
 
 TorchQuiver
 new_quiver_from_edge_index_weight(size_t n,
-                                  const py::array_t<int64_t> &input_edges,
-                                  const py::array_t<int64_t> &input_edge_idx,
-                                  const py::array_t<float> &input_edge_weight)
+                                  py::array_t<int64_t> &input_edges,
+                                  py::array_t<int64_t> &input_edge_idx,
+                                  py::array_t<float> &input_edge_weight)
 {
     TRACE(__func__);
     using T = typename TorchQuiver::T;
     using W = typename TorchQuiver::W;
-    const py::buffer_info edges = input_edges.request();
-    const py::buffer_info edge_idx = input_edge_idx.request();
-    const py::buffer_info edge_weight = input_edge_weight.request();
+    py::buffer_info edges = input_edges.request();
+    py::buffer_info edge_idx = input_edge_idx.request();
+    py::buffer_info edge_weight = input_edge_weight.request();
     check_eq<int64_t>(edges.ndim, 2);
     check_eq<int64_t>(edges.shape[0], 2);
     const size_t m = edges.shape[1];
@@ -261,7 +267,7 @@ new_quiver_from_edge_index_weight(size_t n,
     }
     using Q = quiver<int64_t, CUDA>;
     Q quiver =
-        Q::New(reinterpret_cast<T>(n), std::move(row_idx), std::move(col_idx),
+        Q::New(static_cast<T>(n), std::move(row_idx), std::move(col_idx),
                std::move(edge_idx_), std::move(edge_weight_));
     return TorchQuiver(std::move(quiver));
 }

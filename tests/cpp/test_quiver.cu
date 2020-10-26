@@ -29,8 +29,8 @@ class graph
     {
         if (i == j) { return false; }
         if (adj_[i].count(j) > 0) { return false; }
-        if (i >= n_) { return false; }
-        if (j >= n_) { return false; }
+        if (i < 0 || i >= n_) { return false; }
+        if (j < 0 || j >= n_) { return false; }
 
         adj_[i][j] = w;
         adj_[j][i] = w;

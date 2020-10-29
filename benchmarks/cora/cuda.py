@@ -2,33 +2,30 @@ import os.path as osp
 
 import torch
 import torch.nn.functional as F
-from torch_geometric.data import NeighborSampler
-from torch_geometric.datasets import Reddit
+from torch_geometric.datasets import Planetoid
 from torch_geometric.nn import SAGEConv
 from tqdm import tqdm
 
+from quiver.cuda_sampler import CudaNeighborSampler
 from quiver.profile_utils import StopWatch
 
 w = StopWatch('main')
-path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'Reddit')
-dataset = Reddit(path)
+path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'Cora')
+dataset = Planetoid(path, 'Cora')
 data = dataset[0]
 w.tick('load data')
 
-num_workers = 1
-train_loader = NeighborSampler(data.edge_index,
-                               node_idx=data.train_mask,
-                               sizes=[25, 10],
-                               batch_size=1024,
-                               shuffle=True,
-                               num_workers=num_workers)
+train_loader = CudaNeighborSampler(data.edge_index,
+                                   node_idx=data.train_mask,
+                                   sizes=[25, 10],
+                                   batch_size=1024,
+                                   shuffle=True)
 w.tick('create train_loader')
-subgraph_loader = NeighborSampler(data.edge_index,
-                                  node_idx=None,
-                                  sizes=[-1],
-                                  batch_size=1024,
-                                  shuffle=False,
-                                  num_workers=num_workers)
+subgraph_loader = CudaNeighborSampler(data.edge_index,
+                                      node_idx=None,
+                                      sizes=[-1],
+                                      batch_size=1024,
+                                      shuffle=False)
 w.tick('create subgraph_loader')
 
 

@@ -1,0 +1,23 @@
+[begin] run.sh $ run_origin at 1603985042
+load data took 0.010s
+create train_loader took 0.002s
+create subgraph_loader took 0.001s
+build model took 2.913s
+before train took 0.000s
+Epoch 01: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 140/140 [00:00<00:00, 578.39it/s]
+Epoch 01, Loss: 1.9459, Approx. Train: 0.1500
+train took 0.244s
+main took 3.355s
+[done] run.sh $ run_origin took 9s
+
+[begin] run.sh $ run_quiver at 1603985051
+load data took 0.012s
+create train_loader took 2.966s
+create subgraph_loader took 0.001s
+build model took 0.017s
+before train took 0.000s
+Epoch 01: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 140/140 [00:00<00:00, 1414.58it/s]
+Epoch 01, Loss: 1.9484, Approx. Train: 0.1571
+train took 0.101s
+main took 3.252s
+[done] run.sh $ run_quiver took 8s

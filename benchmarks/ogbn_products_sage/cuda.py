@@ -133,7 +133,9 @@ def train(epoch):
     # pbar.set_description(f'Epoch {epoch:02d}')
 
     total_loss = total_correct = 0
+    w.turn_on('sample')
     for batch_size, n_id, adjs in train_loader:
+        w.turn_off('sample')
         # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
         # w1.tick('prepro')
         adjs = [adj.to(device) for adj in adjs]
@@ -149,6 +151,7 @@ def train(epoch):
         total_correct += int(out.argmax(dim=-1).eq(y[n_id[:batch_size]]).sum())
         # pbar.update(batch_size)
         # print('\n\n')
+        w.turn_on('sample')
 
     # pbar.close()
 

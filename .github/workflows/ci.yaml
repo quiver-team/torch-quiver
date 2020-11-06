@@ -27,5 +27,4 @@ jobs:
     - run: pip install -f https://download.pytorch.org/whl/torch_stable.html torch==1.6.0+cpu
 
     - run: pip install --no-index .
-    - run: python examples/e1.py
     - run: pytest tests/python/cpu

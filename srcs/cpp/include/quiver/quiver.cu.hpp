@@ -1,4 +1,5 @@
 #pragma once
+#include <quiver/algorithm.cu.hpp>
 #include <quiver/common.hpp>
 #include <quiver/copy.cu.hpp>
 #include <quiver/cuda_random.cu.hpp>
@@ -6,9 +7,9 @@
 #include <quiver/quiver.hpp>
 #include <quiver/trace.hpp>
 #include <quiver/zip.cu.hpp>
+
 #include <thrust/binary_search.h>
 #include <thrust/device_vector.h>
-#include <unordered_map>
 
 #include <cuda_runtime.h>
 
@@ -272,6 +273,17 @@ class quiver<T, CUDA>
                             row_ptr_.size(), col_idx_.size()));
     }
 
+    void async_degree(const cudaStream_t stream,
+                      thrust::device_ptr<const T> input_begin,
+                      thrust::device_ptr<const T> input_end,
+                      thrust::device_ptr<T> output_begin) const
+    {
+        async_transform(
+            stream, input_begin, input_end, output_begin,
+            get_adj_diff<T>(thrust::raw_pointer_cast(row_ptr_.data()),
+                            row_ptr_.size(), col_idx_.size()));
+    }
+
     template <typename Iter>
     void sample(const cudaStream_t stream, Iter input_begin, Iter input_end,
                 Iter output_ptr_begin, Iter output_count_begin,
@@ -287,6 +299,31 @@ class quiver<T, CUDA>
                                output_ptr_begin + len));
         thrust::for_each(
             thrust::cuda::par.on(stream), begin, end,
+            sample_functor<T, W>(
+                thrust::raw_pointer_cast(row_ptr_.data()), row_ptr_.size(),
+                thrust::raw_pointer_cast(col_idx_.data()),
+                thrust::raw_pointer_cast(edge_idx_.data()),
+                thrust::raw_pointer_cast(bucket_edge_weight_.data()),
+                col_idx_.size(), thrust::raw_pointer_cast(output_begin),
+                thrust::raw_pointer_cast(output_id_begin), opt_.weighted));
+    }
+
+    template <typename Iter>
+    void async_sample(const cudaStream_t stream, Iter input_begin,
+                      Iter input_end, Iter output_ptr_begin,
+                      Iter output_count_begin,
+                      thrust::device_ptr<T> output_begin,
+                      thrust::device_ptr<T> output_id_begin) const
+    {
+        const size_t len = input_end - input_begin;
+        thrust::counting_iterator<size_t> i(0);
+        auto begin = thrust::make_zip_iterator(thrust::make_tuple(
+            i, input_begin, output_count_begin, output_ptr_begin));
+        auto end = thrust::make_zip_iterator(
+            thrust::make_tuple(i + len, input_end, output_count_begin + len,
+                               output_ptr_begin + len));
+        async_for_each(
+            stream, begin, end,
             sample_functor<T, W>(
                 thrust::raw_pointer_cast(row_ptr_.data()), row_ptr_.size(),
                 thrust::raw_pointer_cast(col_idx_.data()),

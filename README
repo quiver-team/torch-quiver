@@ -8,7 +8,7 @@ Quick Run Benchmark
 ./U # upgrade quiver installation
 
 ./benchmarks/ogbn_products_sage/run.sh
-./benchmarks/reddit/run.sh
+./benchmarks/cora/run.sh
 ```
 
 Code Structure

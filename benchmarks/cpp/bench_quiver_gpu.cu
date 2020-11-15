@@ -8,12 +8,13 @@
 
 #include <thrust/binary_search.h>
 
+#include <tracer/simple_log>
+
 #include <quiver/quiver.cu.hpp>
-#include <quiver/trace.hpp>
 
 #include "common.hpp"
 
-DEFINE_TRACE;
+DEFINE_TRACE_CONTEXTS;
 
 using W = float;
 using V = int64_t;
@@ -22,7 +23,7 @@ using Quiver = quiver::quiver<V, quiver::CUDA>;
 void bench_sample_once(const cudaStream_t stream, const Quiver &q,
                        const std::vector<V> &batch, int k)
 {
-    TRACE(__func__);
+    TRACE_SCOPE(__func__);
     const auto policy = thrust::cuda::par.on(stream);
 
     thrust::device_vector<V> inputs(batch.size());
@@ -50,7 +51,7 @@ void bench_sample_once(const cudaStream_t stream, const Quiver &q,
     thrust::device_vector<V> output_eid(tot);
 
     {
-        TRACE("sample kernel");
+        TRACE_SCOPE("sample kernel");
         q.sample(stream, inputs.begin(), inputs.end(), output_ptr.begin(),
                  output_counts.begin(), outputs.data(), output_eid.data());
     }
@@ -58,7 +59,7 @@ void bench_sample_once(const cudaStream_t stream, const Quiver &q,
 
 void bench_1(const graph &g)
 {
-    TRACE(__func__);
+    TRACE_SCOPE(__func__);
 
     std::vector<V> u(g.M());
     std::vector<V> v(g.M());
@@ -88,7 +89,7 @@ void bench_1(const graph &g)
 
 int main(int argc, char *argv[])
 {
-    TRACE(__func__);
+    TRACE_SCOPE(__func__);
     using W = float;
     const int N = 1000000;
     const int M = 4000000;

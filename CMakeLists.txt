@@ -18,8 +18,9 @@ ENDIF()
 
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/srcs/cpp/include)
 
-IF(ENABLE_TRACE)
+IF(QUIVER_ENABLE_TRACE)
     INCLUDE(srcs/cmake/fetch_stdtracer.cmake)
+    ADD_COMPILE_OPTIONS(-DQUIVER_ENABLE_TRACE=1)
 ENDIF()
 IF(ENABLE_CUDA)
     INCLUDE(srcs/cmake/cuda.cmake)

@@ -7,6 +7,7 @@ AllowShortLoopsOnASingleLine: true
 AlwaysBreakTemplateDeclarations: true
 
 IndentWidth: 4
+IndentPPDirectives: BeforeHash
 BreakBeforeBraces: Linux
 SortIncludes: true
 # IncludeBlocks: true

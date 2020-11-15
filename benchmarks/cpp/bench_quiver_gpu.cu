@@ -8,9 +8,8 @@
 
 #include <thrust/binary_search.h>
 
-#include <tracer/simple_log>
-
 #include <quiver/quiver.cu.hpp>
+#include <quiver/trace.hpp>
 
 #include "common.hpp"
 
@@ -94,7 +93,7 @@ int main(int argc, char *argv[])
     using W = float;
     const int N = 1000000;
     const int M = 4000000;
-    auto g = gen_random_graph(N, M);
+    auto g = TRACE_EXPR(gen_random_graph(N, M));
     bench_1(g);
 
     return 0;

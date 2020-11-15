@@ -6,11 +6,11 @@
 #include "common.hpp"
 #include <quiver/trace.hpp>
 
-DEFINE_TRACE;
+DEFINE_TRACE_CONTEXTS;
 
 int main()
 {
-    TRACE(__func__);
+    TRACE_SCOPE(__func__);
     using W = float;
     auto g = gen_random_graph(100, 1000);
     // TODO

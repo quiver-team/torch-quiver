@@ -47,7 +47,8 @@ add_cmake_flags() {
     add_cmake_flag BUILD_TESTS 1
     add_cmake_flag BUILD_BENCHMARKS 1
     add_cmake_flag CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH}
-    add_cmake_flag ENABLE_TRACE $ENABLE_TRACE
+
+    add_cmake_flag QUIVER_ENABLE_TRACE $ENABLE_TRACE
 }
 
 main() {

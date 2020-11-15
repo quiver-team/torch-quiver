@@ -49,8 +49,8 @@ __host__ void for_each_kern(int size, InputIt first, UnaryOperation f)
 }
 
 template <class InputIt, class UnaryFunction>
-void asyc_for_each(const cudaStream_t stream, InputIt first, InputIt last,
-                   UnaryFunction f)
+void async_for_each(const cudaStream_t stream, InputIt first, InputIt last,
+                    UnaryFunction f)
 {
     const auto o = get_kernal_option();
     const int size = thrust::distance(first, last);

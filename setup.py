@@ -4,8 +4,6 @@ import os
 from setuptools import find_packages, setup
 from torch.utils import cpp_extension
 
-package_dir = './srcs/python'
-
 
 def find_cuda():
     # TODO: find cuda
@@ -37,6 +35,9 @@ def create_extension(with_cuda=False):
         srcs += glob.glob('srcs/cpp/src/quiver/cuda/*.cu')
         extra_cxx_flags += ['-DHAVE_CUDA']
 
+    if os.getenv('QUIVER_ENABLE_TRACE'):
+        extra_cxx_flags += ['-DQUIVER_ENABLE_TRACE=1']
+
     return cpp_extension.CppExtension(
         'torch_quiver',
         srcs,
@@ -51,13 +52,15 @@ def create_extension(with_cuda=False):
     )
 
 
+package_dir = './srcs/python'
+
 setup(
     name='torch_quiver',
     version='0.0.0',
-    # package_dir={
-    #     '': package_dir,
-    # },
-    # packages=find_packages(package_dir),
+    package_dir={
+        '': package_dir,
+    },
+    packages=find_packages(package_dir),
     ext_modules=[
         create_extension(have_cuda()),
     ],

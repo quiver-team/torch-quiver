@@ -54,6 +54,7 @@ void bench_sample_once(const cudaStream_t stream, const Quiver &q,
         TRACE_SCOPE("sample kernel");
         q.sample(stream, inputs.begin(), inputs.end(), output_ptr.begin(),
                  output_counts.begin(), outputs.data(), output_eid.data());
+        cudaDeviceSynchronize();
     }
 }
 

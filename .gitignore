@@ -4,8 +4,9 @@
 *.whl
 /3rdparty
 /KungFu
-/logs
 /Makefile
+/logs
 CTestTestfile.cmake
-generated
 Testing/
+_deps
+generated

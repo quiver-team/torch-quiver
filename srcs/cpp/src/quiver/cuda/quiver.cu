@@ -46,7 +46,7 @@ class TorchQuiver
     std::tuple<py::array_t<T>, py::array_t<T>>
     sample_once(py::array_t<T> input_vertices, int k) const
     {
-        TRACE(__func__);
+        TRACE_SCOPE(__func__);
 
         thrust::device_vector<T> inputs;
         thrust::device_vector<T> outputs;
@@ -73,7 +73,7 @@ class TorchQuiver
         const size_t bs = vertices.shape[0];
 
         {
-            TRACE("alloc_1");
+            TRACE_SCOPE("alloc_1");
             inputs.resize(bs);
             output_counts.resize(bs);
             output_ptr.resize(bs);
@@ -81,7 +81,7 @@ class TorchQuiver
         // output_ptr is exclusive prefix sum of output_counts(neighbor counts
         // <= k)
         {
-            TRACE("prepare");
+            TRACE_SCOPE("prepare");
             thrust::copy(p, p + bs, inputs.begin());
             auto local_map = quiver_.get_local_map();
             thrust::lower_bound(policy, local_map->cbegin(), local_map->cend(),
@@ -99,13 +99,13 @@ class TorchQuiver
                                  output_counts.end());
         }
         {
-            TRACE("alloc_2");
+            TRACE_SCOPE("alloc_2");
             outputs.resize(tot);
             output_eid.resize(tot);
         }
         // outputs[outptr[i], outptr[i + 1]) are unique neighbors of inputs[i]
         {
-            TRACE("sample");
+            TRACE_SCOPE("sample");
             quiver_.sample(stream, inputs.begin(), inputs.end(),
                            output_ptr.begin(), output_counts.begin(),
                            outputs.data(), output_eid.data());
@@ -126,7 +126,7 @@ class TorchQuiver
     sample_sub_with_stream(const cudaStream_t stream,
                            const torch::Tensor &vertices, int k) const
     {
-        TRACE(__func__);
+        TRACE_SCOPE(__func__);
         const auto policy = thrust::cuda::par.on(stream);
         const size_t bs = vertices.size(0);
 
@@ -147,7 +147,7 @@ class TorchQuiver
         // reindex
         {
             {
-                TRACE("reindex 0");
+                TRACE_SCOPE("reindex 0");
                 subset.resize(inputs.size() + outputs.size());
                 thrust::copy(policy, inputs.begin(), inputs.end(),
                              subset.begin());
@@ -159,7 +159,7 @@ class TorchQuiver
                 _reindex_with(policy, outputs, subset, outputs);
             }
             {
-                TRACE("permute");
+                TRACE_SCOPE("permute");
                 thrust::device_vector<T> s1;
                 s1.reserve(subset.size());
                 _reindex_with(policy, inputs, subset, s1);
@@ -176,7 +176,7 @@ class TorchQuiver
             torch::Tensor row_idx = torch::empty(tot, vertices.options());
             torch::Tensor col_idx = torch::empty(tot, vertices.options());
             {
-                TRACE("prepare output");
+                TRACE_SCOPE("prepare output");
                 std::vector<T> counts(output_counts.size());
                 std::vector<T> seq(output_counts.size());
                 thrust::copy(output_counts.begin(), output_counts.end(),
@@ -200,7 +200,7 @@ TorchQuiver new_quiver_from_edge_index(size_t n,  //
                                        py::array_t<int64_t> &input_edges,
                                        py::array_t<int64_t> &input_edge_idx)
 {
-    TRACE(__func__);
+    TRACE_SCOPE(__func__);
     using T = typename TorchQuiver::T;
     py::buffer_info edges = input_edges.request();
     py::buffer_info edge_idx = input_edge_idx.request();
@@ -233,7 +233,7 @@ new_quiver_from_edge_index_weight(size_t n, py::array_t<int64_t> &input_edges,
                                   py::array_t<int64_t> &input_edge_idx,
                                   py::array_t<float> &input_edge_weight)
 {
-    TRACE(__func__);
+    TRACE_SCOPE(__func__);
     using T = typename TorchQuiver::T;
     using W = typename TorchQuiver::W;
     py::buffer_info edges = input_edges.request();

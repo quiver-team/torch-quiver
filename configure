@@ -12,6 +12,20 @@ fi
 
 ENABLE_CUDA=${HAVE_CUDA}
 
+parse_args() {
+    for i in "$@"; do
+        case $i in
+        --enable-trace)
+            ENABLE_TRACE=1
+            ;;
+        *)
+            echo "unknown argument $i"
+            exit 1
+            ;;
+        esac
+    done
+}
+
 config() {
     PYTHON=$(which python3)
     mkdir -p srcs/cmake/generated
@@ -31,12 +45,16 @@ add_cmake_flags() {
     fi
     # add_cmake_flag BUILD_TORCH_EXTENSION 1
     add_cmake_flag BUILD_TESTS 1
+    add_cmake_flag BUILD_BENCHMARKS 1
     add_cmake_flag CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH}
+
+    add_cmake_flag QUIVER_ENABLE_TRACE $ENABLE_TRACE
 }
 
 main() {
     config
+    parse_args $@
     config_cmake
 }
 
-main
+main $@

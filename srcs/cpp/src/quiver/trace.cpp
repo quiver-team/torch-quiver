@@ -1,5 +1,5 @@
-#include <cstdlib>
-
 #include <quiver/trace.hpp>
 
-DEFINE_TRACE;
+#ifdef DQUIVER_ENABLE_TRACE
+DEFINE_TRACE_CONTEXTS;
+#endif

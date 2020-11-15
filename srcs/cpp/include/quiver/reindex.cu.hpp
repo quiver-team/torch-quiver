@@ -134,11 +134,11 @@ void reindex_with_seeds(const thrust::device_vector<T> &a,
                         thrust::device_vector<T> &b,
                         thrust::device_vector<T> &c)
 {
-    TRACE("reindex_with_seeds<thrust>");
+    TRACE_SCOPE("reindex_with_seeds<thrust>");
 
     // reindex(a, b, c);
     {
-        TRACE("reindex_with_seeds<thrust>::sort unique");
+        TRACE_SCOPE("reindex_with_seeds<thrust>::sort unique");
 
         b.resize(a.size() + s.size());
         thrust::copy(a.begin(), a.end(), b.begin());
@@ -148,33 +148,33 @@ void reindex_with_seeds(const thrust::device_vector<T> &a,
         b.resize(m);
     }
     {
-        TRACE("reindex_with_seeds<thrust>::_reindex_with 1");
+        TRACE_SCOPE("reindex_with_seeds<thrust>::_reindex_with 1");
         _reindex_with(a, b, c);
     }
 
     thrust::device_vector<T> s1;
     s1.reserve(b.size());
     {
-        TRACE("reindex_with_seeds<thrust>::_reindex_with 2");
+        TRACE_SCOPE("reindex_with_seeds<thrust>::_reindex_with 2");
         _reindex_with(s, b, s1);
     }
     {
-        TRACE("reindex_with_seeds<thrust>::complete_permutation");
+        TRACE_SCOPE("reindex_with_seeds<thrust>::complete_permutation");
         complete_permutation(s1, b.size());
     }
 
     {
-        TRACE("reindex_with_seeds<thrust>::permute");
+        TRACE_SCOPE("reindex_with_seeds<thrust>::permute");
         b = permute(s1, b);
     }
 
     thrust::device_vector<T> s2;
     {
-        TRACE("reindex_with_seeds<thrust>::inverse_permutation");
+        TRACE_SCOPE("reindex_with_seeds<thrust>::inverse_permutation");
         inverse_permutation(s1, s2);
     }
     {
-        TRACE("reindex_with_seeds<thrust>::permute_value");
+        TRACE_SCOPE("reindex_with_seeds<thrust>::permute_value");
         permute_value(s2, c);
     }
 }
@@ -202,7 +202,7 @@ void reindex_with_seeds(const std::vector<T> &a, const std::vector<T> &s,
     thrust::device_vector<T> cuda_a(a.size());
     thrust::device_vector<T> cuda_s(s.size());
     {
-        TRACE("reindex_with_seeds::copy1");
+        TRACE_SCOPE("reindex_with_seeds::copy1");
         thrust::copy(a.begin(), a.end(), cuda_a.begin());
         thrust::copy(s.begin(), s.end(), cuda_s.begin());
     }
@@ -212,7 +212,7 @@ void reindex_with_seeds(const std::vector<T> &a, const std::vector<T> &s,
     reindex_with_seeds(cuda_a, cuda_s, cuda_b, cuda_c);
 
     {
-        TRACE("reindex_with_seeds::copy2");
+        TRACE_SCOPE("reindex_with_seeds::copy2");
         b.resize(cuda_b.size());
         thrust::copy(cuda_b.begin(), cuda_b.end(), b.begin());
         c.resize(cuda_c.size());
@@ -227,7 +227,7 @@ void reindex_with_seeds(size_t l, const T *s, size_t r, const T *a,
     thrust::device_vector<T> cuda_a(r);
     thrust::device_vector<T> cuda_s(l);
     {
-        TRACE("reindex_with_seeds::copy1");
+        TRACE_SCOPE("reindex_with_seeds::copy1");
 
         thrust::copy(a, a + r, cuda_a.begin());
         thrust::copy(s, s + l, cuda_s.begin());
@@ -238,7 +238,7 @@ void reindex_with_seeds(size_t l, const T *s, size_t r, const T *a,
     reindex_with_seeds(cuda_a, cuda_s, cuda_b, cuda_c);
 
     {
-        TRACE("reindex_with_seeds::copy2");
+        TRACE_SCOPE("reindex_with_seeds::copy2");
         b.resize(cuda_b.size());
         thrust::copy(cuda_b.begin(), cuda_b.end(), b.begin());
         c.resize(cuda_c.size());

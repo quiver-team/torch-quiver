@@ -41,17 +41,6 @@ struct sample_option {
     bool partitioned;
 };
 
-// template <typename K, typename V>
-// class map_functor
-// {
-//     const V *map_;
-
-//   public:
-//     map_functor(const V *m) : map_(m) {}
-
-//     __device__ V operator()(K key) const { return map_[key]; }
-// };
-
 // make edge weight a nomalized prefix sum within each node
 template <typename T, typename W>
 class bucket_weight_functor
@@ -283,7 +272,7 @@ class quiver<T, CUDA>
                       thrust::device_ptr<T> output_begin) const
     {
         async_transform(
-            stream, input_begin, input_end, output_begin,
+            kernal_option(stream), input_begin, input_end, output_begin,
             get_adj_diff<T>(thrust::raw_pointer_cast(row_ptr_.data()),
                             row_ptr_.size(), col_idx_.size()));
     }
@@ -327,7 +316,7 @@ class quiver<T, CUDA>
             thrust::make_tuple(i + len, input_end, output_count_begin + len,
                                output_ptr_begin + len));
         async_for_each(
-            stream, begin, end,
+            kernal_option(stream), begin, end,
             sample_functor<T, W>(
                 thrust::raw_pointer_cast(row_ptr_.data()), row_ptr_.size(),
                 thrust::raw_pointer_cast(col_idx_.data()),

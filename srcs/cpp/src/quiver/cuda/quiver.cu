@@ -83,9 +83,7 @@ class TorchQuiver
         {
             TRACE_SCOPE("prepare");
             thrust::copy(p, p + bs, inputs.begin());
-            auto local_map = quiver_.get_local_map();
-            thrust::lower_bound(policy, local_map->cbegin(), local_map->cend(),
-                                inputs.begin(), inputs.end(), inputs.begin());
+            quiver_.to_local(stream, inputs);
             quiver_.degree(stream, inputs.data(), inputs.data() + inputs.size(),
                            output_counts.data());
             if (k >= 0) {

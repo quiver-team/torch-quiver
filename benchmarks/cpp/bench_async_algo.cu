@@ -47,8 +47,14 @@ void bench_1(int n, int times = 10)
             TRACE_SCOPE("async_transform(" + std::to_string(n) + ")");
             quiver::async_transform(o, x.begin(), x.end(), y.begin(), f);
         }
-        TRACE_STMT(cudaStreamSynchronize(*stream));
-        TRACE_STMT(stream.reset());
+        {
+            TRACE_SCOPE(name.str() + "::cudaStreamSynchronize");
+            cudaStreamSynchronize(*stream);
+        }
+        {
+            TRACE_SCOPE(name.str() + "::stream.reset");
+            stream.reset();
+        }
     }
 }
 

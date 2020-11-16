@@ -254,9 +254,13 @@ class quiver<T, CUDA>
 
     sample_option get_option() const { return opt_; }
 
-    const thrust::device_vector<T> *get_local_map() const
+    void to_local(const cudaStream_t stream,
+                  thrust::device_vector<T> &ids) const
     {
-        return &local_map_;
+        // TODO: skip if local_map is the full set
+        thrust::lower_bound(thrust::cuda::par.on(stream), local_map_.begin(),
+                            local_map_.end(), ids.begin(), ids.end(),
+                            ids.begin());
     }
 
     // device_t device() const   { return CUDA; }

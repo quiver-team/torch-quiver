@@ -20,8 +20,8 @@ kernal_option get_kernal_option()
 }
 
 template <class InputIt, class OutputIt, class UnaryOperation>
-__host__ void transform_kern(int size, InputIt first1, OutputIt d_first,
-                             UnaryOperation f)
+__global__ void transform_kern(int size, InputIt first1, OutputIt d_first,
+                               UnaryOperation f)
 {
     const int worker_idx = blockIdx.x * blockDim.x + threadIdx.x;
     const int worker_count = gridDim.x * blockDim.x;
@@ -41,7 +41,7 @@ void async_transform(const cudaStream_t stream, InputIt first1, InputIt last1,
 }
 
 template <class InputIt, class UnaryOperation>
-__host__ void for_each_kern(int size, InputIt first, UnaryOperation f)
+__global__ void for_each_kern(int size, InputIt first, UnaryOperation f)
 {
     const int worker_idx = blockIdx.x * blockDim.x + threadIdx.x;
     const int worker_count = gridDim.x * blockDim.x;

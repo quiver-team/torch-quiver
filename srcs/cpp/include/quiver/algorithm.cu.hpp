@@ -1,6 +1,7 @@
 #pragma once
 #include <cuda_runtime.h>
 #include <thrust/distance.h>
+#include <thrust/iterator/zip_iterator.h>
 
 namespace quiver
 {
@@ -19,26 +20,6 @@ struct kernal_option {
     }
 };
 
-template <class InputIt, class OutputIt, class UnaryOperation>
-__global__ void transform_kern(int size, InputIt first1, OutputIt d_first,
-                               UnaryOperation f)
-{
-    const int worker_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    const int worker_count = gridDim.x * blockDim.x;
-    for (int i = worker_idx; i < size; i += worker_count) {
-        *(d_first + i) = f(*(first1 + i));
-    }
-}
-
-template <class InputIt, class OutputIt, class UnaryOperation>
-void async_transform(const kernal_option o, InputIt first1, InputIt last1,
-                     OutputIt d_first, UnaryOperation f)
-{
-    const int size = thrust::distance(first1, last1);
-    transform_kern<<<o.blocks_per_grid, o.threads_per_block, o.shm_size,
-                     o.stream>>>(size, first1, d_first, f);
-}
-
 template <class InputIt, class UnaryOperation>
 __global__ void for_each_kern(int size, InputIt first, UnaryOperation f)
 {
@@ -54,5 +35,17 @@ void async_for_each(const kernal_option o, InputIt first, InputIt last,
     const int size = thrust::distance(first, last);
     for_each_kern<<<o.blocks_per_grid, o.threads_per_block, o.shm_size,
                     o.stream>>>(size, first, f);
+}
+
+template <class InputIt, class OutputIt, class UnaryOperation>
+void async_transform(const kernal_option o, InputIt first1, InputIt last1,
+                     OutputIt d_first, UnaryOperation f)
+{
+    const int size = thrust::distance(first1, last1);
+    auto begin = thrust::make_zip_iterator(thrust::make_tuple(first1, d_first));
+    for_each_kern<<<o.blocks_per_grid, o.threads_per_block, o.shm_size,
+                    o.stream>>>(size, begin, [f = f] __device__(auto p) {
+        thrust::get<1>(p) = f(thrust::get<0>(p));
+    });
 }
 }  // namespace quiver

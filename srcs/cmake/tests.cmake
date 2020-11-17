@@ -13,6 +13,8 @@ FUNCTION(ADD_UNIT_TEST target)
     LINK_GTEST(${target})
     ADD_TEST(NAME ${target} COMMAND ${target})
     TARGET_COMPILE_DEFINITIONS(${target} PRIVATE -DQUIVER_TEST=1)
+    TARGET_COMPILE_OPTIONS(
+        ${target} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-extended-lambda>)
 ENDFUNCTION()
 
 FILE(GLOB tests ${CMAKE_SOURCE_DIR}/tests/cpp/test_*.cu)

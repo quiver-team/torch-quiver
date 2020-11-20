@@ -18,7 +18,8 @@ class Task
 {
   public:
     Task() {}
-    virtual void dispatch(const std::vector<HeteroWorker> &workers) = 0;
+    virtual void dispatch(std::vector<HeteroWorker> workers) = 0;
+    virtual bool pull(HeteroWorker worker) = 0;
 };
 
 }  // namespace hybrid

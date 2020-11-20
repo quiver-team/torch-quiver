@@ -13,16 +13,30 @@ void layer_sample_task::dispatch(std::vector<HeteroWorker> workers)
             workers[i], fanout_, all_num_seeds_[i], all_src_[i], all_dst_[i]));
     }
 }
-bool layer_sample_task::pull(HeteroWorker worker)
+
+bool layer_sample_task::can_pull(HeteroWorker worker)
 {
     for (auto &runner : all_runner_) {
-        if (runner.get_worker() == worker) {
-            runner.run();
+        if (runner.get_state() == PREPARE && runner.set_worker(worker)) {
+            runner.set_state(READY);
             return true;
         }
     }
     return false;
 }
+
+void layer_sample_task::pull(HeteroWorker worker)
+{
+    for (auto &runner : all_runner_) {
+        if (runner.get_state() == READY && runner.get_worker() == worker) {
+            runner.set_state(RUN);
+            runner.run();
+            runner.set_state(DONE);
+            return;
+        }
+    }
+}
+
 void layer_sample_runner::run() {}
 }  // namespace sample
 }  // namespace hybrid

@@ -8,12 +8,20 @@ namespace hybrid
 {
 namespace sample
 {
+enum layer_sample_state {
+    PREPARE,
+    READY,
+    RUN,
+    DONE
+}
+
 class layer_sample_runner : public TaskRunner
 {
     int fanout_;
     int num_seeds_;
     HeteroAddress src_;
     HeteroAddress dst_;
+    layer_sample_state state_;
 
   public:
     layer_sample_runner(HeteroWorker worker, int fanout, int num_seeds,
@@ -22,11 +30,22 @@ class layer_sample_runner : public TaskRunner
           fanout_(fanout),
           num_seeds_(num_seeds_),
           src_(src),
-          dst_(dst)
+          dst_(dst),
+          state_(PREPARE)
     {
     }
+
+    void set_state(layer_sample_state state) {
+        state_ = state;
+    }
+
+    layer_sample_state get_state {
+        return state_;
+    }
+
     void run();
 };
+
 class layer_sample_task : public Task
 {
     int scale_;
@@ -47,8 +66,14 @@ class layer_sample_task : public Task
           all_dst_(std::move(all_dst))
     {
     }
+
     void dispatch(std::vector<HeteroWorker> workers);
-    bool pull(HeteroWorker worker);
+
+    bool can_pull(HeteroWorker worker);
+
+    void pull(HeteroWorker worker);
+
+    bool finished();
 };
 }  // namespace sample
 }  // namespace hybrid

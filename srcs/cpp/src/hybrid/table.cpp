@@ -4,7 +4,7 @@ namespace hybrid
 {
 bool TaskTable::add_flow(TaskFlow flow)
 {
-    std::lock_guard(mu_);
+    std::lock_guard _lk(mu_);
     if (capacity_ - available_ < flow.size()) { return false; }
     auto nodes = flow.get_nodes();
     auto slots = allocate(nodes.size());
@@ -17,7 +17,7 @@ bool TaskTable::add_flow(TaskFlow flow)
             }
         }
         entries_[index] = TaskEntry(index, nodes[i]->prev, std::move(children),
-                                    nodes[i]->task)
+                                    nodes[i]->task);
     }
 }
 
@@ -31,9 +31,7 @@ void TaskTable::pull(HeteroWorker worker)
                 available_++;
                 used_--;
                 std::vector<int> children = entries_[i].dependent_tasks();
-                for (int child: children) {
-                    entries_[child].prepare();
-                }
+                for (int child : children) { entries_[child].prepare(); }
             }
             mu_.unlock();
             return;

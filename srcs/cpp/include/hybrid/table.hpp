@@ -101,7 +101,7 @@ class TaskTable
     {
     }
 
-    void add_flow(TaskFlow flow);
+    bool add_flow(TaskFlow flow);
 
     void pull(HeteroWorker worker);
 };

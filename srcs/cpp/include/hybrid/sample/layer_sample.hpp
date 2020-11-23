@@ -1,5 +1,6 @@
 #pragma once
 #include <atomic>
+#include <memory>
 #include <vector>
 
 #include <hybrid/hetero.hpp>
@@ -59,7 +60,7 @@ class layer_sample_task : public Task
     std::vector<HeteroAddress> all_dst_;
     std::vector<HeteroAddress> all_cnt_;
     std::vector<int> all_num_seeds_;
-    std::vector<TaskRunner> all_runner_;
+    std::vector<std::unique_ptr<TaskRunner>> all_runner_;
 
   public:
     layer_sample_task(int scale, int fanout, std::vector<int> all_num_seeds,

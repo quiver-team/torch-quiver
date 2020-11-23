@@ -13,7 +13,7 @@ enum layer_sample_state {
     PREPARE,
     READY,
     RUN,
-    DONE
+    DONE,
 }
 
 class layer_sample_runner : public TaskRunner

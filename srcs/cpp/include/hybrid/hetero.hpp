@@ -7,6 +7,7 @@ enum HeteroDevice {
     CPU,
     CUDA,
 };
+
 class HeteroWorker
 {
     int rank_;
@@ -14,11 +15,15 @@ class HeteroWorker
     cudaStream_t stream_;
 
   public:
-    HeteroWorker(int rank, HeteroDevice device, const cudaStream_t &stream_)
-        : rank_(rank), device_(device), stream_(stream)
+    HeteroWorker(int rank, HeteroDevice device) : rank_(rank), device_(device)
     {
     }
     
+    HeteroWorker(int rank, HeteroDevice device, const cudaStream_t &stream_)
+        : HeteroWorker(rank, device), stream_(stream)
+    {
+    }
+
     cudaStream_t get_stream() { return stream_; }
 
     int get_rank() { return rank_; }

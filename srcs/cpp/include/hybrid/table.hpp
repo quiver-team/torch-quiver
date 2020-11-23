@@ -1,7 +1,6 @@
 #pragma once
 #include <atomic>
 #include <mutex>
-#include <unordered_map>
 #include <vector>
 
 #include <hybrid/hetero.hpp>
@@ -13,6 +12,11 @@ struct TaskNode {
     Task *task;
     int prev;
     std::vector<TaskNode *> children;
+
+    TaskNode(Task *task, int prev, std::vector<TaskNode *> children)
+        : task(task), prev(prev), children(std::move(children))
+    {
+    }
 };
 
 class TaskFlow
@@ -21,13 +25,23 @@ class TaskFlow
 
   public:
     TaskFlow(std::vector<TaskNode *> nodes) : nodes_(std::move(nodes)) {}
+
+    size_t size() { return nodes_.size(); }
+
     vector<TaskNode *> get_nodes() { return std::move(nodes_); }
 };
 
 struct TaskMeta {
-    int64_t id;
-    std::atomic<int> prev;
-    std::vector<int64_t> children;
+    int prev;
+    std::vector<int> children;
+    bool valid;
+
+    TaskMeta() : valid(false) {}
+
+    TaskMeta(int id, int prev, std::vector<int> children)
+        : id(id), prev(prev), children(std::move(children)), valid(true)
+    {
+    }
 };
 
 class TaskEntry
@@ -36,35 +50,54 @@ class TaskEntry
     Task *task_;
 
   public:
+    TaskEntry() : meta_(), task_(nullptr) {}
+
+    TaskEntry(int id, int prev, std::vector<int> children, Task *task)
+        : meta_(id, prev, children), task_(task)
+    {
+    }
+
+    void prepare()
+    {
+        assert(meta_.prev > 0);
+        meta_.prev--;
+    }
+
+    bool available() { return !meta_.valid || task_->finished(); }
+
     bool ready() { return meta_.prev == 0; }
 
     bool finished() { return task_->finished(); }
 
-    bool pull(HeteroWorker worker) {
-        if (task_->can_pull(worker)) {
-            return false;
-        } else {
-            task_->pull(worker);
-            return true;
-        }
+    bool valid() { return meta_.valid; }
+
+    bool pull(HeteroWorker worker, std::mutex *mu)
+    {
+        if (!ready()) { return false; }
+        if (!task_->can_pull(worker)) { return false; }
+        mu->unlock();
+        task_->pull(worker);
+        return true;
     }
 
-    std::vector<int64_t> dependent_tasks() {
-        return meta_.children;
-    }
+    std::vector<int> dependent_tasks() { return std::move(meta_.children); }
 };
 
 class TaskTable
 {
     std::mutex mu_;
-    std::unordered_map<int64_t, TaskEntry> entries_;
+    std::vector<TaskEntry> entries_;
     int capacity_;
-    int finished_;
-    int ready_;
-    int size_;
+    int available_;
+    int used_;
+
+    std::vector<int> allocate(int size);
 
   public:
-    TaskTable(int cap) : capacity_(cap), finished_(0), ready_(0), size_(0) {}
+    TaskTable(int cap)
+        : capacity_(cap), available_(cap), used_(0), entries_(cap)
+    {
+    }
 
     void add_flow(TaskFlow flow);
 

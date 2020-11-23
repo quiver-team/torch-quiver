@@ -14,7 +14,7 @@ enum layer_sample_state {
     READY,
     RUN,
     DONE,
-}
+};
 
 class layer_sample_runner : public TaskRunner
 {
@@ -38,9 +38,15 @@ class layer_sample_runner : public TaskRunner
     {
     }
 
-    void set_state(layer_sample_state state) { state_ = state; }
+    void set_state(layer_sample_state state)
+    {
+        state_ = static_cast<int>(state);
+    }
 
-    layer_sample_state get_state { return state_; }
+    layer_sample_state get_state()
+    {
+        return static_cast<layer_sample_state>(state_.load());
+    }
 
     void run();
 };
@@ -59,7 +65,7 @@ class layer_sample_task : public Task
     layer_sample_task(int scale, int fanout, std::vector<int> all_num_seeds,
                       std::vector<HeteroAddress> all_src,
                       std::vector<HeteroAddress> all_dst,
-                      std::vector<HeteroAddress> all_cnt;)
+                      std::vector<HeteroAddress> all_cnt)
         : scale_(scale),
           fanout_(fanout),
           all_num_seeds_(std::move(all_num_seeds)),

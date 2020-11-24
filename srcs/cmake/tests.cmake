@@ -17,6 +17,16 @@ FUNCTION(ADD_UNIT_TEST target)
         ${target} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-extended-lambda>)
 ENDFUNCTION()
 
+FILE(GLOB tests ${CMAKE_SOURCE_DIR}/tests/cpp/test_*.cpp)
+
+FOREACH(t ${tests})
+    GET_FILENAME_COMPONENT(name ${t} NAME_WE)
+    STRING(REPLACE "_" "-" name ${name})
+    ADD_UNIT_TEST(${name} ${t})
+    TARGET_INCLUDE_DIRECTORIES(${name} PRIVATE ${CUDA_INCLUDE_DIRS})
+    TARGET_LINK_LIBRARIES(${name} ${CUDA_LIBRARIES})
+ENDFOREACH()
+
 FILE(GLOB tests ${CMAKE_SOURCE_DIR}/tests/cpp/test_*.cu)
 
 FOREACH(t ${tests})

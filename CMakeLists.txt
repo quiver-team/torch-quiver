@@ -29,19 +29,12 @@ IF(BUILD_TORCH_EXTENSION)
     INCLUDE(srcs/cmake/torch.cmake)
 ENDIF()
 
-FUNCTION(ADD_SOURCE target)
-    TARGET_SOURCES(${target} PRIVATE ${ARGN})
+FUNCTION(TARGET_ADD_SOURCE_PATTERN target)
+    FILE(GLOB SRCS ${ARGN})
+    TARGET_SOURCES(${target} PRIVATE ${SRCS})
 ENDFUNCTION()
 
-# ADD_LIBRARY(quiver SHARED) ADD_SOURCE(quiver
-# ${CMAKE_SOURCE_DIR}/srcs/cpp/src/quiver/quiver.cpp) ADD_SOURCE(quiver
-# ${CMAKE_SOURCE_DIR}/srcs/cpp/src/quiver/trace.cpp) IF(ENABLE_CUDA)
-# ADD_SOURCE(quiver ${CMAKE_SOURCE_DIR}/srcs/cpp/src/quiver/cuda/quiver.cu)
-# ENDIF()
-
-IF(ENABLE_CUDA)
-    # ADD_EXECUTABLE(cuda-sample examples/cuda_sample.cpp)
-ENDIF()
+INCLUDE(srcs/cmake/lib.cmake)
 
 IF(BUILD_TESTS)
     INCLUDE(srcs/cmake/tests.cmake)

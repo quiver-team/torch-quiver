@@ -15,12 +15,13 @@ class HeteroWorker
     cudaStream_t stream_;
 
   public:
-    HeteroWorker(int rank, HeteroDevice device) : rank_(rank), device_(device)
+    HeteroWorker(int rank, HeteroDevice device)
+        : HeteroWorker(rank, device, nullptr)
     {
     }
-    
-    HeteroWorker(int rank, HeteroDevice device, const cudaStream_t &stream_)
-        : HeteroWorker(rank, device), stream_(stream)
+
+    HeteroWorker(int rank, HeteroDevice device, cudaStream_t stream)
+        : rank_(rank), device_(device), stream_(stream)
     {
     }
 
@@ -32,7 +33,7 @@ class HeteroWorker
 
     bool can_fit(HeteroWorker worker)
     {
-        return this->rank_ == worker.rank && this->device_ == worker.device_;
+        return this->rank_ == worker.rank_ && this->device_ == worker.device_;
     }
 };
 

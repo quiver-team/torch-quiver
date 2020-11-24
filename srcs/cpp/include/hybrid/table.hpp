@@ -1,5 +1,6 @@
 #pragma once
 #include <atomic>
+#include <cassert>
 #include <mutex>
 #include <vector>
 
@@ -28,10 +29,11 @@ class TaskFlow
 
     size_t size() { return nodes_.size(); }
 
-    vector<TaskNode *> get_nodes() { return std::move(nodes_); }
+    std::vector<TaskNode *> get_nodes() { return std::move(nodes_); }
 };
 
 struct TaskMeta {
+    int id;
     int prev;
     std::vector<int> children;
     bool valid;
@@ -99,7 +101,7 @@ class TaskTable
     {
     }
 
-    void add_flow(TaskFlow flow);
+    bool add_flow(TaskFlow flow);
 
     void pull(HeteroWorker worker);
 };

@@ -1,4 +1,5 @@
 import asyncio
+import concurrent
 import copy
 import os
 import time
@@ -20,22 +21,29 @@ class Adj(NamedTuple):
                    self.e_id.to(*args, **kwargs), self.size)
 
 
+async def async_process(pool, func, *args):
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(pool, func, *args)
+
+
 class LayerSampleTask(TaskNode):
-    def __init__(self, context, rank, quiver, batch, size):
+    def __init__(self, context, rank, quiver, batch, size, pool):
         super().__init__(context)
         self.rank = rank
         self.quiver = quiver
         self.batch = batch
         self.size = size
+        self.pool = pool
 
     def set_batch(self, batch):
         self.batch = batch
 
     def get_request(self):
         return 'gpu'
-    
+
     def _work(self):
-        result, row_idx, col_idx = self.quiver.sample_sub(self.batch, self.size)
+        result, row_idx, col_idx = self.quiver.sample_sub(
+            self.batch, self.size)
         self.result = result
         row_idx, col_idx = col_idx, row_idx
         edge_index = torch.stack([row_idx, col_idx], dim=0)
@@ -50,8 +58,7 @@ class LayerSampleTask(TaskNode):
         return result, adj
 
     async def do_work(self):
-        result, adj = await asyncio.to_thread(self._work)
-        return result, adj
+        return await async_process(self.loop, self._work)
 
     async def after_work(self):
         for child in self._children:
@@ -92,6 +99,7 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
         self.sizes = sizes
         self.tasks = []
         self.context = TaskContext(0, GPUInfo(1))
+        self.pool = concurrent.futures.ThreadPoolExecutor()
         self.build_tasks()
 
         super(CudaNeighborSampler, self).__init__(node_idx.tolist(),
@@ -101,21 +109,22 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
     def build_tasks(self):
         for i in range(len(self.sizes)):
             rank = -1 if i == len(self.sizes) - 1 else i
-            task = LayerSampleTask(self.context, rank, self.quiver, None, self.sizes[i])
+            task = LayerSampleTask(
+                self.context, rank, self.quiver, None, self.sizes[i], self.pool)
             self.tasks.append(task)
-        
+
         for i in range(len(self.sizes) - 1):
             self.tasks[i].add_child(self.tasks[i + 1])
-    
+
     def sample(self, batch):
         t0 = time.time()
         ret = self._sample(batch)
         d = time.time() - t0
         # print('sample took %fms' % (d * 1000))
         return ret
-    
+
     def _await_sample(self, batch):
-        return asyncio.run(asyncio.to_thread(self._sample, batch))
+        return asyncio.run(async_process(self.pool, self._sample, batch))
 
     def _coro_sample(self, batch):
         if not isinstance(batch, torch.Tensor):
@@ -126,7 +135,7 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
         adjs: List[Adj] = []
 
         n_id = batch
-        
+
         self.tasks[0].set_batch(batch)
         n_id, adjs = asyncio.run(self.tasks[0].run())
 

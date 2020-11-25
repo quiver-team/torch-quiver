@@ -58,7 +58,7 @@ class LayerSampleTask(TaskNode):
         return result, adj
 
     async def do_work(self):
-        return await async_process(self.loop, self._work)
+        return await async_process(self.pool, self._work)
 
     async def after_work(self):
         for child in self._children:

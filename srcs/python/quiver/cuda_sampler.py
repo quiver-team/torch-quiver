@@ -102,7 +102,7 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
         self.mode = mode
         if self.mode != 'sync':
             self.pool = concurrent.futures.ThreadPoolExecutor()
-            self.context = TaskContext(0, GPUInfo(1))
+            self.context = TaskContext(0, GPUContext(1))
 
         if self.mode == 'coro':
             self.tasks = []

@@ -1,6 +1,5 @@
 import asyncio
 import time
-from quiver.coro.task_context import TaskContext, GPUInfo
 
 
 class TaskNode:
@@ -50,8 +49,9 @@ class TaskNode:
         result = await self.merge_result(my_result, children_results)
         return result
 
+
 class SleepTask(TaskNode):
-    def __init__(self, context):            
+    def __init__(self, context):
         super().__init__(context)
 
     def get_request(self):
@@ -61,21 +61,16 @@ class SleepTask(TaskNode):
         await asyncio.sleep(1)
         print('sleep')
 
+
 class DemoTask(TaskNode):
-    def __init__(self, context, fanout):            
+    def __init__(self, context, fanout):
         super().__init__(context)
         for i in range(fanout):
             super().add_child(SleepTask(context))
-    
+
     def get_request(self):
         return 'gpu'
-    
+
     async def do_work(self):
         await asyncio.sleep(1)
         print('demo sleep')
-
-async def main():
-    context = TaskContext(4, GPUInfo(2))
-    demo = DemoTask(context, 4)
-    await demo.run()
-

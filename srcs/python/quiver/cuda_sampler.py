@@ -5,7 +5,8 @@ import os
 import time
 from typing import List, NamedTuple, Optional, Tuple
 
-from quiver.coro.task import *
+from quiver.coro.task import TaskNode
+from quiver.coro.task_context import TaskContext, GPUContext
 
 import torch
 import torch_quiver as qv
@@ -79,6 +80,7 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
     def __init__(self,
                  edge_index: torch.Tensor,
                  sizes: List[int],
+                 mode: str = 'sync',
                  node_idx: Optional[torch.Tensor] = None,
                  num_nodes: Optional[int] = None,
                  **kwargs):
@@ -97,10 +99,14 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
             node_idx = node_idx.nonzero().view(-1)
 
         self.sizes = sizes
-        self.tasks = []
-        self.context = TaskContext(0, GPUInfo(1))
-        self.pool = concurrent.futures.ThreadPoolExecutor()
-        self.build_tasks()
+        self.mode = mode
+        if self.mode != 'sync':
+            self.pool = concurrent.futures.ThreadPoolExecutor()
+            self.context = TaskContext(0, GPUInfo(1))
+
+        if self.mode == 'coro':
+            self.tasks = []
+            self.build_tasks()
 
         super(CudaNeighborSampler, self).__init__(node_idx.tolist(),
                                                   collate_fn=self.sample,
@@ -117,10 +123,12 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
             self.tasks[i].add_child(self.tasks[i + 1])
 
     def sample(self, batch):
-        t0 = time.time()
-        ret = self._sample(batch)
-        d = time.time() - t0
-        # print('sample took %fms' % (d * 1000))
+        if self.mode == 'await':
+            ret = self._await_sample(batch)
+        elif self.mode == 'coro':
+            ret = self._coro_sample(batch)
+        else:
+            ret = self._sample(batch)
         return ret
 
     def _await_sample(self, batch):

@@ -1,6 +1,6 @@
 import asyncio
 
-class GPUInfo:
+class GPUContext:
     def __init__(self, num):
         self._num_stream = num
 

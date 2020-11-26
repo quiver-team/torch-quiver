@@ -68,7 +68,7 @@ class LayerSampleTask(TaskNode):
     async def merge_result(self, me, children):
         if self.rank == -1:
             n_id, adj = me
-            adjs = []
+            adjs = [adj]
             return n_id, adjs
         n_id, adjs = children[0]
         _, adj = me

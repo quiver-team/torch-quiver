@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
 import os
-import os.path  as  osp
+import os.path as osp
 from ogb.nodeproppred import Evaluator, NodePropPredDataset
 from quiver.cuda_sampler import CudaNeighborSampler
 from quiver.profile_utils import StopWatch
 import torch
+from torch import multiprocessing as mp
 
 w = StopWatch('main')
 home = os.getenv('HOME')
@@ -22,6 +23,7 @@ w.tick('load data')
 graph, labels = data
 train_loader = CudaNeighborSampler(torch.Tensor(graph['edge_index']),
                                    node_idx=train_idx,
+                                   mode='coro',
                                    sizes=[15, 10, 5],
                                    batch_size=1024,
                                    shuffle=True)

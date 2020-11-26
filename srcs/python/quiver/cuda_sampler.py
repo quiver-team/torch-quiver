@@ -6,9 +6,10 @@ import time
 from typing import List, NamedTuple, Optional, Tuple
 
 from quiver.coro.task import TaskNode
-from quiver.coro.task_context import TaskContext, GPUContext
+from quiver.coro.task_context import TaskContext
 
 import torch
+from torch_sparse import SparseTensor
 import torch_quiver as qv
 
 
@@ -28,10 +29,11 @@ async def async_process(pool, func, *args):
 
 
 class LayerSampleTask(TaskNode):
-    def __init__(self, context, rank, quiver, batch, size, pool):
+    def __init__(self, context, rank, quiver, adj, batch, size, pool):
         super().__init__(context)
         self.rank = rank
         self.quiver = quiver
+        self.adj = adj
         self.batch = batch
         self.size = size
         self.pool = pool
@@ -40,20 +42,26 @@ class LayerSampleTask(TaskNode):
         self.batch = batch
 
     def get_request(self):
-        return 'gpu'
+        return {'gpu': 1, 'cpu': 1}
 
     def _work(self):
-        result, row_idx, col_idx = self.quiver.sample_sub(
-            self.batch, self.size)
+        typ, num = self.get_resource()
+        if typ == 'gpu':
+            result, row_idx, col_idx = self.quiver.sample_sub(
+                self.batch, self.size)
+            row_idx, col_idx = col_idx, row_idx
+            edge_index = torch.stack([row_idx, col_idx], dim=0)
+            size = torch.LongTensor([
+                result.size(0),
+                self.batch.size(0),
+            ])
+        else:
+            adj, result = self.adj.sample_adj(self.batch, self.size, replace=False)
+            adj = adj.t()
+            row, col, _ = adj.coo()
+            size = adj.sparse_sizes()
+            edge_index = torch.stack([row, col], dim=0)
         self.result = result
-        row_idx, col_idx = col_idx, row_idx
-        edge_index = torch.stack([row_idx, col_idx], dim=0)
-
-        size = torch.LongTensor([
-            result.size(0),
-            self.batch.size(0),
-        ])
-
         e_id = torch.tensor([])  # e_id is not used in the example
         adj = Adj(edge_index, e_id, size)
         return result, adj
@@ -86,12 +94,14 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
                  **kwargs):
 
         N = int(edge_index.max() + 1) if num_nodes is None else num_nodes
-        # print('building quiver')
-        t0 = time.time()
+        edge_attr = torch.arange(edge_index.size(1))
+        adj = SparseTensor(row=edge_index[0], col=edge_index[1],
+                           value=edge_attr, sparse_sizes=(N, N),
+                           is_sorted=False)
+        adj = adj.t()
+        self.adj = adj.to('cpu')
         edge_id = torch.zeros(edge_index.size(1), dtype=torch.long)
         self.quiver = qv.new_quiver_from_edge_index(N, edge_index, edge_id)
-        d = time.time() - t0
-        # print('build quiver took %fms' % (d * 1000))
 
         if node_idx is None:
             node_idx = torch.arange(N)
@@ -102,7 +112,7 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
         self.mode = mode
         if self.mode != 'sync':
             self.pool = concurrent.futures.ThreadPoolExecutor()
-            self.context = TaskContext(0, GPUContext(1))
+            self.context = TaskContext(1, 1)
 
         if self.mode == 'coro':
             self.tasks = []
@@ -116,7 +126,7 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
         for i in range(len(self.sizes)):
             rank = -1 if i == len(self.sizes) - 1 else i
             task = LayerSampleTask(
-                self.context, rank, self.quiver, None, self.sizes[i], self.pool)
+                self.context, rank, self.quiver, self.adj, None, self.sizes[i], self.pool)
             self.tasks.append(task)
 
         for i in range(len(self.sizes) - 1):

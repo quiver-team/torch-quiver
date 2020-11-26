@@ -21,7 +21,7 @@ train_idx = split_idx['train']
 
 w.tick('load data')
 graph, labels = data
-train_loader = CudaNeighborSampler(torch.Tensor(graph['edge_index']),
+train_loader = CudaNeighborSampler(torch.LongTensor(graph['edge_index']),
                                    node_idx=train_idx,
                                    mode='coro',
                                    sizes=[15, 10, 5],

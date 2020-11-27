@@ -42,13 +42,14 @@ class LayerSampleTask(TaskNode):
         self.batch = batch
 
     def get_request(self):
-        return {'gpu': 1, 'cpu': 1}
+        return {'gpu': 1}
 
     def _work(self):
         typ, num = self.get_resource()
         if typ == 'gpu':
+            print('gpu')
             result, row_idx, col_idx = self.quiver.sample_sub(
-                self.batch, self.size)
+                num, self.batch, self.size)
             row_idx, col_idx = col_idx, row_idx
             edge_index = torch.stack([row_idx, col_idx], dim=0)
             size = torch.LongTensor([
@@ -112,7 +113,9 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
         self.mode = mode
         if self.mode != 'sync':
             self.pool = concurrent.futures.ThreadPoolExecutor()
-            self.context = TaskContext(1, 1)
+            self.context = TaskContext(1, 4)
+            self.stream_pool = qv.StreamPool(4)
+            self.quiver.set_pool(self.stream_pool)
 
         if self.mode == 'coro':
             self.tasks = []
@@ -172,7 +175,7 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
 
         n_id = batch
         for size in self.sizes:
-            result, row_idx, col_idx = self.quiver.sample_sub(n_id, size)
+            result, row_idx, col_idx = self.quiver.sample_sub(0, n_id, size)
             assert (row_idx.max() < n_id.size(0))
 
             row_idx, col_idx = col_idx, row_idx

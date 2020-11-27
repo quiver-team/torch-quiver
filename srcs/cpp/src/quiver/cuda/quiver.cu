@@ -10,6 +10,7 @@
 #include <quiver/functor.cu.hpp>
 #include <quiver/quiver.cu.hpp>
 #include <quiver/reindex.cu.hpp>
+#include <quiver/stream_pool.hpp>
 #include <quiver/trace.hpp>
 #include <quiver/zip.hpp>
 
@@ -29,12 +30,18 @@ class TorchQuiver
 {
     using torch_quiver_t = quiver<int64_t, CUDA>;
     torch_quiver_t quiver_;
+    stream_pool *pool_;
 
   public:
-    TorchQuiver(torch_quiver_t quiver) : quiver_(std::move(quiver)) {}
+    TorchQuiver(torch_quiver_t quiver)
+        : quiver_(std::move(quiver)), pool_(nullptr)
+    {
+    }
 
     using T = int64_t;
     using W = float;
+
+    void set_pool(stream_pool &pool) { pool_ = &pool; }
 
     // deprecated, not compatible with AliGraph
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
@@ -121,10 +128,12 @@ class TorchQuiver
     }
 
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
-    sample_sub_with_stream(const cudaStream_t stream,
-                           const torch::Tensor &vertices, int k) const
+    sample_sub_with_stream(int stream_num, const torch::Tensor &vertices,
+                           int k) const
     {
         TRACE_SCOPE(__func__);
+        cudaStream_t stream = 0;
+        if (pool_) { stream = (*pool_)[stream_num]; }
         const auto policy = thrust::cuda::par.on(stream);
         const size_t bs = vertices.size(0);
 
@@ -275,6 +284,8 @@ void register_cuda_quiver(pybind11::module &m)
     m.def("new_quiver_from_edge_index_weight",
           &quiver::new_quiver_from_edge_index_weight);
     py::class_<quiver::TorchQuiver>(m, "Quiver")
-        .def("sample_sub", &quiver::TorchQuiver::sample_sub)
+        .def("sample_sub", &quiver::TorchQuiver::sample_sub_with_stream)
+        .def("set_pool", &quiver::TorchQuiver::set_pool)
         .def("sample", &quiver::TorchQuiver::sample_once);
+    py::class_<quiver::stream_pool>(m, "StreamPool").def(py::init<int>());
 }

@@ -16,6 +16,7 @@ from torch_geometric.nn import SAGEConv
 from tqdm import tqdm
 
 p = argparse.ArgumentParser(description='')
+p.add_argument('--mode', type=str, default='sync', help='sync | await | coro')
 p.add_argument('--runs', type=int, default=10, help='number of runs')
 p.add_argument('--epochs', type=int, default=20, help='number of epochs')
 p.add_argument('--distribute', type=str, default='', help='kungfu | horovod')
@@ -44,6 +45,7 @@ train_loader = CudaNeighborSampler(data.edge_index,
                                    node_idx=train_idx,
                                    sizes=[15, 10, 5],
                                    batch_size=1024,
+                                   mode=args.mode,
                                    shuffle=True)
 w.tick('create train_loader')
 subgraph_loader = CudaNeighborSampler(data.edge_index,

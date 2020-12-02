@@ -50,21 +50,8 @@ class TorchQuiver
         return sample_sub_with_stream(0, vertices, k);
     }
 
-    std::tuple<py::array_t<T>, py::array_t<T>>
-    sample_once(py::array_t<T> input_vertices, int k) const
-    {
-        TRACE_SCOPE(__func__);
-
-        thrust::device_vector<T> inputs;
-        thrust::device_vector<T> outputs;
-        thrust::device_vector<T> output_counts;
-
-        return sample_kernel(0, input_vertices, k, inputs, outputs,
-                             output_counts);
-    }
-
-    std::tuple<py::array_t<T>, py::array_t<T>>
-    sample_kernel(const cudaStream_t stream, py::array_t<T> input_vertices,
+    std::tuple<torch::Tensor, torch::Tensor>
+    sample_kernel(const cudaStream_t stream, const torch::Tensor &vertices,
                   int k, thrust::device_vector<T> &inputs,
                   thrust::device_vector<T> &outputs,
                   thrust::device_vector<T> &output_counts) const
@@ -73,11 +60,8 @@ class TorchQuiver
         const auto policy = thrust::cuda::par.on(stream);
         thrust::device_vector<T> output_ptr;
         thrust::device_vector<T> output_eid;
-
-        py::buffer_info vertices = input_vertices.request();
-        const T *p = reinterpret_cast<const T *>(vertices.ptr);
-        check_eq<long>(vertices.ndim, 1);
-        const size_t bs = vertices.shape[0];
+        const T *p = vertices.data_ptr<T>();
+        const size_t bs = vertices.size(0);
 
         {
             TRACE_SCOPE("alloc_1");
@@ -115,15 +99,13 @@ class TorchQuiver
                            output_ptr.begin(), output_counts.begin(),
                            outputs.data(), output_eid.data());
         }
-        auto out_neighbor = py::array_t<T>(tot);
-        py::buffer_info neighbor = out_neighbor.request();
-        auto out_eid = py::array_t<T>(tot);
-        py::buffer_info eid = out_eid.request();
+        torch::Tensor out_neighbor = torch::empty(tot, vertices.options());
+        torch::Tensor out_eid = torch::empty(tot, vertices.options());
 
         thrust::copy(outputs.begin(), outputs.end(),
-                     reinterpret_cast<T *>(neighbor.ptr));
+                     out_neighbor.data_ptr<T>());
         thrust::copy(output_eid.begin(), output_eid.end(),
-                     reinterpret_cast<T *>(eid.ptr));
+                     out_eid.data_ptr<T>());
         return std::make_tuple(out_neighbor, out_eid);
     }
 
@@ -136,19 +118,11 @@ class TorchQuiver
         if (pool_) { stream = (*pool_)[stream_num]; }
         const auto policy = thrust::cuda::par.on(stream);
         const size_t bs = vertices.size(0);
-
-        auto input_vertices = py::array_t<T>(bs);
-        py::buffer_info vs = input_vertices.request();
-        thrust::copy(vertices.data_ptr<T>(), vertices.data_ptr<T>() + bs,
-                     reinterpret_cast<T *>(vs.ptr));
-
         thrust::device_vector<T> inputs;
         thrust::device_vector<T> outputs;
         thrust::device_vector<T> output_counts;
         thrust::device_vector<T> subset;
-
-        sample_kernel(stream, input_vertices, k, inputs, outputs,
-                      output_counts);
+        sample_kernel(stream, vertices, k, inputs, outputs, output_counts);
         T tot = outputs.size();
 
         // reindex
@@ -284,8 +258,8 @@ void register_cuda_quiver(pybind11::module &m)
     m.def("new_quiver_from_edge_index_weight",
           &quiver::new_quiver_from_edge_index_weight);
     py::class_<quiver::TorchQuiver>(m, "Quiver")
-        .def("sample_sub", &quiver::TorchQuiver::sample_sub_with_stream)
-        .def("set_pool", &quiver::TorchQuiver::set_pool)
-        .def("sample", &quiver::TorchQuiver::sample_once);
+        .def("sample_sub", &quiver::TorchQuiver::sample_sub_with_stream,
+             py::call_guard<py::gil_scoped_release>())
+        .def("set_pool", &quiver::TorchQuiver::set_pool);
     py::class_<quiver::stream_pool>(m, "StreamPool").def(py::init<int>());
 }

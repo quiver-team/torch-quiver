@@ -6,15 +6,15 @@ import time
 
 class AsyncDataGenerator:
     def __init__(self, dataset, batch_size, num_worker, queue):
-        self.prepare(dataset)
         self.batch_size = batch_size
         self.num_worker = num_worker
         self.index = 0
         self.consumed = 0
         self.round = 0
         self.pool = concurrent.futures.ThreadPoolExecutor()
-        self.tasks = [self.create_task() for i in range(num_worker)]
+        self.prepare(dataset)
         self.queue = queue
+        self.tasks = [self.create_task() for i in range(num_worker)]
 
     def prepare(self, dataset):
         self.dataset = dataset
@@ -34,7 +34,7 @@ class AsyncDataGenerator:
         self.index = 0
         self.consumed = 0
         self.round = 0
-        self.tasks = [self.create_task() for i in range(num_worker)]
+        self.tasks = [self.create_task() for i in range(self.num_worker)]
 
     def shuffle(self):
         return
@@ -68,7 +68,7 @@ class AsyncDataGenerator:
 
 class AsyncDataLoader:
     def __init__(self, dataset, batch_size, num_worker):
-        self.queue = mp.Queue()
+        self.queue = mp.Queue(num_worker)
         proc = mp.Process(target=self.sample_process, args=(
             dataset, batch_size, num_worker, self.queue))
         proc.start()
@@ -77,11 +77,18 @@ class AsyncDataLoader:
     async def async_generate_process(self, dataset, batch_size, num_worker, queue):
         sampler = self.new_generator(
             dataset, batch_size, num_worker, queue)
-        batch = await sampler.get_once()
-        while batch is not None:
-            self.queue.put(batch)
+        while True:
             batch = await sampler.get_once()
-        self.queue.put(None)
+            while batch is not None:
+                self.queue.put(batch)
+                batch = await sampler.get_once()
+            self.queue.put(None)
+            time.sleep(1)
+            cont = self.queue.get()
+            if cont is True:
+                sampler.reset()
+            else:
+                return
 
     def sample_process(self, dataset, batch_size, num_worker, queue):
         asyncio.run(self.async_generate_process(
@@ -98,3 +105,7 @@ class AsyncDataLoader:
         if result is None:
             raise StopIteration
         return result
+
+    def reset(self):
+        self.queue.put(True)
+        time.sleep(1)

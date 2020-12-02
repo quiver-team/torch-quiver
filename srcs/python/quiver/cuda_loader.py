@@ -6,7 +6,6 @@ import concurrent
 from typing import List, NamedTuple, Optional, Tuple
 
 import torch
-from torch_sparse import SparseTensor
 import torch_quiver as qv
 
 
@@ -24,11 +23,6 @@ class CudaDataset:
     def __init__(self, edge_index, sizes, node_idx):
         N = int(edge_index.max() + 1)
         edge_attr = torch.arange(edge_index.size(1))
-        adj = SparseTensor(row=edge_index[0], col=edge_index[1],
-                           value=edge_attr, sparse_sizes=(N, N),
-                           is_sorted=False)
-        adj = adj.t()
-        self.adj = adj.to('cpu')
         edge_id = torch.zeros(edge_index.size(1), dtype=torch.long)
         self.quiver = qv.new_quiver_from_edge_index(N, edge_index, edge_id)
         if node_idx is None:
@@ -41,8 +35,8 @@ class CudaNeighborGenerator(AsyncDataGenerator):
     def prepare(self, dataset):
         edge_index, sizes, node_idx = dataset
         self.dataset = CudaDataset(edge_index, sizes, node_idx)
-        self.context = TaskContext(1, 4)
-        self.stream_pool = qv.StreamPool(4)
+        self.context = TaskContext(1, self.num_worker)
+        self.stream_pool = qv.StreamPool(self.num_worker)
         self.dataset.quiver.set_pool(self.stream_pool)
 
     async def async_run(self, batch):
@@ -64,8 +58,6 @@ class CudaNeighborGenerator(AsyncDataGenerator):
         for size in self.dataset.sizes:
             result, row_idx, col_idx = self.dataset.quiver.sample_sub(
                 stream, n_id, size)
-            assert (row_idx.max() < n_id.size(0))
-
             row_idx, col_idx = col_idx, row_idx
             edge_index = torch.stack([row_idx, col_idx], dim=0)
 

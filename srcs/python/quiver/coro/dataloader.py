@@ -83,7 +83,7 @@ class AsyncDataLoader:
                 self.queue.put(batch)
                 batch = await sampler.get_once()
             self.queue.put(None)
-            time.sleep(1)
+            time.sleep(0.3)
             cont = self.queue.get()
             if cont is True:
                 sampler.reset()
@@ -108,4 +108,4 @@ class AsyncDataLoader:
 
     def reset(self):
         self.queue.put(True)
-        time.sleep(1)
+        time.sleep(0.3)

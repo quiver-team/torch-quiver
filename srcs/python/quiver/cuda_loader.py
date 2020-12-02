@@ -3,6 +3,7 @@ from quiver.coro.task_context import TaskContext
 
 import asyncio
 import concurrent
+import random
 from typing import List, NamedTuple, Optional, Tuple
 
 import torch
@@ -89,10 +90,18 @@ class CudaNeighborGenerator(AsyncDataGenerator):
         self.index = end
         return self.dataset.node_idx[beg: end]
 
+    def shuffle(self):
+        random.shuffle(self.dataset.node_idx)
+
 
 class CudaNeighborLoader(AsyncDataLoader):
     def __init__(self, dataset, batch_size, num_worker):
         super().__init__(dataset, batch_size, num_worker)
+        _, _, node_idx = dataset
+        self.len = len(node_idx) // batch_size + 1
+
+    def __len__(self):
+        return self.len
 
     def new_generator(self, dataset, batch_size, num_worker, queue):
         return CudaNeighborGenerator(dataset, batch_size, num_worker, queue)

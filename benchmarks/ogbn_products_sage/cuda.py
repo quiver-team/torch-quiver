@@ -61,12 +61,12 @@ def main():
                                            mode=args.mode,
                                            shuffle=True)
     w.tick('create train_loader')
-    # subgraph_loader = CudaNeighborSampler(data.edge_index,
-    #                                       node_idx=None,
-    #                                       sizes=[-1],
-    #                                       batch_size=4096,
-    #                                       shuffle=False)
-    # w.tick('create subgraph_loader')
+    subgraph_loader = CudaNeighborSampler(data.edge_index,
+                                          node_idx=None,
+                                          sizes=[-1],
+                                          batch_size=4096,
+                                          shuffle=False)
+    w.tick('create subgraph_loader')
 
     class SAGE(torch.nn.Module):
         def __init__(self, in_channels, hidden_channels, out_channels, num_layers):

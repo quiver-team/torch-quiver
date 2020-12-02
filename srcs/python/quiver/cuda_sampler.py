@@ -56,7 +56,8 @@ class LayerSampleTask(TaskNode):
                 self.batch.size(0),
             ])
         else:
-            adj, result = self.adj.sample_adj(self.batch, self.size, replace=False)
+            adj, result = self.adj.sample_adj(
+                self.batch, self.size, replace=False)
             adj = adj.t()
             row, col, _ = adj.coo()
             size = adj.sparse_sizes()

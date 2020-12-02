@@ -47,7 +47,6 @@ class LayerSampleTask(TaskNode):
     def _work(self):
         typ, num = self.get_resource()
         if typ == 'gpu':
-            print('gpu')
             result, row_idx, col_idx = self.quiver.sample_sub(
                 num, self.batch, self.size)
             row_idx, col_idx = col_idx, row_idx
@@ -57,7 +56,8 @@ class LayerSampleTask(TaskNode):
                 self.batch.size(0),
             ])
         else:
-            adj, result = self.adj.sample_adj(self.batch, self.size, replace=False)
+            adj, result = self.adj.sample_adj(
+                self.batch, self.size, replace=False)
             adj = adj.t()
             row, col, _ = adj.coo()
             size = adj.sparse_sizes()

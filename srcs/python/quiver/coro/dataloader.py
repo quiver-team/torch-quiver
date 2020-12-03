@@ -2,10 +2,20 @@ import asyncio
 import concurrent
 import multiprocessing as mp
 import time
+<<<<<<< HEAD
 
 
 class AsyncDataGenerator:
     def __init__(self, dataset, batch_size, num_worker, queue):
+=======
+import horovod.torch as hvd
+import torch
+
+
+class AsyncDataGenerator:
+    def __init__(self, dataset, batch_size, num_worker, queue, rank=0):
+        self.rank = rank
+>>>>>>> refine
         self.batch_size = batch_size
         self.num_worker = num_worker
         self.index = 0
@@ -69,33 +79,40 @@ class AsyncDataGenerator:
 class AsyncDataLoader:
     def __init__(self, dataset, batch_size, num_worker):
         self.queue = mp.Queue(num_worker)
+        rank = 0
+        try:
+            rank = hvd.local_rank()
+        except ValueError:
+            pass
         proc = mp.Process(target=self.sample_process, args=(
-            dataset, batch_size, num_worker, self.queue))
+            rank, dataset, batch_size, num_worker, self.queue))
         proc.start()
         self.proc = proc
 
-    async def async_generate_process(self, dataset, batch_size, num_worker, queue):
+    async def async_generate_process(self, dataset, batch_size, num_worker, queue, rank=0):
         sampler = self.new_generator(
-            dataset, batch_size, num_worker, queue)
+            dataset, batch_size, num_worker, queue, rank)
         while True:
             batch = await sampler.get_once()
             while batch is not None:
                 self.queue.put(batch)
                 batch = await sampler.get_once()
             self.queue.put(None)
-            time.sleep(0.3)
+            time.sleep(1)
             cont = self.queue.get()
             if cont is True:
                 sampler.reset()
             else:
                 return
 
-    def sample_process(self, dataset, batch_size, num_worker, queue):
+    def sample_process(self, rank, dataset, batch_size, num_worker, queue):
+        if torch.cuda.is_available():
+            torch.cuda.set_device(rank)
         asyncio.run(self.async_generate_process(
-            dataset, batch_size, num_worker, queue))
+            dataset, batch_size, num_worker, queue, rank))
 
-    def new_generator(self, dataset, batch_size, num_worker, queue):
-        return AsyncDataGenerator(dataset, batch_size, num_worker, queue)
+    def new_generator(self, dataset, batch_size, num_worker, queue, rank=0):
+        return AsyncDataGenerator(dataset, batch_size, num_worker, queue, rank)
 
     def __iter__(self):
         return self
@@ -108,4 +125,8 @@ class AsyncDataLoader:
 
     def reset(self):
         self.queue.put(True)
-        time.sleep(0.3)
+        time.sleep(1)
+    
+    def close(self):
+        self.queue.put(False)
+        time.sleep(1)

@@ -37,8 +37,9 @@ class CudaNeighborGenerator(AsyncDataGenerator):
         edge_index, sizes, node_idx = dataset
         self.dataset = CudaDataset(edge_index, sizes, node_idx)
         self.context = TaskContext(1, self.num_worker)
-        self.stream_pool = qv.StreamPool(self.num_worker)
-        self.dataset.quiver.set_pool(self.stream_pool)
+        # torch.cuda.set_device(self.rank)
+        # self.stream_pool = qv.StreamPool(self.num_worker)
+        # self.dataset.quiver.set_pool(self.stream_pool)
 
     async def async_run(self, batch):
         typ, num = await self.context.request({'gpu': 1})
@@ -53,6 +54,11 @@ class CudaNeighborGenerator(AsyncDataGenerator):
 
         batch_size: int = len(batch)
 
+<<<<<<< HEAD
+=======
+        torch.cuda.set_device(self.rank)
+
+>>>>>>> refine
         adjs: List[Adj] = []
 
         n_id = batch
@@ -103,5 +109,5 @@ class CudaNeighborLoader(AsyncDataLoader):
     def __len__(self):
         return self.len
 
-    def new_generator(self, dataset, batch_size, num_worker, queue):
-        return CudaNeighborGenerator(dataset, batch_size, num_worker, queue)
+    def new_generator(self, dataset, batch_size, num_worker, queue, rank=0):
+        return CudaNeighborGenerator(dataset, batch_size, num_worker, queue, rank)

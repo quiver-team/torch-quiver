@@ -149,6 +149,7 @@ def main():
         w.turn_on('sample')
         for batch_size, n_id, adjs in train_loader:
             w.turn_off('sample')
+            w.turn_on('train')
             # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
             # w1.tick('prepro')
             adjs = [adj.to(device) for adj in adjs]
@@ -166,6 +167,10 @@ def main():
             # pbar.update(batch_size)
             # print('\n\n')
             w.turn_on('sample')
+            w.turn_off('train')
+        if epoch == args.epochs and args.mode == 'prefetch':
+            train_loader.close()
+        w.turn_off('sample')
 
         # pbar.close()
 

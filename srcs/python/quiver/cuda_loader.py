@@ -54,11 +54,8 @@ class CudaNeighborGenerator(AsyncDataGenerator):
 
         batch_size: int = len(batch)
 
-<<<<<<< HEAD
-=======
         torch.cuda.set_device(self.rank)
 
->>>>>>> refine
         adjs: List[Adj] = []
 
         n_id = batch

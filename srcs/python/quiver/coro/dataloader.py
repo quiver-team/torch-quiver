@@ -2,12 +2,6 @@ import asyncio
 import concurrent
 import multiprocessing as mp
 import time
-<<<<<<< HEAD
-
-
-class AsyncDataGenerator:
-    def __init__(self, dataset, batch_size, num_worker, queue):
-=======
 import horovod.torch as hvd
 import torch
 
@@ -15,7 +9,6 @@ import torch
 class AsyncDataGenerator:
     def __init__(self, dataset, batch_size, num_worker, queue, rank=0):
         self.rank = rank
->>>>>>> refine
         self.batch_size = batch_size
         self.num_worker = num_worker
         self.index = 0

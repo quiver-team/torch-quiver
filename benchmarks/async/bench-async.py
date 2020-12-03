@@ -38,6 +38,9 @@ def async_loader(data, train_idx, w):
             if count == 1:
                 w.tick('init generator')
         w.tick('one round')
+        if i == 9:
+            train_loader.close()
+            break
         train_loader.reset()
         w.tick('reset')
     w.tick('sample')

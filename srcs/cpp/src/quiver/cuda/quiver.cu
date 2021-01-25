@@ -30,18 +30,18 @@ class TorchQuiver
 {
     using torch_quiver_t = quiver<int64_t, CUDA>;
     torch_quiver_t quiver_;
-    stream_pool *pool_;
+    stream_pool pool_;
 
   public:
-    TorchQuiver(torch_quiver_t quiver)
-        : quiver_(std::move(quiver)), pool_(nullptr)
+    TorchQuiver(torch_quiver_t quiver, int device = 0, int num_workers = 4)
+        : quiver_(std::move(quiver))
     {
+        cudaSetDevice(device);
+        pool_ = stream_pool(num_workers);
     }
 
     using T = int64_t;
     using W = float;
-
-    void set_pool(stream_pool &pool) { pool_ = &pool; }
 
     // deprecated, not compatible with AliGraph
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
@@ -74,7 +74,7 @@ class TorchQuiver
         {
             TRACE_SCOPE("prepare");
             thrust::copy(p, p + bs, inputs.begin());
-            quiver_.to_local(stream, inputs);
+            // quiver_.to_local(stream, inputs);
             quiver_.degree(stream, inputs.data(), inputs.data() + inputs.size(),
                            output_counts.data());
             if (k >= 0) {
@@ -90,7 +90,7 @@ class TorchQuiver
         {
             TRACE_SCOPE("alloc_2");
             outputs.resize(tot);
-            output_eid.resize(tot);
+            // output_eid.resize(tot);
         }
         // outputs[outptr[i], outptr[i + 1]) are unique neighbors of inputs[i]
         {
@@ -99,13 +99,13 @@ class TorchQuiver
                            output_ptr.begin(), output_counts.begin(),
                            outputs.data(), output_eid.data());
         }
-        torch::Tensor out_neighbor = torch::empty(tot, vertices.options());
-        torch::Tensor out_eid = torch::empty(tot, vertices.options());
+        torch::Tensor out_neighbor;
+        torch::Tensor out_eid;
 
-        thrust::copy(outputs.begin(), outputs.end(),
-                     out_neighbor.data_ptr<T>());
-        thrust::copy(output_eid.begin(), output_eid.end(),
-                     out_eid.data_ptr<T>());
+        // thrust::copy(outputs.begin(), outputs.end(),
+        //              out_neighbor.data_ptr<T>());
+        // thrust::copy(output_eid.begin(), output_eid.end(),
+        //              out_eid.data_ptr<T>());
         return std::make_tuple(out_neighbor, out_eid);
     }
 
@@ -115,7 +115,7 @@ class TorchQuiver
     {
         TRACE_SCOPE(__func__);
         cudaStream_t stream = 0;
-        if (pool_) { stream = (*pool_)[stream_num]; }
+        if (!pool_.empty()) { stream = (pool_)[stream_num]; }
         const auto policy = thrust::cuda::par.on(stream);
         const size_t bs = vertices.size(0);
         thrust::device_vector<T> inputs;
@@ -144,12 +144,12 @@ class TorchQuiver
                 thrust::device_vector<T> s1;
                 s1.reserve(subset.size());
                 _reindex_with(policy, inputs, subset, s1);
-                complete_permutation(s1, subset.size());
-                subset = permute(s1, subset);
+                complete_permutation(s1, subset.size(), stream);
+                subset = permute(s1, subset, stream);
 
                 thrust::device_vector<T> s2;
-                inverse_permutation(s1, s2);
-                permute_value(s2, outputs);
+                inverse_permutation(s1, s2, stream);
+                permute_value(s2, outputs, stream);
             }
 
             torch::Tensor out_vertices =
@@ -179,7 +179,8 @@ class TorchQuiver
 // TODO: remove `n` and reuse code
 TorchQuiver new_quiver_from_edge_index(size_t n,  //
                                        py::array_t<int64_t> &input_edges,
-                                       py::array_t<int64_t> &input_edge_idx)
+                                       py::array_t<int64_t> &input_edge_idx,
+                                       int device = 0)
 {
     TRACE_SCOPE(__func__);
     using T = typename TorchQuiver::T;
@@ -189,7 +190,8 @@ TorchQuiver new_quiver_from_edge_index(size_t n,  //
     check_eq<int64_t>(edges.shape[0], 2);
     const size_t m = edges.shape[1];
     check_eq<int64_t>(edge_idx.ndim, 1);
-    check_eq<int64_t>(edge_idx.shape[0], m);
+
+    bool use_eid = edge_idx.shape[0] == m;
 
     thrust::device_vector<T> row_idx(m);
     thrust::device_vector<T> col_idx(m);
@@ -198,21 +200,23 @@ TorchQuiver new_quiver_from_edge_index(size_t n,  //
         thrust::copy(p, p + m, row_idx.begin());
         thrust::copy(p + m, p + m * 2, col_idx.begin());
     }
-    thrust::device_vector<T> edge_idx_(m);
-    {
+    thrust::device_vector<T> edge_idx_;
+    if (use_eid) {
+        edge_idx_.resize(m);
         const T *p = reinterpret_cast<const T *>(edge_idx.ptr);
         thrust::copy(p, p + m, edge_idx_.begin());
     }
     using Q = quiver<int64_t, CUDA>;
     Q quiver = Q::New(static_cast<T>(n), std::move(row_idx), std::move(col_idx),
                       std::move(edge_idx_));
-    return TorchQuiver(std::move(quiver));
+    return TorchQuiver(std::move(quiver), device);
 }
 
 TorchQuiver
 new_quiver_from_edge_index_weight(size_t n, py::array_t<int64_t> &input_edges,
                                   py::array_t<int64_t> &input_edge_idx,
-                                  py::array_t<float> &input_edge_weight)
+                                  py::array_t<float> &input_edge_weight,
+                                  int device = 0)
 {
     TRACE_SCOPE(__func__);
     using T = typename TorchQuiver::T;
@@ -224,7 +228,7 @@ new_quiver_from_edge_index_weight(size_t n, py::array_t<int64_t> &input_edges,
     check_eq<int64_t>(edges.shape[0], 2);
     const size_t m = edges.shape[1];
     check_eq<int64_t>(edge_idx.ndim, 1);
-    check_eq<int64_t>(edge_idx.shape[0], m);
+    bool use_eid = edge_idx.shape[0] == m;
     check_eq<int64_t>(edge_weight.ndim, 1);
     check_eq<int64_t>(edge_weight.shape[0], m);
 
@@ -235,8 +239,9 @@ new_quiver_from_edge_index_weight(size_t n, py::array_t<int64_t> &input_edges,
         thrust::copy(p, p + m, row_idx.begin());
         thrust::copy(p + m, p + m * 2, col_idx.begin());
     }
-    thrust::device_vector<T> edge_idx_(m);
-    {
+    thrust::device_vector<T> edge_idx_;
+    if (use_eid) {
+        edge_idx_.resize(m);
         const T *p = reinterpret_cast<const T *>(edge_idx.ptr);
         thrust::copy(p, p + m, edge_idx_.begin());
     }
@@ -248,7 +253,7 @@ new_quiver_from_edge_index_weight(size_t n, py::array_t<int64_t> &input_edges,
     using Q = quiver<int64_t, CUDA>;
     Q quiver = Q::New(static_cast<T>(n), std::move(row_idx), std::move(col_idx),
                       std::move(edge_idx_), std::move(edge_weight_));
-    return TorchQuiver(std::move(quiver));
+    return TorchQuiver(std::move(quiver), device);
 }
 }  // namespace quiver
 
@@ -259,7 +264,6 @@ void register_cuda_quiver(pybind11::module &m)
           &quiver::new_quiver_from_edge_index_weight);
     py::class_<quiver::TorchQuiver>(m, "Quiver")
         .def("sample_sub", &quiver::TorchQuiver::sample_sub_with_stream,
-             py::call_guard<py::gil_scoped_release>())
-        .def("set_pool", &quiver::TorchQuiver::set_pool);
+             py::call_guard<py::gil_scoped_release>());
     py::class_<quiver::stream_pool>(m, "StreamPool").def(py::init<int>());
 }

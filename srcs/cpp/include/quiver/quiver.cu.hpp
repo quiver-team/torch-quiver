@@ -36,8 +36,12 @@ class get_adj_diff
 };
 
 struct sample_option {
-    sample_option(bool w, bool p) : weighted(w), partitioned(p) {}
+    sample_option(bool w, bool u, bool p)
+        : weighted(w), use_id(u), partitioned(p)
+    {
+    }
     bool weighted;
+    bool use_id;
     bool partitioned;
 };
 
@@ -79,11 +83,12 @@ class sample_functor
     T *output_id;
 
     bool weighted;
+    bool use_id;
 
   public:
     sample_functor(const T *row_ptr, size_t n, const T *col_idx,
                    const T *edge_id, const W *edge_weight, size_t m, T *output,
-                   T *output_id, bool weighted)
+                   T *output_id, bool weighted, bool use_id)
         : row_ptr(row_ptr),
           n(n),
           col_idx(col_idx),
@@ -92,7 +97,8 @@ class sample_functor
           m(m),
           output(output),
           output_id(output_id),
-          weighted(weighted)
+          weighted(weighted),
+          use_id(use_id)
     {
     }
 
@@ -105,17 +111,16 @@ class sample_functor
         const T begin = row_ptr[v];
         const T end = v + 1 < n ? row_ptr[v + 1] : m;
         const W *begin_weight = weighted ? edge_weight + begin : nullptr;
+        const T *begin_id = use_id ? edge_id + begin : nullptr;
 
         if (!weighted) {
             cuda_random_generator g(thrust::get<0>(t));
-            safe_sample(col_idx + begin, col_idx + end, edge_id + begin,
-                        begin_weight, count, output + out_ptr,
-                        output_id + out_ptr, &g);
+            safe_sample(col_idx + begin, col_idx + end, begin_id, begin_weight,
+                        count, output + out_ptr, output_id + out_ptr, &g);
         } else {
             cuda_uniform_generator g(thrust::get<0>(t));
-            safe_sample(col_idx + begin, col_idx + end, edge_id + begin,
-                        begin_weight, count, output + out_ptr,
-                        output_id + out_ptr, &g);
+            safe_sample(col_idx + begin, col_idx + end, begin_id, begin_weight,
+                        count, output + out_ptr, output_id + out_ptr, &g);
         }
     }
 };
@@ -170,7 +175,7 @@ class quiver<T, CUDA>
           row_ptr_(std::move(row_ptr)),
           col_idx_(std::move(col_idx)),
           edge_idx_(std::move(edge_idx)),
-          opt_(false, true)
+          opt_(false, !edge_idx.empty(), true)
     {
     }
 
@@ -184,7 +189,7 @@ class quiver<T, CUDA>
           edge_idx_(std::move(edge_idx)),
           edge_weight_(std::move(edge_weight)),
           bucket_edge_weight_(std::move(bucket_edge_weight)),
-          opt_(true, true)
+          opt_(true, !edge_idx.empty(), true)
     {
     }
 
@@ -193,14 +198,19 @@ class quiver<T, CUDA>
                     thrust::device_vector<T> col_idx,
                     thrust::device_vector<T> edge_idx)
     {
-        thrust::device_vector<thrust::tuple<T, T, T>> edges(edge_idx.size());
-        zip(row_idx, col_idx, edge_idx, edges);
-        thrust::sort(edges.begin(), edges.end());
-        unzip(edges, row_idx, col_idx, edge_idx);
-
+        if (!edge_idx.empty()) {
+            thrust::device_vector<thrust::tuple<T, T, T>> edges(row_idx.size());
+            zip(row_idx, col_idx, edge_idx, edges);
+            thrust::sort(edges.begin(), edges.end());
+            unzip(edges, row_idx, col_idx, edge_idx);
+        } else {
+            thrust::device_vector<thrust::tuple<T, T>> edges(row_idx.size());
+            zip(row_idx, col_idx, edges);
+            thrust::sort(edges.begin(), edges.end());
+            unzip(edges, row_idx, col_idx);
+        }
         thrust::device_vector<T> local_map;
         handle_partition(row_idx, local_map);
-
         thrust::device_vector<T> row_ptr(n);
         thrust::sequence(row_ptr.begin(), row_ptr.end());
         thrust::lower_bound(row_idx.begin(), row_idx.end(), row_ptr.begin(),
@@ -213,17 +223,25 @@ class quiver<T, CUDA>
                     thrust::device_vector<T> edge_idx,
                     thrust::device_vector<W> edge_weight)
     {
-        thrust::device_vector<thrust::tuple<T, T, T, W>> edges(edge_idx.size());
-        zip(row_idx, col_idx, edge_idx, edge_weight, edges);
-        thrust::sort(edges.begin(), edges.end());
-        unzip(edges, row_idx, col_idx, edge_idx, edge_weight);
+        if (!edge_idx.empty()) {
+            thrust::device_vector<thrust::tuple<T, T, T, W>> edges(
+                row_idx.size());
+            zip(row_idx, col_idx, edge_idx, edge_weight, edges);
+            thrust::sort(edges.begin(), edges.end());
+            unzip(edges, row_idx, col_idx, edge_idx, edge_weight);
+        } else {
+            thrust::device_vector<thrust::tuple<T, T, W>> edges(row_idx.size());
+            zip(row_idx, col_idx, edge_weight, edges);
+            thrust::sort(edges.begin(), edges.end());
+            unzip(edges, row_idx, col_idx, edge_weight);
+        }
 
         thrust::device_vector<T> local_map;
         handle_partition(row_idx, local_map);
 
         thrust::device_vector<T> row_ptr(n);
-        thrust::device_vector<T> row_ptr_next(edge_idx.size());
-        thrust::device_vector<W> bucket_edge_weight(edge_idx.size());
+        thrust::device_vector<T> row_ptr_next(row_idx.size());
+        thrust::device_vector<W> bucket_edge_weight(row_idx.size());
         thrust::sequence(row_ptr.begin(), row_ptr.end());
         thrust::sequence(row_ptr_next.begin(), row_ptr_next.end());
         thrust::lower_bound(row_idx.begin(), row_idx.end(), row_ptr.begin(),
@@ -298,7 +316,8 @@ class quiver<T, CUDA>
                 thrust::raw_pointer_cast(edge_idx_.data()),
                 thrust::raw_pointer_cast(bucket_edge_weight_.data()),
                 col_idx_.size(), thrust::raw_pointer_cast(output_begin),
-                thrust::raw_pointer_cast(output_id_begin), opt_.weighted));
+                thrust::raw_pointer_cast(output_id_begin), opt_.weighted,
+                opt_.use_id));
     }
 
     template <typename Iter>

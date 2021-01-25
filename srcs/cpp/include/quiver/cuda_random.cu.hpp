@@ -49,16 +49,16 @@ __device__ void std_sample(const T *begin, const T *end, const T *begin_id,
                            T *outputs, T *output_id, int k,
                            cuda_random_generator *g)
 {
-    for (int i = 0; i < k; ++i) {
-        outputs[i] = begin[i];
-        output_id[i] = begin_id[i];
+    for (int i = 0; i < k; ++i) { outputs[i] = begin[i]; }
+    if (begin_id != nullptr) {
+        for (int i = 0; i < k; ++i) { output_id[i] = begin_id[i]; }
     }
     const int n = end - begin;
     for (int i = k; i < n; ++i) {
         const int j = (*g)() % i;
         if (j < k) {
             outputs[j] = begin[i];
-            output_id[j] = begin_id[i];
+            if (begin_id != nullptr) { output_id[j] = begin_id[i]; }
         }
     }
 }
@@ -83,7 +83,7 @@ __device__ void weight_sample(const T *begin, const T *end, const T *begin_id,
             }
         }
         outputs[i] = begin[hi];
-        output_id[i] = begin_id[hi];
+        if (begin_id != nullptr) { output_id[i] = begin_id[hi]; }
     }
 }
 
@@ -100,9 +100,9 @@ __device__ N safe_sample(const T *begin, const T *end, const T *begin_id,
                        reinterpret_cast<cuda_random_generator *>(g));
             return k;
         } else {
-            for (N i = 0; i < cap; ++i) {
-                outputs[i] = begin[i];
-                output_id[i] = begin_id[i];
+            for (N i = 0; i < cap; ++i) { outputs[i] = begin[i]; }
+            if (begin_id != nullptr) {
+                for (N i = 0; i < cap; ++i) { output_id[i] = begin_id[i]; }
             }
             return cap;
         }

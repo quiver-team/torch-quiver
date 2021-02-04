@@ -31,7 +31,6 @@ void bench_sample_once(const cudaStream_t stream, const Quiver &q,
 
     thrust::copy(batch.begin(), batch.end(), inputs.begin());
 
-    q.to_local(stream, inputs);
     q.degree(stream, inputs.data(), inputs.data() + inputs.size(),
              output_counts.data());
     if (k >= 0) {

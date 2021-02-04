@@ -20,11 +20,18 @@ struct zipper {
 };
 
 template <typename T0, typename T1>
-void unzip(const thrust::device_vector<thrust::pair<T0, T1>> &p,
+void zip(const thrust::device_vector<T0> &x, const thrust::device_vector<T1> &y,
+         thrust::device_vector<thrust::tuple<T0, T1>> &t)
+{
+    zipper<T0, T1>()(t, x, y);
+}
+
+template <typename T0, typename T1>
+void unzip(const thrust::device_vector<thrust::tuple<T0, T1>> &t,
            thrust::device_vector<T0> &x, thrust::device_vector<T1> &y)
 {
-    thrust::transform(p.begin(), p.end(), x.begin(), thrust_get<0>());
-    thrust::transform(p.begin(), p.end(), y.begin(), thrust_get<1>());
+    thrust::transform(t.begin(), t.end(), x.begin(), thrust_get<0>());
+    thrust::transform(t.begin(), t.end(), y.begin(), thrust_get<1>());
 }
 
 template <typename T0, typename T1, typename T2>

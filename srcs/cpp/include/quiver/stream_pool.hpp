@@ -17,5 +17,6 @@ class stream_pool
         if (i < 0 || i >= streams_.size()) { return 0; }
         return streams_[i];
     }
+    bool empty() const { return streams_.empty(); }
 };
 }  // namespace quiver

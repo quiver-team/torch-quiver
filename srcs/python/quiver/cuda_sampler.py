@@ -90,19 +90,23 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
                  edge_index: torch.Tensor,
                  sizes: List[int],
                  mode: str = 'sync',
+                 device: int = 0,
+                 rank: int = 0,
                  node_idx: Optional[torch.Tensor] = None,
                  num_nodes: Optional[int] = None,
                  **kwargs):
 
+        torch.set_num_threads(1)
         N = int(edge_index.max() + 1) if num_nodes is None else num_nodes
         edge_attr = torch.arange(edge_index.size(1))
-        adj = SparseTensor(row=edge_index[0], col=edge_index[1],
-                           value=edge_attr, sparse_sizes=(N, N),
-                           is_sorted=False)
-        adj = adj.t()
-        self.adj = adj.to('cpu')
-        edge_id = torch.zeros(edge_index.size(1), dtype=torch.long)
-        self.quiver = qv.new_quiver_from_edge_index(N, edge_index, edge_id)
+        if mode != 'sync':
+            adj = SparseTensor(row=edge_index[0], col=edge_index[1],
+                            value=edge_attr, sparse_sizes=(N, N),
+                            is_sorted=False)
+            adj = adj.t()
+            self.adj = adj.to('cpu')
+        edge_id = torch.zeros(1, dtype=torch.long)
+        self.quiver = qv.new_quiver_from_edge_index(N, edge_index, edge_id, device)
 
         if node_idx is None:
             node_idx = torch.arange(N)
@@ -110,6 +114,7 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
             node_idx = node_idx.nonzero().view(-1)
 
         self.sizes = sizes
+        self.rank = rank
         self.mode = mode
         if self.mode != 'sync':
             self.pool = concurrent.futures.ThreadPoolExecutor()
@@ -175,8 +180,8 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
 
         n_id = batch
         for size in self.sizes:
-            result, row_idx, col_idx = self.quiver.sample_sub(0, n_id, size)
-            assert (row_idx.max() < n_id.size(0))
+            result, row_idx, col_idx = self.quiver.sample_sub(self.rank, n_id, size)
+            # assert (row_idx.max() < n_id.size(0))
 
             row_idx, col_idx = col_idx, row_idx
             edge_index = torch.stack([row_idx, col_idx], dim=0)
@@ -185,8 +190,8 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
                 result.size(0),
                 n_id.size(0),
             ])
-            assert (row_idx.max() < result.size(0))
-            assert (col_idx.max() < n_id.size(0))
+            # assert (row_idx.max() < result.size(0))
+            # assert (col_idx.max() < n_id.size(0))
 
             # print('size: %s' % (size))
             # FIXME: also sample e_id

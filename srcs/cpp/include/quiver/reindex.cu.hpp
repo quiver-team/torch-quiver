@@ -94,6 +94,7 @@ thrust::device_vector<T> permute(const thrust::device_vector<T> &p,
     permute_kernel<<<1024, 16, 0, stream>>>(n, thrust::raw_pointer_cast(p.data()),
                                  thrust::raw_pointer_cast(a.data()),
                                  thrust::raw_pointer_cast(b.data()));
+    cudaStreamSynchronize(stream);
     return b;
 }
 

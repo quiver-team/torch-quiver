@@ -135,7 +135,7 @@ class TorchQuiver
                 thrust::copy(policy, outputs.begin(), outputs.end(),
                              subset.begin() + inputs.size());
                 thrust::sort(policy, subset.begin(), subset.end());
-                subset.erase(thrust::unique(subset.begin(), subset.end()),
+                subset.erase(thrust::unique(policy, subset.begin(), subset.end()),
                              subset.end());
                 _reindex_with(policy, outputs, subset, outputs);
             }

@@ -210,7 +210,7 @@ class quiver<T, CUDA>
             unzip(edges, row_idx, col_idx);
         }
         thrust::device_vector<T> local_map;
-        handle_partition(row_idx, local_map);
+        // handle_partition(row_idx, local_map);
         thrust::device_vector<T> row_ptr(n);
         thrust::sequence(row_ptr.begin(), row_ptr.end());
         thrust::lower_bound(row_idx.begin(), row_idx.end(), row_ptr.begin(),

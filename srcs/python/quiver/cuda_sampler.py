@@ -99,11 +99,12 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
         torch.set_num_threads(1)
         N = int(edge_index.max() + 1) if num_nodes is None else num_nodes
         edge_attr = torch.arange(edge_index.size(1))
-        adj = SparseTensor(row=edge_index[0], col=edge_index[1],
-                           value=edge_attr, sparse_sizes=(N, N),
-                           is_sorted=False)
-        adj = adj.t()
-        self.adj = adj.to('cpu')
+        if mode != 'sync':
+            adj = SparseTensor(row=edge_index[0], col=edge_index[1],
+                            value=edge_attr, sparse_sizes=(N, N),
+                            is_sorted=False)
+            adj = adj.t()
+            self.adj = adj.to('cpu')
         edge_id = torch.zeros(1, dtype=torch.long)
         self.quiver = qv.new_quiver_from_edge_index(N, edge_index, edge_id, device)
 

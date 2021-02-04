@@ -56,6 +56,7 @@ __device__ void std_sample(const T *begin, const T *end, T *outputs, int k,
     }
 }
 
+template <typename T>
 __device__ void std_sample(const T *begin, const T *end, const T *begin_id,
                            T *outputs, T *output_id, int k,
                            cuda_random_generator *g)
@@ -95,6 +96,7 @@ __device__ void weight_sample(const T *begin, const T *end,
     }
 }
 
+template <typename T, typename W>
 __device__ void weight_sample(const T *begin, const T *end, const T *begin_id,
                               const W *begin_weight, T *outputs, T *output_id,
                               int k, cuda_uniform_generator *g)

@@ -11,7 +11,9 @@ def sample_n(nodes, size):
 
     return neighbors, counts
 
+
 sample_neighbor = sample_n
+
 
 class Adj(NamedTuple):
     edge_index: torch.Tensor
@@ -57,29 +59,50 @@ class SyncDistNeighborSampler(torch.utils.data.DataLoader):
         for size in self.sizes:
             ranks = self.node2rank(n_id)
             local_nodes = None
-            futures = []
-            inputs = []
+            res = []
+            ordered_inputs = []
+            ordered_outputs = []
+            ordered_counts = []
+            input_orders = torch.arange(
+                n_id.size(0), dtype=torch.long)
+            reorder = torch.empty_like(input_orders)
+            beg = 0
             for i in range(self.comm.world_size):
                 mask = torch.eq(ranks, i)
                 part_nodes = torch.masked_select(n_id, mask)
+                part_orders = torch.masked_select(input_orders, mask)
+                nodes = torch.LongTensor([])
                 if part_nodes.size(0) >= 1:
                     if i == self.comm.rank:
                         local_nodes = part_nodes
-                        inputs.insert(0, local_nodes)
+                        res.append(
+                            (torch.LongTensor([]), torch.LongTensor([])))
                     else:
-                        futures.append(rpc.rpc_async(f"worker{i}", sample_neighbor, args=(
+                        res.append(rpc.rpc_async(f"worker{i}", sample_neighbor, args=(
                             part_nodes, size), kwargs=None, timeout=-1.0))
-                        inputs.append(part_nodes)
-            res = []
+                    nodes = part_nodes
+                    reorder[beg: beg + part_nodes.size(0)] = part_orders
+                    beg += part_nodes.size(0)
+                else:
+                    res.append((torch.LongTensor([]), torch.LongTensor([])))
+                ordered_inputs.append(nodes)
+            ordered_inputs = torch.cat(ordered_inputs)
             if local_nodes is not None:
                 nodes = self.global2local(local_nodes)
                 neighbors, counts = self.quiver.sample_neighbor(0, nodes, size)
                 neighbors = self.local2global(neighbors)
-                res.append((neighbors, counts))
-            for f in futures:
-                res.append(f.wait())
+                res[self.comm.rank] = (neighbors, counts)
+            for i in range(len(res)):
+                if not isinstance(res[i], tuple):
+                    res[i] = res[i].wait()
+                n, c = res[i]
+                ordered_counts.append(c)
+                ordered_outputs.append(n)
+            ordered_counts = torch.cat(ordered_counts)
+            ordered_outputs = torch.cat(ordered_outputs)
+            output_counts = ordered_counts[reorder]
             result, row_idx, col_idx = self.quiver.reindex_group(
-                0, inputs, res)
+                0, reorder, n_id, ordered_counts, ordered_outputs, output_counts)
             size = torch.LongTensor([
                 result.size(0),
                 n_id.size(0),

@@ -11,6 +11,42 @@
 #include <quiver/trace.hpp>
 
 template <typename T>
+__global__ void reorder_output_kernel(const size_t n, const T *prefix_sum,
+                                      const T *output_sum, const T *reorder,
+                                      const T *counts, const T *values,
+                                      T *output)
+{
+    const int worker_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    const int worker_count = gridDim.x * blockDim.x;
+    for (int i = worker_idx; i < n; i += worker_count) {
+        const size_t pos = reorder[i];
+        size_t output_beg = output_sum[pos];
+        size_t beg = prefix_sum[i];
+        const size_t count = counts[pos];
+        for (int j = 0; j < count; j++) {
+            output[output_beg++] = values[beg++];
+        }
+    }
+}
+
+template <typename T>
+void reorder_output(const thrust::device_vector<T> &p1,
+                    const thrust::device_vector<T> &p2,
+                    const thrust::device_vector<T> &order,
+                    const thrust::device_vector<T> &c,
+                    const thrust::device_vector<T> &v,
+                    thrust::device_vector<T> &out, cudaStream_t stream)
+{
+    const size_t n = p1.size();
+    reorder_output_kernel<<<1024, 16, 0, stream>>>(
+        n, thrust::raw_pointer_cast(p1.data()),
+        thrust::raw_pointer_cast(p2.data()),
+        thrust::raw_pointer_cast(order.data()),
+        thrust::raw_pointer_cast(c.data()), thrust::raw_pointer_cast(v.data()),
+        thrust::raw_pointer_cast(out.data()));
+}
+
+template <typename T>
 __global__ void mask_permutation_kernel_1(const size_t n, thrust::pair<T, T> *q,
                                           const size_t m, const T *p)
 {
@@ -32,7 +68,8 @@ __global__ void mask_permutation_kernel_2(const size_t n, thrust::pair<T, T> *q,
 }
 
 template <typename T>
-void complete_permutation(thrust::device_vector<T> &p, size_t n, cudaStream_t stream)
+void complete_permutation(thrust::device_vector<T> &p, size_t n,
+                          cudaStream_t stream)
 {
     const size_t m = p.size();
     const auto policy = thrust::cuda::par.on(stream);
@@ -86,14 +123,15 @@ __global__ void permute_kernel(const size_t n, const T *p, const T *a, T *b)
 
 template <typename T>
 thrust::device_vector<T> permute(const thrust::device_vector<T> &p,
-                                 const thrust::device_vector<T> &a, cudaStream_t stream)
+                                 const thrust::device_vector<T> &a,
+                                 cudaStream_t stream)
 {
     const size_t n = a.size();
     thrust::device_vector<T> b(n);
     // for (size_t i = 0; i < n; ++i) { b[i] = a[p[i]]; }
-    permute_kernel<<<1024, 16, 0, stream>>>(n, thrust::raw_pointer_cast(p.data()),
-                                 thrust::raw_pointer_cast(a.data()),
-                                 thrust::raw_pointer_cast(b.data()));
+    permute_kernel<<<1024, 16, 0, stream>>>(
+        n, thrust::raw_pointer_cast(p.data()),
+        thrust::raw_pointer_cast(a.data()), thrust::raw_pointer_cast(b.data()));
     cudaStreamSynchronize(stream);
     return b;
 }

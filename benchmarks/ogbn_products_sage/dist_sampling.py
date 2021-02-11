@@ -57,10 +57,12 @@ w.tick('load data')
 comm = dist.Comm(args.rank, 2)
 
 train_loader = dist.SyncDistNeighborSampler(comm, (int(data.edge_index.max() + 1),
-                                              data.edge_index, torch.zeros(
-                                                  1, dtype=torch.long), local2global,
-                                              global2local, node2rank), train_idx, [15, 10, 5], args.rank,
-                                       batch_size=1024, shuffle=True)
+                                                   data.edge_index, torch.zeros(
+    1, dtype=torch.long), local2global,
+    global2local, node2rank), train_idx, [15, 10, 5], args.rank,
+    batch_size=1024)
+
+
 def sample_n(nodes, size):
     torch.cuda.set_device(args.rank)
     nodes = train_loader.global2local(nodes)
@@ -68,6 +70,8 @@ def sample_n(nodes, size):
     neighbors = train_loader.local2global(neighbors)
 
     return neighbors, counts
+
+
 dist.sample_neighbor = sample_n
 
 w.tick('create train_loader')
@@ -114,34 +118,6 @@ class SAGE(torch.nn.Module):
                 x = F.dropout(x, p=0.5, training=self.training)
         return x.log_softmax(dim=-1)
 
-    def inference(self, x_all):
-        pbar = tqdm(total=x_all.size(0) * self.num_layers)
-        pbar.set_description('Evaluating')
-
-        # Compute representations of nodes layer by layer, using *all*
-        # available edges. This leads to faster computation in contrast to
-        # immediately computing the final representations of each batch.
-        total_edges = 0
-        for i in range(self.num_layers):
-            xs = []
-            for batch_size, n_id, adj in subgraph_loader:
-                edge_index, _, size = adj.to(device)
-                total_edges += edge_index.size(1)
-                x = x_all[n_id].to(device)
-                x_target = x[:size[1]]
-                x = self.convs[i]((x, x_target), edge_index)
-                if i != self.num_layers - 1:
-                    x = F.relu(x)
-                xs.append(x.cpu())
-
-                pbar.update(batch_size)
-
-            x_all = torch.cat(xs, dim=0)
-
-        pbar.close()
-
-        return x_all
-
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = SAGE(dataset.num_features, 256, dataset.num_classes, num_layers=3)
@@ -163,7 +139,7 @@ def train(epoch):
     total_loss = total_correct = 0
     w.turn_on('sample')
     for batch_size, n_id, adjs in train_loader:
-        # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
+        # `adjs` holds a list of `(esdge_index, e_id, size)` tuples.
         # w1.tick('prepro')
         w.turn_off('sample')
         w.turn_on('train')
@@ -176,15 +152,15 @@ def train(epoch):
         optimizer.step()
         # w1.tick('train')
 
-        # total_loss += float(loss)
-        # total_correct += int(out.argmax(dim=-1).eq(y[n_id[:batch_size]]).sum())
+        total_loss += float(loss)
+        total_correct += int(out.argmax(dim=-1).eq(y[n_id[:batch_size]]).sum())
         # pbar.update(batch_size)
         torch.cuda.synchronize(args.rank)
         w.turn_on('sample')
         w.turn_off('train')
 
     # pbar.close()
-
+    w.turn_off('sample')
     loss = total_loss / len(train_loader)
     approx_acc = total_correct / train_idx.size(0)
 
@@ -221,6 +197,8 @@ model.reset_parameters()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
 test_accs = []
 for run in range(1, 1 + args.runs):
+    if args.rank == 0:
+        break
     print('')
     print(f'Run {run:02d}:')
     print('')

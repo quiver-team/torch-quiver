@@ -130,61 +130,59 @@ class TorchQuiver
     }
 
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
-    reindex_group(int stream_num, std::vector<torch::Tensor> inputs,
-                  std::vector<std::tuple<torch::Tensor, torch::Tensor>> res)
+    reindex_group(int stream_num, torch::Tensor orders, torch::Tensor inputs,
+                  torch::Tensor counts, torch::Tensor outputs,
+                  torch::Tensor out_counts)
     {
         cudaStream_t stream = 0;
         if (!pool_.empty()) { stream = (pool_)[stream_num]; }
         const auto policy = thrust::cuda::par.on(stream);
-        int input_size = 0;
-        for (auto &input : inputs) { input_size += input.size(0); }
-        thrust::device_vector<T> total_inputs(input_size);
-        int tmp_input_size = 0;
-        for (auto &input : inputs) {
-            const T *ptr = input.data_ptr<T>();
-            int size = input.size(0);
-            thrust::copy(ptr, ptr + size,
-                         total_inputs.begin() + tmp_input_size);
-            tmp_input_size += input.size(0);
-        }
-        int output_size = 0;
-        for (auto &r : res) { output_size += std::get<0>(r).size(0); }
-        thrust::device_vector<T> total_counts(input_size);
-        thrust::device_vector<T> total_outputs(output_size);
-        int tmp_count_size = 0;
-        int tmp_output_size = 0;
-        for (auto &r : res) {
-            auto &output = std::get<0>(r);
-            auto &count = std::get<1>(r);
-            const T *ptr = output.data_ptr<T>();
-            int size = output.size(0);
-            thrust::copy(ptr, ptr + size,
-                         total_outputs.begin() + tmp_output_size);
-            tmp_output_size += size;
-            ptr = count.data_ptr<T>();
-            size = count.size(0);
-            thrust::copy(ptr, ptr + size,
-                         total_counts.begin() + tmp_count_size);
-            tmp_count_size += size;
-        }
+        thrust::device_vector<T> total_orders(inputs.size(0));
+        thrust::device_vector<T> total_inputs(inputs.size(0));
+        thrust::device_vector<T> total_counts(inputs.size(0));
+        thrust::device_vector<T> prefix_sum(inputs.size(0));
+        thrust::device_vector<T> output_sum(inputs.size(0));
+        thrust::device_vector<T> values(outputs.size(0));
+        thrust::device_vector<T> total_outputs(outputs.size(0));
+        thrust::device_vector<T> output_counts(inputs.size(0));
+        const T *ptr;
+        int bs;
+        ptr = inputs.data_ptr<T>();
+        bs = inputs.size(0);
+        thrust::copy(ptr, ptr + bs, total_inputs.begin());
+        ptr = orders.data_ptr<T>();
+        thrust::copy(ptr, ptr + bs, total_orders.begin());
+        ptr = counts.data_ptr<T>();
+        thrust::copy(ptr, ptr + bs, prefix_sum.begin());
+        ptr = out_counts.data_ptr<T>();
+        thrust::copy(ptr, ptr + bs, output_counts.begin());
+        ptr = outputs.data_ptr<T>();
+        bs = outputs.size(0);
+        thrust::copy(ptr, ptr + bs, values.begin());
+        thrust::exclusive_scan(policy, prefix_sum.begin(), prefix_sum.end(),
+                               prefix_sum.begin());
+        thrust::exclusive_scan(policy, output_counts.begin(),
+                               output_counts.end(), output_sum.begin());
+        reorder_output(prefix_sum, output_sum, total_orders, output_counts,
+                       values, total_outputs, stream);
 
         thrust::device_vector<T> subset;
         reindex_kernel(stream, total_inputs, total_outputs, subset);
 
         int tot = total_outputs.size();
         torch::Tensor out_vertices =
-            torch::empty(subset.size(), inputs[0].options());
-        torch::Tensor row_idx = torch::empty(tot, inputs[0].options());
-        torch::Tensor col_idx = torch::empty(tot, inputs[0].options());
+            torch::empty(subset.size(), inputs.options());
+        torch::Tensor row_idx = torch::empty(tot, inputs.options());
+        torch::Tensor col_idx = torch::empty(tot, inputs.options());
         {
             TRACE_SCOPE("prepare output");
-            std::vector<T> counts(total_counts.size());
-            std::vector<T> seq(total_counts.size());
-            thrust::copy(total_counts.begin(), total_counts.end(),
+            std::vector<T> counts(total_inputs.size());
+            std::vector<T> seq(total_inputs.size());
+            thrust::copy(output_counts.begin(), output_counts.end(),
                          counts.begin());
             std::iota(seq.begin(), seq.end(), 0);
 
-            replicate_fill(input_size, counts.data(), seq.data(),
+            replicate_fill(total_inputs.size(), counts.data(), seq.data(),
                            row_idx.data_ptr<T>());
             thrust::copy(subset.begin(), subset.end(),
                          out_vertices.data_ptr<T>());

@@ -57,40 +57,29 @@ void reorder_output(const thrust::device_vector<T> &p1,
                                         thrust::raw_pointer_cast(out.data())));
 }
 
-template <typename T>
-__global__ void mask_permutation_kernel_1(const size_t n, thrust::pair<T, T> *q,
-                                          const size_t m, const T *p)
-{
-    const int worker_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    const int worker_count = gridDim.x * blockDim.x;
-    for (int i = worker_idx; i < n; i += worker_count) {
-        q[i].first = m;
-        q[i].second = i;
-    }
-}
-
-template <typename T>
-__global__ void mask_permutation_kernel_2(const size_t n, thrust::pair<T, T> *q,
-                                          const size_t m, const T *p)
-{
-    const int worker_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    const int worker_count = gridDim.x * blockDim.x;
-    for (int i = worker_idx; i < m; i += worker_count) { q[p[i]].first = i; }
-}
-
+// Given a partial permutation p of {0, ..., n - 1} with only the first m values
+// known, convert p into a full permutation.
+// this implementation outputs the smallest one in lexicographical order.
 template <typename T>
 void complete_permutation(thrust::device_vector<T> &p, size_t n,
                           cudaStream_t stream)
 {
+    using it = thrust::counting_iterator<T>;
     const size_t m = p.size();
     const auto policy = thrust::cuda::par.on(stream);
     thrust::device_vector<thrust::pair<T, T>> q(n);
-    mask_permutation_kernel_1<<<1024, 16, 0, stream>>>(
-        n, thrust::raw_pointer_cast(q.data()), m,
-        thrust::raw_pointer_cast(p.data()));
-    mask_permutation_kernel_2<<<1024, 16, 0, stream>>>(
-        n, thrust::raw_pointer_cast(q.data()), m,
-        thrust::raw_pointer_cast(p.data()));
+    thrust::for_each(policy, it(0), it(n),
+                     [q = thrust::raw_pointer_cast(q.data()),
+                      p = thrust::raw_pointer_cast(p.data()),
+                      m = m]  //
+                     __device__(T i) {
+                         q[i].first = m;
+                         q[i].second = i;
+                     });
+    thrust::for_each(policy, it(0), it(m),
+                     [q = thrust::raw_pointer_cast(q.data()),
+                      p = thrust::raw_pointer_cast(p.data())]  //
+                     __device__(T i) { q[p[i]].first = i; });
     thrust::sort(policy, q.begin(), q.end());
     p.resize(n);
     thrust::transform(policy, q.begin(), q.end(), p.begin(), thrust_get<1>());

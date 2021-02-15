@@ -36,7 +36,6 @@ class TorchQuiver
     TorchQuiver(torch_quiver_t quiver, int device = 0, int num_workers = 4)
         : quiver_(std::move(quiver))
     {
-        cudaSetDevice(device);
         pool_ = stream_pool(num_workers);
     }
 
@@ -48,6 +47,27 @@ class TorchQuiver
     sample_sub(const torch::Tensor &vertices, int k) const
     {
         return sample_sub_with_stream(0, vertices, k);
+    }
+
+    std::tuple<torch::Tensor, torch::Tensor>
+    sample_neighbor(int stream_num, const torch::Tensor &vertices, int k)
+    {
+        cudaStream_t stream = 0;
+        if (!pool_.empty()) { stream = (pool_)[stream_num]; }
+        const auto policy = thrust::cuda::par.on(stream);
+        const size_t bs = vertices.size(0);
+        thrust::device_vector<T> inputs;
+        thrust::device_vector<T> outputs;
+        thrust::device_vector<T> output_counts;
+        sample_kernel(stream, vertices, k, inputs, outputs, output_counts);
+        torch::Tensor neighbors =
+            torch::empty(outputs.size(), vertices.options());
+        torch::Tensor counts =
+            torch::empty(vertices.size(0), vertices.options());
+        thrust::copy(outputs.begin(), outputs.end(), neighbors.data_ptr<T>());
+        thrust::copy(output_counts.begin(), output_counts.end(),
+                     counts.data_ptr<T>());
+        return std::make_tuple(neighbors, counts);
     }
 
     std::tuple<torch::Tensor, torch::Tensor>
@@ -110,21 +130,74 @@ class TorchQuiver
     }
 
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
-    sample_sub_with_stream(int stream_num, const torch::Tensor &vertices,
-                           int k) const
+    reindex_group(int stream_num, torch::Tensor orders, torch::Tensor inputs,
+                  torch::Tensor counts, torch::Tensor outputs,
+                  torch::Tensor out_counts)
     {
-        TRACE_SCOPE(__func__);
         cudaStream_t stream = 0;
         if (!pool_.empty()) { stream = (pool_)[stream_num]; }
         const auto policy = thrust::cuda::par.on(stream);
-        const size_t bs = vertices.size(0);
-        thrust::device_vector<T> inputs;
-        thrust::device_vector<T> outputs;
-        thrust::device_vector<T> output_counts;
-        thrust::device_vector<T> subset;
-        sample_kernel(stream, vertices, k, inputs, outputs, output_counts);
-        T tot = outputs.size();
+        thrust::device_vector<T> total_orders(inputs.size(0));
+        thrust::device_vector<T> total_inputs(inputs.size(0));
+        thrust::device_vector<T> total_counts(inputs.size(0));
+        thrust::device_vector<T> prefix_sum(inputs.size(0));
+        thrust::device_vector<T> output_sum(inputs.size(0));
+        thrust::device_vector<T> values(outputs.size(0));
+        thrust::device_vector<T> total_outputs(outputs.size(0));
+        thrust::device_vector<T> output_counts(inputs.size(0));
+        const T *ptr;
+        int bs;
+        ptr = inputs.data_ptr<T>();
+        bs = inputs.size(0);
+        thrust::copy(ptr, ptr + bs, total_inputs.begin());
+        ptr = orders.data_ptr<T>();
+        thrust::copy(ptr, ptr + bs, total_orders.begin());
+        ptr = counts.data_ptr<T>();
+        thrust::copy(ptr, ptr + bs, prefix_sum.begin());
+        ptr = out_counts.data_ptr<T>();
+        thrust::copy(ptr, ptr + bs, output_counts.begin());
+        ptr = outputs.data_ptr<T>();
+        bs = outputs.size(0);
+        thrust::copy(ptr, ptr + bs, values.begin());
+        thrust::exclusive_scan(policy, prefix_sum.begin(), prefix_sum.end(),
+                               prefix_sum.begin());
+        thrust::exclusive_scan(policy, output_counts.begin(),
+                               output_counts.end(), output_sum.begin());
+        reorder_output(prefix_sum, output_sum, total_orders, output_counts,
+                       values, total_outputs, stream);
 
+        thrust::device_vector<T> subset;
+        reindex_kernel(stream, total_inputs, total_outputs, subset);
+
+        int tot = total_outputs.size();
+        torch::Tensor out_vertices =
+            torch::empty(subset.size(), inputs.options());
+        torch::Tensor row_idx = torch::empty(tot, inputs.options());
+        torch::Tensor col_idx = torch::empty(tot, inputs.options());
+        {
+            TRACE_SCOPE("prepare output");
+            std::vector<T> counts(total_inputs.size());
+            std::vector<T> seq(total_inputs.size());
+            thrust::copy(output_counts.begin(), output_counts.end(),
+                         counts.begin());
+            std::iota(seq.begin(), seq.end(), 0);
+
+            replicate_fill(total_inputs.size(), counts.data(), seq.data(),
+                           row_idx.data_ptr<T>());
+            thrust::copy(subset.begin(), subset.end(),
+                         out_vertices.data_ptr<T>());
+            thrust::copy(total_outputs.begin(), total_outputs.end(),
+                         col_idx.data_ptr<T>());
+        }
+        return std::make_tuple(out_vertices, row_idx, col_idx);
+    }
+
+    void reindex_kernel(const cudaStream_t stream,
+                        thrust::device_vector<T> &inputs,
+                        thrust::device_vector<T> &outputs,
+                        thrust::device_vector<T> &subset) const
+    {
+        const auto policy = thrust::cuda::par.on(stream);
         // reindex
         {
             {
@@ -135,8 +208,9 @@ class TorchQuiver
                 thrust::copy(policy, outputs.begin(), outputs.end(),
                              subset.begin() + inputs.size());
                 thrust::sort(policy, subset.begin(), subset.end());
-                subset.erase(thrust::unique(policy, subset.begin(), subset.end()),
-                             subset.end());
+                subset.erase(
+                    thrust::unique(policy, subset.begin(), subset.end()),
+                    subset.end());
                 _reindex_with(policy, outputs, subset, outputs);
             }
             {
@@ -151,28 +225,45 @@ class TorchQuiver
                 inverse_permutation(s1, s2, stream);
                 permute_value(s2, outputs, stream);
             }
-
-            torch::Tensor out_vertices =
-                torch::empty(subset.size(), vertices.options());
-            torch::Tensor row_idx = torch::empty(tot, vertices.options());
-            torch::Tensor col_idx = torch::empty(tot, vertices.options());
-            {
-                TRACE_SCOPE("prepare output");
-                std::vector<T> counts(output_counts.size());
-                std::vector<T> seq(output_counts.size());
-                thrust::copy(output_counts.begin(), output_counts.end(),
-                             counts.begin());
-                std::iota(seq.begin(), seq.end(), 0);
-
-                replicate_fill(bs, counts.data(), seq.data(),
-                               row_idx.data_ptr<T>());
-                thrust::copy(subset.begin(), subset.end(),
-                             out_vertices.data_ptr<T>());
-                thrust::copy(outputs.begin(), outputs.end(),
-                             col_idx.data_ptr<T>());
-            }
-            return std::make_tuple(out_vertices, row_idx, col_idx);
         }
+    }
+
+    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
+    sample_sub_with_stream(int stream_num, const torch::Tensor &vertices,
+                           int k) const
+    {
+        TRACE_SCOPE(__func__);
+        cudaStream_t stream = 0;
+        if (!pool_.empty()) { stream = (pool_)[stream_num]; }
+        const auto policy = thrust::cuda::par.on(stream);
+        thrust::device_vector<T> inputs;
+        thrust::device_vector<T> outputs;
+        thrust::device_vector<T> output_counts;
+        thrust::device_vector<T> subset;
+        sample_kernel(stream, vertices, k, inputs, outputs, output_counts);
+        int tot = outputs.size();
+
+        reindex_kernel(stream, inputs, outputs, subset);
+
+        torch::Tensor out_vertices =
+            torch::empty(subset.size(), vertices.options());
+        torch::Tensor row_idx = torch::empty(tot, vertices.options());
+        torch::Tensor col_idx = torch::empty(tot, vertices.options());
+        {
+            TRACE_SCOPE("prepare output");
+            std::vector<T> counts(output_counts.size());
+            std::vector<T> seq(output_counts.size());
+            thrust::copy(output_counts.begin(), output_counts.end(),
+                         counts.begin());
+            std::iota(seq.begin(), seq.end(), 0);
+
+            replicate_fill(inputs.size(), counts.data(), seq.data(),
+                           row_idx.data_ptr<T>());
+            thrust::copy(subset.begin(), subset.end(),
+                         out_vertices.data_ptr<T>());
+            thrust::copy(outputs.begin(), outputs.end(), col_idx.data_ptr<T>());
+        }
+        return std::make_tuple(out_vertices, row_idx, col_idx);
     }
 };
 
@@ -182,6 +273,7 @@ TorchQuiver new_quiver_from_edge_index(size_t n,  //
                                        py::array_t<int64_t> &input_edge_idx,
                                        int device = 0)
 {
+    cudaSetDevice(device);
     TRACE_SCOPE(__func__);
     using T = typename TorchQuiver::T;
     py::buffer_info edges = input_edges.request();
@@ -218,6 +310,7 @@ new_quiver_from_edge_index_weight(size_t n, py::array_t<int64_t> &input_edges,
                                   py::array_t<float> &input_edge_weight,
                                   int device = 0)
 {
+    cudaSetDevice(device);
     TRACE_SCOPE(__func__);
     using T = typename TorchQuiver::T;
     using W = typename TorchQuiver::W;
@@ -264,6 +357,10 @@ void register_cuda_quiver(pybind11::module &m)
           &quiver::new_quiver_from_edge_index_weight);
     py::class_<quiver::TorchQuiver>(m, "Quiver")
         .def("sample_sub", &quiver::TorchQuiver::sample_sub_with_stream,
+             py::call_guard<py::gil_scoped_release>())
+        .def("sample_neighbor", &quiver::TorchQuiver::sample_neighbor,
+             py::call_guard<py::gil_scoped_release>())
+        .def("reindex_group", &quiver::TorchQuiver::reindex_group,
              py::call_guard<py::gil_scoped_release>());
     py::class_<quiver::stream_pool>(m, "StreamPool").def(py::init<int>());
 }

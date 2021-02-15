@@ -61,3 +61,38 @@ class SAGE(torch.nn.Module):
         pbar.close()
 
         return x_all
+
+    def trainer(self, loader, w, optimizer, device, x, y, train_idx):
+        # w1 = StopWatch('train loop')
+        # w1.tick('set mode to train')
+
+        # pbar = tqdm(total=train_idx.size(0))
+        # pbar.set_description(f'Epoch {epoch:02d}')
+
+        total_loss = total_correct = 0
+        w.turn_on('sample')
+        for batch_size, n_id, adjs in loader:
+            w.turn_off('sample')
+            # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
+            # w1.tick('prepro')
+            adjs = [adj.to(device) for adj in adjs]
+
+            optimizer.zero_grad()
+            out = self(x[n_id], adjs)
+            loss = F.nll_loss(out, y[n_id[:batch_size]])
+            loss.backward()
+            optimizer.step()
+            # w1.tick('train')
+
+            total_loss += float(loss)
+            total_correct += int(out.argmax(dim=-1).eq(y[n_id[:batch_size]]).sum())
+            # pbar.update(batch_size)
+            w.turn_on('sample')
+
+        # pbar.close()
+
+        loss = total_loss / len(loader)
+        approx_acc = total_correct / train_idx.size(0)
+
+        # del w1
+        return loss, approx_acc

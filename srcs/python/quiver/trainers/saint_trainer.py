@@ -27,3 +27,39 @@ class Net(torch.nn.Module):
         x = torch.cat([x1, x2, x3], dim=-1)
         x = self.lin(x)
         return x.log_softmax(dim=-1)
+
+    def trainer(self, use_norm, loader, w, optimizer, device):
+        super().train()
+        total_loss = total_examples = 0
+        w.turn_on('sample')
+        self.set_aggr('add' if use_norm else 'mean')
+        print(loader.num_steps)
+        print(len(loader))
+
+        for data in loader:
+            w.turn_off('sample')
+            data = data.to(device)
+            optimizer.zero_grad()
+
+            if use_norm:
+                edge_weight = data.edge_norm * data.edge_weight
+                out = self(data.x, data.edge_index, edge_weight)
+                loss = F.nll_loss(out, data.y.squeeze_(), reduction='none')
+                loss = (loss * data.node_norm)[data.train_mask].sum()
+            else:
+                print(data.x.shape)
+                print(data.edge_index.shape)
+                out = self(data.x, data.edge_index)
+                loss = F.nll_loss(out[data.train_mask], data.y[data.train_mask].squeeze_())
+            w.turn_on('sample')
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item() * data.num_nodes
+            total_examples += data.num_nodes
+
+        return total_loss / total_examples
+
+
+
+
+

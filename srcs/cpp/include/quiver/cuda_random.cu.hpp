@@ -45,14 +45,24 @@ class cuda_uniform_generator : public cuda_base_generator
 // Random Sampling with a Reservoir
 // (http://www.cs.umd.edu/~samir/498/vitter.pdf)
 template <typename T>
+__device__ void std_sample(const T *begin, const T *end, T *outputs, int k,
+                           cuda_random_generator *g)
+{
+    for (int i = 0; i < k; ++i) { outputs[i] = begin[i]; }
+    const int n = end - begin;
+    for (int i = k; i < n; ++i) {
+        const int j = (*g)() % i;
+        if (j < k) { outputs[j] = begin[i]; }
+    }
+}
+
+template <typename T>
 __device__ void std_sample(const T *begin, const T *end, const T *begin_id,
                            T *outputs, T *output_id, int k,
                            cuda_random_generator *g)
 {
-    for (int i = 0; i < k; ++i) {
-        outputs[i] = begin[i];
-        output_id[i] = begin_id[i];
-    }
+    for (int i = 0; i < k; ++i) { outputs[i] = begin[i]; }
+    for (int i = 0; i < k; ++i) { output_id[i] = begin_id[i]; }
     const int n = end - begin;
     for (int i = k; i < n; ++i) {
         const int j = (*g)() % i;
@@ -64,6 +74,28 @@ __device__ void std_sample(const T *begin, const T *end, const T *begin_id,
 }
 
 // binary search in exclusive prefix sum
+template <typename T, typename W>
+__device__ void weight_sample(const T *begin, const T *end,
+                              const W *begin_weight, T *outputs, int k,
+                              cuda_uniform_generator *g)
+{
+    const int n = end - begin;
+    if (!k || !n) { return; }
+    for (int i = 0; i < k; i++) {
+        float r = (*g)();
+        int lo = 0, hi = n - 1;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (begin_weight[mid] < r) {
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        outputs[i] = begin[hi];
+    }
+}
+
 template <typename T, typename W>
 __device__ void weight_sample(const T *begin, const T *end, const T *begin_id,
                               const W *begin_weight, T *outputs, T *output_id,
@@ -96,19 +128,30 @@ __device__ N safe_sample(const T *begin, const T *end, const T *begin_id,
     const N cap = end - begin;
     if (begin_weight == nullptr) {
         if (k < cap) {
-            std_sample(begin, end, begin_id, outputs, output_id, k,
-                       reinterpret_cast<cuda_random_generator *>(g));
+            if (begin_id != nullptr) {
+                std_sample(begin, end, begin_id, outputs, output_id, k,
+                           reinterpret_cast<cuda_random_generator *>(g));
+            } else {
+                std_sample(begin, end, outputs, k,
+                           reinterpret_cast<cuda_random_generator *>(g));
+            }
             return k;
         } else {
-            for (N i = 0; i < cap; ++i) {
-                outputs[i] = begin[i];
-                output_id[i] = begin_id[i];
+            for (N i = 0; i < cap; ++i) { outputs[i] = begin[i]; }
+            if (begin_id != nullptr) {
+                for (N i = 0; i < cap; ++i) { output_id[i] = begin_id[i]; }
             }
             return cap;
         }
     } else {
-        weight_sample(begin, end, begin_id, begin_weight, outputs, output_id, k,
-                      reinterpret_cast<cuda_uniform_generator *>(g));
+        if (begin_id != nullptr) {
+            weight_sample(begin, end, begin_id, begin_weight, outputs,
+                          output_id, k,
+                          reinterpret_cast<cuda_uniform_generator *>(g));
+        } else {
+            weight_sample(begin, end, begin_weight, outputs, k,
+                          reinterpret_cast<cuda_uniform_generator *>(g));
+        }
         return k;
     }
 }

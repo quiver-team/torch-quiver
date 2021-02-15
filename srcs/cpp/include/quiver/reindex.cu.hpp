@@ -11,6 +11,53 @@
 #include <quiver/trace.hpp>
 
 template <typename T>
+class reorder_functor
+{
+    const T *output_sum;
+    const T *counts;
+    const T *values;
+    T *output;
+
+  public:
+    reorder_functor(const T *output_sum, const T *counts, const T *values,
+                    T *output)
+        : output_sum(output_sum), counts(counts), values(values), output(output)
+    {
+    }
+
+    __device__ void operator()(const thrust::tuple<T, T> &t)
+    {
+        const size_t pos = thrust::get<0>(t);
+        size_t beg = thrust::get<1>(t);
+        size_t output_beg = output_sum[pos];
+        const size_t count = counts[pos];
+        for (int j = 0; j < count; j++) {
+            output[output_beg++] = values[beg++];
+        }
+    }
+};
+
+template <typename T>
+void reorder_output(const thrust::device_vector<T> &p1,
+                    const thrust::device_vector<T> &p2,
+                    const thrust::device_vector<T> &order,
+                    const thrust::device_vector<T> &c,
+                    const thrust::device_vector<T> &v,
+                    thrust::device_vector<T> &out, cudaStream_t stream)
+{
+    const auto policy = thrust::cuda::par.on(stream);
+    auto beg = thrust::make_zip_iterator(
+        thrust::make_tuple(order.begin(), p1.begin()));
+    auto end =
+        thrust::make_zip_iterator(thrust::make_tuple(order.end(), p1.end()));
+    thrust::for_each(policy, beg, end,
+                     reorder_functor<T>(thrust::raw_pointer_cast(p2.data()),
+                                        thrust::raw_pointer_cast(c.data()),
+                                        thrust::raw_pointer_cast(v.data()),
+                                        thrust::raw_pointer_cast(out.data())));
+}
+
+template <typename T>
 __global__ void mask_permutation_kernel_1(const size_t n, thrust::pair<T, T> *q,
                                           const size_t m, const T *p)
 {
@@ -32,19 +79,21 @@ __global__ void mask_permutation_kernel_2(const size_t n, thrust::pair<T, T> *q,
 }
 
 template <typename T>
-void complete_permutation(thrust::device_vector<T> &p, size_t n)
+void complete_permutation(thrust::device_vector<T> &p, size_t n,
+                          cudaStream_t stream)
 {
     const size_t m = p.size();
+    const auto policy = thrust::cuda::par.on(stream);
     thrust::device_vector<thrust::pair<T, T>> q(n);
-    mask_permutation_kernel_1<<<1024, 16>>>(
+    mask_permutation_kernel_1<<<1024, 16, 0, stream>>>(
         n, thrust::raw_pointer_cast(q.data()), m,
         thrust::raw_pointer_cast(p.data()));
-    mask_permutation_kernel_2<<<1024, 16>>>(
+    mask_permutation_kernel_2<<<1024, 16, 0, stream>>>(
         n, thrust::raw_pointer_cast(q.data()), m,
         thrust::raw_pointer_cast(p.data()));
-    thrust::sort(q.begin(), q.end());
+    thrust::sort(policy, q.begin(), q.end());
     p.resize(n);
-    thrust::transform(q.begin(), q.end(), p.begin(), thrust_get<1>());
+    thrust::transform(policy, q.begin(), q.end(), p.begin(), thrust_get<1>());
 }
 
 template <typename T>
@@ -57,20 +106,21 @@ __global__ void inverse_permutation_kernel(const size_t n, const T *p, T *q)
 
 template <typename T>
 void inverse_permutation(const thrust::device_vector<T> &p,
-                         thrust::device_vector<T> &q)
+                         thrust::device_vector<T> &q, cudaStream_t stream)
 {
     const size_t n = p.size();
     q.resize(n);
-    inverse_permutation_kernel<<<1024, 16>>>(
+    inverse_permutation_kernel<<<1024, 16, 0, stream>>>(
         n, thrust::raw_pointer_cast(p.data()),
         thrust::raw_pointer_cast(q.data()));
 }
 
 template <typename T>
 void permute_value(const thrust::device_vector<T> &p,
-                   thrust::device_vector<T> &a)
+                   thrust::device_vector<T> &a, cudaStream_t stream)
 {
-    thrust::transform(a.begin(), a.end(), a.begin(),
+    const auto policy = thrust::cuda::par.on(stream);
+    thrust::transform(policy, a.begin(), a.end(), a.begin(),
                       value_at<T>(thrust::raw_pointer_cast(p.data())));
 }
 
@@ -84,14 +134,16 @@ __global__ void permute_kernel(const size_t n, const T *p, const T *a, T *b)
 
 template <typename T>
 thrust::device_vector<T> permute(const thrust::device_vector<T> &p,
-                                 const thrust::device_vector<T> &a)
+                                 const thrust::device_vector<T> &a,
+                                 cudaStream_t stream)
 {
     const size_t n = a.size();
     thrust::device_vector<T> b(n);
     // for (size_t i = 0; i < n; ++i) { b[i] = a[p[i]]; }
-    permute_kernel<<<1024, 16>>>(n, thrust::raw_pointer_cast(p.data()),
-                                 thrust::raw_pointer_cast(a.data()),
-                                 thrust::raw_pointer_cast(b.data()));
+    permute_kernel<<<1024, 16, 0, stream>>>(
+        n, thrust::raw_pointer_cast(p.data()),
+        thrust::raw_pointer_cast(a.data()), thrust::raw_pointer_cast(b.data()));
+    cudaStreamSynchronize(stream);
     return b;
 }
 

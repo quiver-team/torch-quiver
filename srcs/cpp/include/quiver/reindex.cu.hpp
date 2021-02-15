@@ -121,25 +121,18 @@ void permute_value(const thrust::device_vector<T> &p,
 }
 
 template <typename T>
-__global__ void permute_kernel(const size_t n, const T *p, const T *a, T *b)
-{
-    const int worker_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    const int worker_count = gridDim.x * blockDim.x;
-    for (int i = worker_idx; i < n; i += worker_count) { b[i] = a[p[i]]; }
-}
-
-template <typename T>
 thrust::device_vector<T> permute(const thrust::device_vector<T> &p,
                                  const thrust::device_vector<T> &a,
                                  cudaStream_t stream)
 {
     const size_t n = a.size();
     thrust::device_vector<T> b(n);
-    // for (size_t i = 0; i < n; ++i) { b[i] = a[p[i]]; }
-    permute_kernel<<<1024, 16, 0, stream>>>(
-        n, thrust::raw_pointer_cast(p.data()),
-        thrust::raw_pointer_cast(a.data()), thrust::raw_pointer_cast(b.data()));
-    cudaStreamSynchronize(stream);
+    using it = thrust::counting_iterator<T>;
+    thrust::for_each(thrust::cuda::par.on(stream), it(0), it(n),
+                     [p = thrust::raw_pointer_cast(p.data()),
+                      a = thrust::raw_pointer_cast(a.data()),
+                      b = thrust::raw_pointer_cast(b.data())]  //
+                     __device__(T i) { b[i] = a[p[i]]; });
     return b;
 }
 

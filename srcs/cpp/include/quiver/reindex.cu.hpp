@@ -96,23 +96,19 @@ void complete_permutation(thrust::device_vector<T> &p, size_t n,
     thrust::transform(policy, q.begin(), q.end(), p.begin(), thrust_get<1>());
 }
 
-template <typename T>
-__global__ void inverse_permutation_kernel(const size_t n, const T *p, T *q)
-{
-    const int worker_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    const int worker_count = gridDim.x * blockDim.x;
-    for (int i = worker_idx; i < n; i += worker_count) { q[p[i]] = i; }
-}
-
+// given a permutation q of {0, ..., n - 1}, find q, the inverse of p, such that
+// q[p[i]] == i for i in {0, ..., n - 1}
 template <typename T>
 void inverse_permutation(const thrust::device_vector<T> &p,
                          thrust::device_vector<T> &q, cudaStream_t stream)
 {
     const size_t n = p.size();
     q.resize(n);
-    inverse_permutation_kernel<<<1024, 16, 0, stream>>>(
-        n, thrust::raw_pointer_cast(p.data()),
-        thrust::raw_pointer_cast(q.data()));
+    using it = thrust::counting_iterator<T>;
+    thrust::for_each(thrust::cuda::par.on(stream), it(0), it(n),
+                     [p = thrust::raw_pointer_cast(p.data()),
+                      q = thrust::raw_pointer_cast(q.data())]  //
+                     __device__(T i) { q[p[i]] = i; });
 }
 
 template <typename T>

@@ -57,62 +57,47 @@ void reorder_output(const thrust::device_vector<T> &p1,
                                         thrust::raw_pointer_cast(out.data())));
 }
 
-template <typename T>
-__global__ void mask_permutation_kernel_1(const size_t n, thrust::pair<T, T> *q,
-                                          const size_t m, const T *p)
-{
-    const int worker_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    const int worker_count = gridDim.x * blockDim.x;
-    for (int i = worker_idx; i < n; i += worker_count) {
-        q[i].first = m;
-        q[i].second = i;
-    }
-}
-
-template <typename T>
-__global__ void mask_permutation_kernel_2(const size_t n, thrust::pair<T, T> *q,
-                                          const size_t m, const T *p)
-{
-    const int worker_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    const int worker_count = gridDim.x * blockDim.x;
-    for (int i = worker_idx; i < m; i += worker_count) { q[p[i]].first = i; }
-}
-
+// Given a partial permutation p of {0, ..., n - 1} with only the first m values
+// known, convert p into a full permutation.
+// this implementation outputs the smallest one in lexicographical order.
 template <typename T>
 void complete_permutation(thrust::device_vector<T> &p, size_t n,
                           cudaStream_t stream)
 {
+    using it = thrust::counting_iterator<T>;
     const size_t m = p.size();
     const auto policy = thrust::cuda::par.on(stream);
     thrust::device_vector<thrust::pair<T, T>> q(n);
-    mask_permutation_kernel_1<<<1024, 16, 0, stream>>>(
-        n, thrust::raw_pointer_cast(q.data()), m,
-        thrust::raw_pointer_cast(p.data()));
-    mask_permutation_kernel_2<<<1024, 16, 0, stream>>>(
-        n, thrust::raw_pointer_cast(q.data()), m,
-        thrust::raw_pointer_cast(p.data()));
+    thrust::for_each(policy, it(0), it(n),
+                     [q = thrust::raw_pointer_cast(q.data()),
+                      p = thrust::raw_pointer_cast(p.data()),
+                      m = m]  //
+                     __device__(T i) {
+                         q[i].first = m;
+                         q[i].second = i;
+                     });
+    thrust::for_each(policy, it(0), it(m),
+                     [q = thrust::raw_pointer_cast(q.data()),
+                      p = thrust::raw_pointer_cast(p.data())]  //
+                     __device__(T i) { q[p[i]].first = i; });
     thrust::sort(policy, q.begin(), q.end());
     p.resize(n);
     thrust::transform(policy, q.begin(), q.end(), p.begin(), thrust_get<1>());
 }
 
-template <typename T>
-__global__ void inverse_permutation_kernel(const size_t n, const T *p, T *q)
-{
-    const int worker_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    const int worker_count = gridDim.x * blockDim.x;
-    for (int i = worker_idx; i < n; i += worker_count) { q[p[i]] = i; }
-}
-
+// given a permutation q of {0, ..., n - 1}, find q, the inverse of p, such that
+// q[p[i]] == i for i in {0, ..., n - 1}
 template <typename T>
 void inverse_permutation(const thrust::device_vector<T> &p,
                          thrust::device_vector<T> &q, cudaStream_t stream)
 {
     const size_t n = p.size();
     q.resize(n);
-    inverse_permutation_kernel<<<1024, 16, 0, stream>>>(
-        n, thrust::raw_pointer_cast(p.data()),
-        thrust::raw_pointer_cast(q.data()));
+    using it = thrust::counting_iterator<T>;
+    thrust::for_each(thrust::cuda::par.on(stream), it(0), it(n),
+                     [p = thrust::raw_pointer_cast(p.data()),
+                      q = thrust::raw_pointer_cast(q.data())]  //
+                     __device__(T i) { q[p[i]] = i; });
 }
 
 template <typename T>
@@ -125,25 +110,18 @@ void permute_value(const thrust::device_vector<T> &p,
 }
 
 template <typename T>
-__global__ void permute_kernel(const size_t n, const T *p, const T *a, T *b)
-{
-    const int worker_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    const int worker_count = gridDim.x * blockDim.x;
-    for (int i = worker_idx; i < n; i += worker_count) { b[i] = a[p[i]]; }
-}
-
-template <typename T>
 thrust::device_vector<T> permute(const thrust::device_vector<T> &p,
                                  const thrust::device_vector<T> &a,
                                  cudaStream_t stream)
 {
     const size_t n = a.size();
     thrust::device_vector<T> b(n);
-    // for (size_t i = 0; i < n; ++i) { b[i] = a[p[i]]; }
-    permute_kernel<<<1024, 16, 0, stream>>>(
-        n, thrust::raw_pointer_cast(p.data()),
-        thrust::raw_pointer_cast(a.data()), thrust::raw_pointer_cast(b.data()));
-    cudaStreamSynchronize(stream);
+    using it = thrust::counting_iterator<T>;
+    thrust::for_each(thrust::cuda::par.on(stream), it(0), it(n),
+                     [p = thrust::raw_pointer_cast(p.data()),
+                      a = thrust::raw_pointer_cast(a.data()),
+                      b = thrust::raw_pointer_cast(b.data())]  //
+                     __device__(T i) { b[i] = a[p[i]]; });
     return b;
 }
 

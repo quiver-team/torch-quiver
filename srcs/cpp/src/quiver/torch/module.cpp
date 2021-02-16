@@ -7,10 +7,13 @@ void show_tensor_info(const torch::Tensor &t);
 
 void register_cuda_quiver(pybind11::module &m);
 
+void register_cpu_quiver(pybind11::module &m);
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("show_tensor_info", &quiver::show_tensor_info);
 
+    register_cpu_quiver(m);
 #ifdef HAVE_CUDA
     register_cuda_quiver(m);
 #endif

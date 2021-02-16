@@ -11,17 +11,21 @@ import torch.nn.functional as F
 from torch.distributed import rpc
 from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
 from quiver.profile_utils import StopWatch
-import quiver.dist_cuda_sampler as dist
 from torch_geometric.nn import SAGEConv
 from tqdm import tqdm
 
 
 p = argparse.ArgumentParser(description='')
+p.add_argument('--cuda', type=bool, default=False, help='cuda')
 p.add_argument('--rank', type=int, default=0, help='rank')
 p.add_argument('--runs', type=int, default=10, help='number of runs')
 p.add_argument('--epochs', type=int, default=20, help='number of epochs')
 args = p.parse_args()
 torch.cuda.set_device(args.rank)
+if args.cuda:
+    import quiver.dist_cuda_sampler as dist
+else:
+    import quiver.dist_cpu_sampler as dist
 
 
 def node2rank(nodes):
@@ -63,7 +67,7 @@ train_loader = dist.SyncDistNeighborSampler(comm, (int(data.edge_index.max() + 1
     batch_size=1024)
 
 
-def sample_n(nodes, size):
+def sample_cuda(nodes, size):
     torch.cuda.set_device(args.rank)
     nodes = train_loader.global2local(nodes)
     neighbors, counts = train_loader.quiver.sample_neighbor(0, nodes, size)
@@ -71,8 +75,17 @@ def sample_n(nodes, size):
 
     return neighbors, counts
 
+def sample_cpu(nodes, size):
+    nodes = train_loader.global2local(nodes)
+    neighbors, counts = train_loader.quiver.sample_neighbor(nodes, size)
+    neighbors = train_loader.local2global(neighbors)
 
-dist.sample_neighbor = sample_n
+    return neighbors, counts
+
+if args.cuda:
+    dist.sample_neighbor = sample_cuda
+else:
+    dist.sample_neighbor = sample_cpu
 
 w.tick('create train_loader')
 
@@ -197,8 +210,6 @@ model.reset_parameters()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
 test_accs = []
 for run in range(1, 1 + args.runs):
-    if args.rank == 0:
-        break
     print('')
     print(f'Run {run:02d}:')
     print('')

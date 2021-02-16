@@ -6,6 +6,8 @@
 #include <quiver/sparse.hpp>
 #include <quiver/zip.hpp>
 
+#include <torch/extension.h>
+
 namespace quiver
 {
 // sample at most k elements from [begin, end), returns the sampled count.
@@ -67,6 +69,35 @@ class quiver<T, CPU> : public Quiver
                 safe_sample(col_idx_.data() + begin, col_idx_.data() + end, k,
                             outputs.data() + i * k);
         }
+    }
+
+    std::tuple<torch::Tensor, torch::Tensor>
+    sample(const torch::Tensor &vertices, int k) const
+    {
+        const size_t bs = vertices.size(0);
+        T *inputs = vertices.data_ptr<T>();
+        std::vector<T> outputs(k * bs);
+        std::vector<T> output_counts(bs);
+
+        const T n = row_ptr_.size();
+        const T m = col_idx_.size();
+        size_t total = 0;
+        for (size_t i = 0; i < bs; ++i) {
+            T v = inputs[i];
+            T begin = row_ptr_[v];
+            const T end = v + 1 < n ? row_ptr_[v + 1] : m;
+            output_counts[i] =
+                safe_sample(col_idx_.data() + begin, col_idx_.data() + end, k,
+                            outputs.data() + total);
+            total += output_counts[i];
+        }
+        outputs.resize(total);
+        torch::Tensor out = torch::empty(total, vertices.options());
+        torch::Tensor counts = torch::empty(bs, vertices.options());
+        std::copy(outputs.begin(), outputs.end(), out.data_ptr<T>());
+        std::copy(output_counts.begin(), output_counts.end(),
+                  counts.data_ptr<T>());
+        return std::make_tuple(out, counts);
     }
 };
 }  // namespace quiver

@@ -10,8 +10,7 @@ import torch
 from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
 from quiver.profile_utils import StopWatch
 from torch_geometric.data import NeighborSampler
-from quiver.trainers.sage_trainer import SAGE
-import torch.nn.functional as F
+from quiver.models.sage_model import SAGE
 
 p = argparse.ArgumentParser(description='')
 p.add_argument('--num-workers',
@@ -152,7 +151,7 @@ for run in range(1, 1 + args.runs):
     best_val_acc = final_test_acc = 0.0
     w.tick('?')
     for epoch in range(1, 1 + args.epochs):
-        loss, acc = model.trainer(train_loader, w, optimizer, device, x, y, train_idx)
+        loss, acc = model.train_m(train_loader, w, optimizer, device, x, y, train_idx, epoch, "sync", args.epochs)
         print(f'Epoch {epoch:02d}, Loss: {loss:.4f}, Approx. Train: {acc:.4f}')
         w.tick('train one epoch')
 

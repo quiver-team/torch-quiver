@@ -9,29 +9,31 @@ from torch_geometric.data import GraphSAINTRandomWalkSampler
 from torch_geometric.utils import degree
 from quiver.profile_utils import StopWatch
 from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
-from quiver.trainers.saint_trainer import Net
+from quiver.trainers.saint_trainer import SAINT_trainer
+from quiver.models.saint_model import Net
+from quiver.schedule.throughput import ThroughputStats, SamplerChooser
 
 
 print("loading the data...")
 w = StopWatch('main')
-# home = os.getenv('HOME')
-# data_dir = osp.join(home, '.pyg')
-# root = osp.join(data_dir, 'data', 'products')
-# dataset = PygNodePropPredDataset('ogbn-products', root)
-# data = dataset[0]
-#
-# split_idx = dataset.get_idx_split()
-# train_mask = torch.zeros(data.num_nodes, dtype=torch.bool)
-# train_mask[split_idx['train']]= True
-# data.train_mask=train_mask
-#
-# row, col = data.edge_index
-# data.edge_weight = 1. / degree(col, data.num_nodes)[col]  # Norm by in-degree.
-path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'Flickr')
-dataset = Flickr(path)
+home = os.getenv('HOME')
+data_dir = osp.join(home, '.pyg')
+root = osp.join(data_dir, 'data', 'products')
+dataset = PygNodePropPredDataset('ogbn-products', root)
 data = dataset[0]
+
+split_idx = dataset.get_idx_split()
+train_mask = torch.zeros(data.num_nodes, dtype=torch.bool)
+train_mask[split_idx['train']]= True
+data.train_mask=train_mask
+
 row, col = data.edge_index
 data.edge_weight = 1. / degree(col, data.num_nodes)[col]  # Norm by in-degree.
+# path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'Flickr')
+# dataset = Flickr(path)
+# data = dataset[0]
+# row, col = data.edge_index
+# data.edge_weight = 1. / degree(col, data.num_nodes)[col]  # Norm by in-degree.
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--use_normalization', action='store_true')
@@ -49,6 +51,16 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = Net(hidden_channels=256, num_node_features=dataset.num_node_features,
             num_classes=dataset.num_classes).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+w.tick('build model')
+
+trainer = SAINT_trainer(model, device, args.use_normalization)
+chooser = SamplerChooser(trainer)
+train_loader = chooser.choose_sampler((loader, loader))
+if isinstance(train_loader, GraphSAINTRandomWalkSampler):
+    print('choose cpu sampler')
+else:
+    print('choose cuda sampler')
+w.tick('choose sampler')
 
 
 def train():
@@ -95,10 +107,11 @@ def test():
     for _, mask in data('train_mask', 'val_mask', 'test_mask'):
         accs.append(correct[mask].sum().item() / mask.sum().item())
     return accs
+
 w.tick('start train')
 for epoch in range(1,16):
-    loss = train()
-    #loss = model.trainer(args.use_normalization, loader, w, optimizer, device)
+    #loss = train()
+    loss = model.train_m(args.use_normalization, loader, w, optimizer, device)
     #accs = test()
     print(f'Epoch: {epoch:02d}, Loss: {loss:.4f},')
           # f'Train: {accs[0]:.4f}, '

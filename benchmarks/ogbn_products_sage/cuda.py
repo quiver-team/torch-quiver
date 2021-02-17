@@ -13,7 +13,7 @@ from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
 from quiver.cuda_sampler import CudaNeighborSampler
 from quiver.cuda_loader import CudaNeighborLoader
 from quiver.profile_utils import StopWatch
-from quiver.trainers.sage_trainer import SAGE
+from quiver.models.sage_model import SAGE
 
 def main():
     p = argparse.ArgumentParser(description='')
@@ -73,50 +73,6 @@ def main():
     y = data.y.squeeze().to(device)  # [N, 1]
     w.tick('build model')
 
-    def train(epoch):
-        # w1 = StopWatch('train loop')
-        model.train()
-        # w1.tick('set mode to train')
-
-        # pbar = tqdm(total=train_idx.size(0))
-        # pbar.set_description(f'Epoch {epoch:02d}')
-        if epoch > 1 and args.mode == 'prefetch':
-            train_loader.reset()
-        total_loss = total_correct = 0
-        w.turn_on('sample')
-        for batch_size, n_id, adjs in train_loader:
-            w.turn_off('sample')
-            w.turn_on('train')
-            # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
-            # w1.tick('prepro')
-            adjs = [adj.to(device) for adj in adjs]
-
-            optimizer.zero_grad()
-            out = model(x[n_id], adjs)
-            loss = F.nll_loss(out, y[n_id[:batch_size]])
-            loss.backward()
-            optimizer.step()
-            # w1.tick('train')
-
-            total_loss += float(loss)
-            total_correct += int(out.argmax(dim=-
-                                            1).eq(y[n_id[:batch_size]]).sum())
-            # pbar.update(batch_size)
-            # print('\n\n')
-            w.turn_on('sample')
-            w.turn_off('train')
-        if epoch == args.epochs and args.mode == 'prefetch':
-            train_loader.close()
-        w.turn_off('sample')
-
-        # pbar.close()
-
-        loss = total_loss / len(train_loader)
-        approx_acc = total_correct / train_idx.size(0)
-
-        # del w1
-        return loss, approx_acc
-
     @torch.no_grad()
     def test():
         model.eval()
@@ -164,7 +120,8 @@ def main():
         best_val_acc = final_test_acc = 0.0
         w.tick('before for loop')
         for epoch in range(1, 1 + args.epochs):
-            loss, acc = train(epoch)
+            #loss, acc = train(epoch)
+            loss, acc = model.train_m(train_loader, w, optimizer, device, x, y, train_idx, epoch, args.mode, args.epochs)
             print(
                 f'Epoch {epoch:02d}, Loss: {loss:.4f}, Approx. Train: {acc:.4f}')
             w.tick('train one epoch')

@@ -6,8 +6,6 @@
 #include <quiver/sparse.hpp>
 #include <quiver/zip.hpp>
 
-#include <torch/extension.h>
-
 namespace quiver
 {
 // sample at most k elements from [begin, end), returns the sampled count.
@@ -71,11 +69,10 @@ class quiver<T, CPU> : public Quiver
         }
     }
 
-    std::tuple<torch::Tensor, torch::Tensor>
-    sample(const torch::Tensor &vertices, int k) const
+    std::tuple<std::vector<T>, std::vector<T>>
+    sample_kernel(const std::vector<T> &inputs, int k) const
     {
-        const size_t bs = vertices.size(0);
-        T *inputs = vertices.data_ptr<T>();
+        const size_t bs = inputs.size();
         std::vector<T> outputs(k * bs);
         std::vector<T> output_counts(bs);
 
@@ -92,12 +89,7 @@ class quiver<T, CPU> : public Quiver
             total += output_counts[i];
         }
         outputs.resize(total);
-        torch::Tensor out = torch::empty(total, vertices.options());
-        torch::Tensor counts = torch::empty(bs, vertices.options());
-        std::copy(outputs.begin(), outputs.end(), out.data_ptr<T>());
-        std::copy(output_counts.begin(), output_counts.end(),
-                  counts.data_ptr<T>());
-        return std::make_tuple(out, counts);
+        return std::make_tuple(std::move(outputs), std::move(output_counts));
     }
 };
 }  // namespace quiver

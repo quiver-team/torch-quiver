@@ -17,6 +17,7 @@ from tqdm import tqdm
 
 p = argparse.ArgumentParser(description='')
 p.add_argument('--cuda', type=bool, default=False, help='cuda')
+p.add_argument('--ws', type=int, default=2, help='world size')
 p.add_argument('--rank', type=int, default=0, help='rank')
 p.add_argument('--runs', type=int, default=10, help='number of runs')
 p.add_argument('--epochs', type=int, default=20, help='number of epochs')
@@ -29,7 +30,7 @@ else:
 
 
 def node2rank(nodes):
-    ranks = torch.fmod(nodes, 2)
+    ranks = torch.fmod(nodes, args.ws)
     return ranks
 
 
@@ -58,7 +59,7 @@ train_idx = split_idx['train']
 
 w.tick('load data')
 
-comm = dist.Comm(args.rank, 2)
+comm = dist.Comm(args.rank, args.ws)
 
 train_loader = dist.SyncDistNeighborSampler(comm, (int(data.edge_index.max() + 1),
                                                    data.edge_index, torch.zeros(
@@ -92,7 +93,7 @@ w.tick('create train_loader')
 rpc.init_rpc(
     f"worker{args.rank}",
     rank=args.rank,
-    world_size=2,
+    world_size=args.ws,
     rpc_backend_options=rpc.TensorPipeRpcBackendOptions(
         num_worker_threads=8,
         rpc_timeout=20

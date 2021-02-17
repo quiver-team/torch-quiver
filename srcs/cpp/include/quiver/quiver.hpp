@@ -32,7 +32,7 @@ class Quiver
     from_edge_index_cuda(int n, std::vector<std::pair<int, int>> edge_index);
 
   public:
-    Quiver();
+    Quiver() {}
     virtual ~Quiver() = default;
 
     virtual void sample(const std::vector<int> &vertices, int k) const

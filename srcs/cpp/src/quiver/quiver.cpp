@@ -1,11 +1,12 @@
-#include <unordered_set>
+#include <unordered_map>
 
 #include <quiver/quiver.cpu.hpp>
 #include <quiver/quiver.hpp>
 
+#include <torch/extension.h>
+
 namespace quiver
 {
-Quiver::Quiver() {}
 
 std::unique_ptr<Quiver>
 Quiver::from_edge_index_cpu(int n, std::vector<std::pair<int, int>> edge_index)
@@ -32,7 +33,20 @@ class CPUQuiver
     std::tuple<torch::Tensor, torch::Tensor>
     sample_neighbor(const torch::Tensor &vertices, int k)
     {
-        return quiver_.sample(vertices, k);
+        size_t bs = vertices.size(0);
+        std::vector<T> inputs(bs);
+        std::copy(vertices.data_ptr<T>(), vertices.data_ptr<T>() + bs,
+                  inputs.begin());
+        auto res = quiver_.sample_kernel(inputs, k);
+        auto &outputs = std::get<0>(res);
+        auto &output_counts = std::get<1>(res);
+        size_t total = outputs.size();
+        torch::Tensor out = torch::empty(total, vertices.options());
+        torch::Tensor counts = torch::empty(bs, vertices.options());
+        std::copy(outputs.begin(), outputs.end(), out.data_ptr<T>());
+        std::copy(output_counts.begin(), output_counts.end(),
+                  counts.data_ptr<T>());
+        return std::make_tuple(out, counts);
     }
 
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>

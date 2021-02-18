@@ -13,7 +13,7 @@ class TaskContext:
             self.cores.put_nowait(i)
         for i in range(gpu):
             self.streams.put_nowait(i)
-        
+
     async def request(self, dic):
         if 'gpu' in dic and 'cpu' in dic:
             if random.random() < self.prefer:
@@ -28,7 +28,7 @@ class TaskContext:
         else:
             core = await self.cores.get()
             return 'cpu', core
-    
+
     async def revoke(self, res):
         typ, num = res
         if typ == 'gpu':

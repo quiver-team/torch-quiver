@@ -14,7 +14,6 @@ from quiver.profile_utils import StopWatch
 from torch_geometric.nn import SAGEConv
 from tqdm import tqdm
 
-
 p = argparse.ArgumentParser(description='')
 p.add_argument('--cuda', type=bool, default=False, help='cuda')
 p.add_argument('--ws', type=int, default=2, help='world size')
@@ -61,10 +60,12 @@ w.tick('load data')
 
 comm = dist.Comm(args.rank, args.ws)
 
-train_loader = dist.SyncDistNeighborSampler(comm, (int(data.edge_index.max() + 1),
-                                                   data.edge_index, torch.zeros(
-    1, dtype=torch.long), local2global,
-    global2local, node2rank), train_idx, [15, 10, 5], args.rank,
+train_loader = dist.SyncDistNeighborSampler(
+    comm,
+    (int(data.edge_index.max() + 1), data.edge_index,
+     torch.zeros(1, dtype=torch.long), local2global, global2local, node2rank),
+    train_idx, [15, 10, 5],
+    args.rank,
     batch_size=1024)
 
 
@@ -76,12 +77,14 @@ def sample_cuda(nodes, size):
 
     return neighbors, counts
 
+
 def sample_cpu(nodes, size):
     nodes = train_loader.global2local(nodes)
     neighbors, counts = train_loader.quiver.sample_neighbor(nodes, size)
     neighbors = train_loader.local2global(neighbors)
 
     return neighbors, counts
+
 
 if args.cuda:
     dist.sample_neighbor = sample_cuda
@@ -90,15 +93,11 @@ else:
 
 w.tick('create train_loader')
 
-rpc.init_rpc(
-    f"worker{args.rank}",
-    rank=args.rank,
-    world_size=args.ws,
-    rpc_backend_options=rpc.TensorPipeRpcBackendOptions(
-        num_worker_threads=8,
-        rpc_timeout=20
-    )
-)
+rpc.init_rpc(f"worker{args.rank}",
+             rank=args.rank,
+             world_size=args.ws,
+             rpc_backend_options=rpc.TensorPipeRpcBackendOptions(
+                 num_worker_threads=8, rpc_timeout=20))
 
 
 class SAGE(torch.nn.Module):

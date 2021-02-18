@@ -56,8 +56,9 @@ class LayerSampleTask(TaskNode):
                 self.batch.size(0),
             ])
         else:
-            adj, result = self.adj.sample_adj(
-                self.batch, self.size, replace=False)
+            adj, result = self.adj.sample_adj(self.batch,
+                                              self.size,
+                                              replace=False)
             adj = adj.t()
             row, col, _ = adj.coo()
             size = adj.sparse_sizes()
@@ -100,13 +101,16 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
         N = int(edge_index.max() + 1) if num_nodes is None else num_nodes
         edge_attr = torch.arange(edge_index.size(1))
         if mode != 'sync':
-            adj = SparseTensor(row=edge_index[0], col=edge_index[1],
-                            value=edge_attr, sparse_sizes=(N, N),
-                            is_sorted=False)
+            adj = SparseTensor(row=edge_index[0],
+                               col=edge_index[1],
+                               value=edge_attr,
+                               sparse_sizes=(N, N),
+                               is_sorted=False)
             adj = adj.t()
             self.adj = adj.to('cpu')
         edge_id = torch.zeros(1, dtype=torch.long)
-        self.quiver = qv.new_quiver_from_edge_index(N, edge_index, edge_id, device)
+        self.quiver = qv.new_quiver_from_edge_index(N, edge_index, edge_id,
+                                                    device)
 
         if node_idx is None:
             node_idx = torch.arange(N)
@@ -133,8 +137,8 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
     def build_tasks(self):
         for i in range(len(self.sizes)):
             rank = -1 if i == len(self.sizes) - 1 else i
-            task = LayerSampleTask(
-                self.context, rank, self.quiver, self.adj, None, self.sizes[i], self.pool)
+            task = LayerSampleTask(self.context, rank, self.quiver, self.adj,
+                                   None, self.sizes[i], self.pool)
             self.tasks.append(task)
 
         for i in range(len(self.sizes) - 1):
@@ -180,7 +184,8 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
 
         n_id = batch
         for size in self.sizes:
-            result, row_idx, col_idx = self.quiver.sample_sub(self.rank, n_id, size)
+            result, row_idx, col_idx = self.quiver.sample_sub(
+                self.rank, n_id, size)
             # assert (row_idx.max() < n_id.size(0))
 
             row_idx, col_idx = col_idx, row_idx

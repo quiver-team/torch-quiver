@@ -27,9 +27,8 @@ def async_sampler(data, train_idx, w):
 
 
 def async_loader(data, train_idx, w):
-    train_loader = CudaNeighborLoader((data.edge_index,
-                                       [15, 10, 5], train_idx),
-                                      1024, 1)
+    train_loader = CudaNeighborLoader(
+        (data.edge_index, [15, 10, 5], train_idx), 1024, 1)
     w.tick('create train_loader')
     count = 0
     for i in range(10):

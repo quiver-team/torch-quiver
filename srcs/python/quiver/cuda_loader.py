@@ -44,7 +44,8 @@ class CudaNeighborGenerator(AsyncDataGenerator):
     async def async_run(self, batch):
         typ, num = await self.context.request({'gpu': 1})
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(self.pool, self._sample, batch, num)
+        result = await loop.run_in_executor(self.pool, self._sample, batch,
+                                            num)
         await self.context.revoke((typ, num))
         return result
 
@@ -91,7 +92,7 @@ class CudaNeighborGenerator(AsyncDataGenerator):
         if end > len(self.dataset.node_idx):
             end = len(self.dataset.node_idx)
         self.index = end
-        return self.dataset.node_idx[beg: end]
+        return self.dataset.node_idx[beg:end]
 
     def shuffle(self):
         random.shuffle(self.dataset.node_idx)
@@ -107,4 +108,5 @@ class CudaNeighborLoader(AsyncDataLoader):
         return self.len
 
     def new_generator(self, dataset, batch_size, num_worker, queue, rank=0):
-        return CudaNeighborGenerator(dataset, batch_size, num_worker, queue, rank)
+        return CudaNeighborGenerator(dataset, batch_size, num_worker, queue,
+                                     rank)

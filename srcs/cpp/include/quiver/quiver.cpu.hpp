@@ -25,7 +25,7 @@ N safe_sample(const T *begin, const T *end, const N k, T *outputs)
 }
 
 template <typename T>
-class quiver<T, CPU> : public Quiver
+class quiver<T, CPU>
 {
     std::vector<T> row_ptr_;
     std::vector<T> col_idx_;
@@ -43,31 +43,9 @@ class quiver<T, CPU> : public Quiver
 
     virtual ~quiver() = default;
 
-    size_t size() const override { return row_ptr_.size(); }
+    size_t size() const { return row_ptr_.size(); }
 
-    size_t edge_counts() const override { return col_idx_.size(); }
-
-    device_t device() const override { return CPU; }
-
-    void sample(const std::vector<int> &vertices, int k) const override
-    {
-        std::vector<T> inputs(vertices.size());
-        std::copy(vertices.begin(), vertices.end(), inputs.begin());
-        std::vector<T> outputs(vertices.size() * k);
-        std::vector<T> output_counts(vertices.size());
-
-        const T n = row_ptr_.size();
-        const T m = col_idx_.size();
-        const size_t batch_size = vertices.size();
-        for (size_t i = 0; i < batch_size; ++i) {
-            T v = vertices[i];
-            T begin = row_ptr_[v];
-            const T end = v + 1 < n ? row_ptr_[v + 1] : m;
-            output_counts[i] =
-                safe_sample(col_idx_.data() + begin, col_idx_.data() + end, k,
-                            outputs.data() + i * k);
-        }
-    }
+    size_t edge_counts() const { return col_idx_.size(); }
 
     std::tuple<std::vector<T>, std::vector<T>>
     sample_kernel(const std::vector<T> &inputs, int k) const

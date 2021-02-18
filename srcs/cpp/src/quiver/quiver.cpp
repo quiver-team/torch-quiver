@@ -51,12 +51,12 @@ class CPUQuiver
 
         std::vector<T> frontier;
         T n_id = 0;
-        for (int i = 0; i < in_size; i++) {
+        for (size_t i = 0; i < in_size; i++) {
             T input = in_vec[i];
             out_map[input] = n_id++;
             frontier.push_back(input);
         }
-        for (int i = 0; i < out_size; i++) {
+        for (size_t i = 0; i < out_size; i++) {
             T output = out_vec[i];
             if (out_map.find(output) == out_map.end()) {
                 out_map[output] = n_id++;
@@ -66,9 +66,9 @@ class CPUQuiver
         std::vector<T> row_idx(out_size);
         std::vector<T> col_idx(out_size);
         size_t cnt = 0;
-        for (int i = 0; i < in_size; i++) {
+        for (size_t i = 0; i < in_size; i++) {
             T in = prev_in_vec[i];
-            for (int j = 0; j < cnt_vec[i]; j++) {
+            for (T j = 0; j < cnt_vec[i]; j++) {
                 row_idx[cnt] = out_map[in];
                 col_idx[cnt] = out_map[out_vec[cnt]];
                 cnt++;
@@ -92,11 +92,11 @@ CPUQuiver cpu_quiver_from_edge_index(size_t n, torch::Tensor edge_index)
     size_t e = edge_index.size(1);
     vec ei(e);
     T *ptr = edge_index.data_ptr<T>();
-    for (int i = 0; i < e; i++) {
+    for (size_t i = 0; i < e; i++) {
         ei[i].first = *ptr;
         ptr++;
     }
-    for (int i = 0; i < e; i++) {
+    for (size_t i = 0; i < e; i++) {
         ei[i].second = *ptr;
         ptr++;
     }

@@ -5,6 +5,7 @@ cd $(dirname $0)/..
 
 list_py_srcs() {
     find ./benchmarks -type f | grep .py$
+    find ./srcs/python -type f | grep .py$
 }
 
 fmt_py() {

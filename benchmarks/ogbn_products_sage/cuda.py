@@ -15,14 +15,19 @@ from quiver.cuda_loader import CudaNeighborLoader
 from quiver.profile_utils import StopWatch
 from quiver.models.sage_model import SAGE
 
+
 def main():
     p = argparse.ArgumentParser(description='')
-    p.add_argument('--mode', type=str, default='sync',
+    p.add_argument('--mode',
+                   type=str,
+                   default='sync',
                    help='sync | await | coro | prefetch')
     p.add_argument('--runs', type=int, default=10, help='number of runs')
     p.add_argument('--epochs', type=int, default=20, help='number of epochs')
-    p.add_argument('--distribute', type=str,
-                   default='', help='kungfu | horovod')
+    p.add_argument('--distribute',
+                   type=str,
+                   default='',
+                   help='kungfu | horovod')
     args = p.parse_args()
 
     if args.distribute == 'horovod':
@@ -47,9 +52,8 @@ def main():
     train_loader = None
 
     if args.mode == 'prefetch':
-        train_loader = CudaNeighborLoader((data.edge_index,
-                                           [15, 10, 5], train_idx),
-                                          1024, 4)
+        train_loader = CudaNeighborLoader(
+            (data.edge_index, [15, 10, 5], train_idx), 1024, 4)
     else:
         train_loader = CudaNeighborSampler(data.edge_index,
                                            node_idx=train_idx,
@@ -77,7 +81,7 @@ def main():
     def test():
         model.eval()
 
-        out = model.inference(x,subgraph_loader, device)
+        out = model.inference(x, subgraph_loader, device)
 
         y_true = y.cpu().unsqueeze(-1)
         y_pred = out.argmax(dim=-1, keepdim=True)
@@ -121,9 +125,11 @@ def main():
         w.tick('before for loop')
         for epoch in range(1, 1 + args.epochs):
             #loss, acc = train(epoch)
-            loss, acc = model.train_m(train_loader, w, optimizer, device, x, y, train_idx, epoch, args.mode, args.epochs)
+            loss, acc = model.train_m(train_loader, w, optimizer, device, x, y,
+                                      train_idx, epoch, args.mode, args.epochs)
             print(
-                f'Epoch {epoch:02d}, Loss: {loss:.4f}, Approx. Train: {acc:.4f}')
+                f'Epoch {epoch:02d}, Loss: {loss:.4f}, Approx. Train: {acc:.4f}'
+            )
             w.tick('train one epoch')
 
             if epoch > 5:

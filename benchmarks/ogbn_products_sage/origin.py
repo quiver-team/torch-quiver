@@ -65,7 +65,6 @@ x = data.x.to(device)  # [N, 100]
 y = data.y.squeeze().to(device)  # [N, 1]
 w.tick('build model')
 
-
 # def train():
 #     # w1 = StopWatch('train loop')
 #     model.train()
@@ -107,7 +106,7 @@ w.tick('build model')
 def test():
     model.eval()
 
-    out = model.inference(x,subgraph_loader,device)
+    out = model.inference(x, subgraph_loader, device)
 
     y_true = y.cpu().unsqueeze(-1)
     y_pred = out.argmax(dim=-1, keepdim=True)
@@ -151,7 +150,8 @@ for run in range(1, 1 + args.runs):
     best_val_acc = final_test_acc = 0.0
     w.tick('?')
     for epoch in range(1, 1 + args.epochs):
-        loss, acc = model.train_m(train_loader, w, optimizer, device, x, y, train_idx, epoch, "sync", args.epochs)
+        loss, acc = model.train_m(train_loader, w, optimizer, device, x, y,
+                                  train_idx, epoch, "sync", args.epochs)
         print(f'Epoch {epoch:02d}, Loss: {loss:.4f}, Approx. Train: {acc:.4f}')
         w.tick('train one epoch')
 

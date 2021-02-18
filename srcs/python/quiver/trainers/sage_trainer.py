@@ -1,6 +1,7 @@
 import torch.nn.functional as F
 import torch
 
+
 class SAGE_trainer():
     def __init__(self, model, device, x, y):
         # super().__init__(model, device)

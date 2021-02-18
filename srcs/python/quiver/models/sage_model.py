@@ -3,6 +3,7 @@ from tqdm import tqdm
 import torch.nn.functional as F
 import torch
 
+
 class SAGE(torch.nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
         super(SAGE, self).__init__()
@@ -61,7 +62,8 @@ class SAGE(torch.nn.Module):
         pbar.close()
         return x_all
 
-    def train_m(self, loader, w, optimizer, device, x, y, train_idx, epoch, mode, tot_epoch):
+    def train_m(self, loader, w, optimizer, device, x, y, train_idx, epoch,
+                mode, tot_epoch):
         # w1 = StopWatch('train loop')
         super().train()
         # w1.tick('set mode to train')
@@ -87,8 +89,8 @@ class SAGE(torch.nn.Module):
             # w1.tick('train')
 
             total_loss += float(loss)
-            total_correct += int(out.argmax(dim=-
-            1).eq(y[n_id[:batch_size]]).sum())
+            total_correct += int(
+                out.argmax(dim=-1).eq(y[n_id[:batch_size]]).sum())
             # pbar.update(batch_size)
             # print('\n\n')
             w.turn_on('sample')

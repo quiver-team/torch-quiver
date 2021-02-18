@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch_geometric.nn import GraphConv
 
+
 class Net(torch.nn.Module):
     def __init__(self, hidden_channels, num_node_features, num_classes):
         super(Net, self).__init__()
@@ -50,7 +51,8 @@ class Net(torch.nn.Module):
                 print(data.x.shape)
                 print(data.edge_index.shape)
                 out = self(data.x, data.edge_index)
-                loss = F.nll_loss(out[data.train_mask], data.y[data.train_mask].squeeze_())
+                loss = F.nll_loss(out[data.train_mask],
+                                  data.y[data.train_mask].squeeze_())
             w.turn_on('sample')
             loss.backward()
             optimizer.step()
@@ -58,4 +60,3 @@ class Net(torch.nn.Module):
             total_examples += data.num_nodes
 
         return total_loss / total_examples
-

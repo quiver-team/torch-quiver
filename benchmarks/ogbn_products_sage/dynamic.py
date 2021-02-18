@@ -18,7 +18,6 @@ from torch_geometric.data import NeighborSampler
 from quiver.trainers.sage_trainer import SAGE_trainer
 from quiver.models.sage_model import SAGE
 
-
 p = argparse.ArgumentParser(description='')
 p.add_argument('--num-workers',
                type=int,
@@ -49,17 +48,18 @@ train_idx = split_idx['train']
 
 w.tick('load data')
 cuda_train_loader = CudaNeighborSampler(data.edge_index,
-                                   node_idx=train_idx,
-                                   sizes=[15, 10, 5],
-                                   batch_size=1024,
-                                   shuffle=True)
-cpu_train_loader = NeighborSampler(data.edge_index,
-                                   node_idx=train_idx,
-                                   sizes=[15, 10, 5],
-                                   batch_size=1024,
-#                                   return_e_id=False,
-                                   shuffle=True,
-                                   num_workers=args.num_workers)
+                                        node_idx=train_idx,
+                                        sizes=[15, 10, 5],
+                                        batch_size=1024,
+                                        shuffle=True)
+cpu_train_loader = NeighborSampler(
+    data.edge_index,
+    node_idx=train_idx,
+    sizes=[15, 10, 5],
+    batch_size=1024,
+    #                                   return_e_id=False,
+    shuffle=True,
+    num_workers=args.num_workers)
 w.tick('create train_loader')
 # subgraph_loader = NeighborSampler(data.edge_index,
 #                                   node_idx=None,
@@ -70,7 +70,6 @@ w.tick('create train_loader')
 
 # w.tick('create subgraph_loader')
 
-
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = SAGE(dataset.num_features, 256, dataset.num_classes, num_layers=3)
 model = model.to(device)
@@ -78,7 +77,6 @@ model = model.to(device)
 x = data.x.to(device)  # [N, 100]
 y = data.y.squeeze().to(device)  # [N, 1]
 w.tick('build model')
-
 
 trainer = SAGE_trainer(model, device, x, y)
 chooser = SamplerChooser(trainer)
@@ -175,8 +173,9 @@ for run in range(1, 1 + args.runs):
     best_val_acc = final_test_acc = 0.0
     w.tick('?')
     for epoch in range(1, 1 + args.epochs):
-       #loss, acc = train(epoch)
-        loss, acc = model.train_m(train_loader, w, optimizer, device, x, y, train_idx, epoch, "sync", args.epochs)
+        #loss, acc = train(epoch)
+        loss, acc = model.train_m(train_loader, w, optimizer, device, x, y,
+                                  train_idx, epoch, "sync", args.epochs)
         print(f'Epoch {epoch:02d}, Loss: {loss:.4f}, Approx. Train: {acc:.4f}')
         w.tick('train one epoch')
 

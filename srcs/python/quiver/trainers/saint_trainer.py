@@ -1,5 +1,7 @@
 import torch.nn.functional as F
 import torch
+
+
 class SAINT_trainer():
     def __init__(self, model, device, use_norm):
         self.model = model
@@ -19,6 +21,7 @@ class SAINT_trainer():
             loss = (loss * batch.node_norm)[batch.train_mask].sum()
         else:
             out = self.model(batch.x, batch.edge_index)
-            loss = F.nll_loss(out[batch.train_mask], batch.y[batch.train_mask].squeeze_())
+            loss = F.nll_loss(out[batch.train_mask],
+                              batch.y[batch.train_mask].squeeze_())
         loss.backward()
         self.optimizer.step()

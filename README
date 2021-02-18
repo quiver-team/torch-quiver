@@ -17,3 +17,8 @@ Code Structure
 *.hpp // c++ header or template
 *.cu  // cuda kernels
 *.cpp // c++ implementations
+
+
+Develop
+
+- run ./scripts/lint.sh to format python code before push

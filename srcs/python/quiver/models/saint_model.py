@@ -34,11 +34,10 @@ class Net(torch.nn.Module):
         total_loss = total_examples = 0
         w.turn_on('sample')
         self.set_aggr('add' if use_norm else 'mean')
-        print(loader.num_steps)
-        print(len(loader))
 
         for data in loader:
             w.turn_off('sample')
+            w.turn_on('train')
             data = data.to(device)
             optimizer.zero_grad()
 
@@ -48,12 +47,11 @@ class Net(torch.nn.Module):
                 loss = F.nll_loss(out, data.y.squeeze_(), reduction='none')
                 loss = (loss * data.node_norm)[data.train_mask].sum()
             else:
-                print(data.x.shape)
-                print(data.edge_index.shape)
                 out = self(data.x, data.edge_index)
                 loss = F.nll_loss(out[data.train_mask],
                                   data.y[data.train_mask].squeeze_())
             w.turn_on('sample')
+            w.turn_off('train')
             loss.backward()
             optimizer.step()
             total_loss += loss.item() * data.num_nodes

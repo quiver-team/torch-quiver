@@ -15,6 +15,7 @@ from quiver.schedule.throughput import ThroughputStats, SamplerChooser
 
 print("loading the data...")
 w = StopWatch('main')
+# --- here is ogbn ------------------
 home = os.getenv('HOME')
 data_dir = osp.join(home, '.pyg')
 root = osp.join(data_dir, 'data', 'products')
@@ -28,6 +29,7 @@ data.train_mask = train_mask
 
 row, col = data.edge_index
 data.edge_weight = 1. / degree(col, data.num_nodes)[col]  # Norm by in-degree.
+# -----below is flicker-----------
 # path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'Flickr')
 # dataset = Flickr(path)
 # data = dataset[0]
@@ -40,7 +42,7 @@ args = parser.parse_args()
 w.tick('load data')
 
 loader = GraphSAINTRandomWalkSampler(data,
-                                     batch_size=1000,
+                                     batch_size=6000,
                                      walk_length=2,
                                      num_steps=1,
                                      sample_coverage=5,
@@ -115,7 +117,7 @@ def test():
 
 
 w.tick('start train')
-for epoch in range(1, 16):
+for epoch in range(1, 51):
     #loss = train()
     loss = model.train_m(args.use_normalization, loader, w, optimizer, device)
     #accs = test()

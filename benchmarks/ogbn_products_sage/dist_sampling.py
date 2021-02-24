@@ -62,11 +62,17 @@ w.tick('load data')
 
 comm = dist.Comm(args.rank, args.ws)
 
+def node_f(nodes, is_feature):
+    if is_feature:
+        return x[nodes]
+    else:
+        return y[nodes]
+
 train_loader = dist.SyncDistNeighborSampler(
     comm, (int(data.edge_index.max() + 1), data.edge_index,
            (x, y), local2global, global2local, node2rank),
     train_idx, [15, 10, 5],
-    args.rank,
+    args.rank, node_f,
     batch_size=1024)
 
 
@@ -87,19 +93,10 @@ def sample_cpu(nodes, size):
     return neighbors, counts
 
 
-def node_f(nodes, is_feature):
-    nodes = train_loader.global2local(nodes)
-    if is_feature:
-        return train_loader.x[nodes]
-    else:
-        return train_loader.y[nodes]
-
-
 if args.cuda:
     dist.sample_neighbor = sample_cuda
 else:
     dist.sample_neighbor = sample_cpu
-dist.node_feature = node_f
 
 w.tick('create train_loader')
 
@@ -160,7 +157,7 @@ def train(epoch):
     total_loss = total_correct = 0
     w.turn_on('sample')
     for feature, label, adjs in train_loader:
-        # `adjs` holds a list of `(esdge_index, e_id, size)` tuples.
+        # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
         # w1.tick('prepro')
         w.turn_off('sample')
         w.turn_on('train')
@@ -175,8 +172,8 @@ def train(epoch):
         optimizer.step()
         # w1.tick('train')
 
-        # total_loss += float(loss)
-        # total_correct += int(out.argmax(dim=-1).eq(label).sum())
+        total_loss += float(loss)
+        total_correct += int(out.argmax(dim=-1).eq(label).sum())
         # pbar.update(batch_size)
         torch.cuda.synchronize(args.rank)
         w.turn_on('sample')

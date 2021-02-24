@@ -15,13 +15,6 @@ def sample_n(nodes, size):
 sample_neighbor = sample_n
 
 
-def node_f(nodes, is_feature):
-    return None
-
-
-node_feature = node_f
-
-
 class Adj(NamedTuple):
     edge_index: torch.Tensor
     e_id: torch.Tensor
@@ -39,7 +32,7 @@ class Comm:
 
 
 class SyncDistNeighborSampler(torch.utils.data.DataLoader):
-    def __init__(self, comm, graph, train_idx, layer_sizes, device, **kwargs):
+    def __init__(self, comm, graph, train_idx, layer_sizes, device, feature_func, **kwargs):
         torch.set_num_threads(1)
         self.comm = comm
         self.sizes = layer_sizes
@@ -51,6 +44,7 @@ class SyncDistNeighborSampler(torch.utils.data.DataLoader):
         self.global2local = global2local
         self.node2rank = node2rank
         self.x, self.y = data
+        self.node_feature = feature_func
 
         super(SyncDistNeighborSampler, self).__init__(train_idx.tolist(),
                                                       collate_fn=self.sample,
@@ -73,7 +67,7 @@ class SyncDistNeighborSampler(torch.utils.data.DataLoader):
                 else:
                     res.append(
                         rpc.rpc_async(f"worker{i}",
-                                      node_feature,
+                                      self.node_feature,
                                       args=(part_nodes, is_feature),
                                       kwargs=None,
                                       timeout=-1.0))

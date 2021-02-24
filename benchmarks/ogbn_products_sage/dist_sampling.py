@@ -62,17 +62,20 @@ w.tick('load data')
 
 comm = dist.Comm(args.rank, args.ws)
 
+
 def node_f(nodes, is_feature):
     if is_feature:
         return x[nodes]
     else:
         return y[nodes]
 
+
 train_loader = dist.SyncDistNeighborSampler(
     comm, (int(data.edge_index.max() + 1), data.edge_index,
            (x, y), local2global, global2local, node2rank),
     train_idx, [15, 10, 5],
-    args.rank, node_f,
+    args.rank,
+    node_f,
     batch_size=1024)
 
 

@@ -32,7 +32,8 @@ class Comm:
 
 
 class SyncDistNeighborSampler(torch.utils.data.DataLoader):
-    def __init__(self, comm, graph, train_idx, layer_sizes, device, feature_func, **kwargs):
+    def __init__(self, comm, graph, train_idx, layer_sizes, device,
+                 feature_func, **kwargs):
         torch.set_num_threads(1)
         self.comm = comm
         self.sizes = layer_sizes

@@ -15,7 +15,7 @@ from torch_geometric.nn import SAGEConv
 from tqdm import tqdm
 
 p = argparse.ArgumentParser(description='')
-p.add_argument('--cuda', type=bool, default=False, help='cuda')
+p.add_argument('--cuda', type=bool, default=True, help='cuda')
 p.add_argument('--ws', type=int, default=2, help='world size')
 p.add_argument('--rank', type=int, default=0, help='rank')
 p.add_argument('--runs', type=int, default=10, help='number of runs')
@@ -53,6 +53,8 @@ dataset = PygNodePropPredDataset('ogbn-products', root)
 split_idx = dataset.get_idx_split()
 evaluator = Evaluator(name='ogbn-products')
 data = dataset[0]
+x = data.x  # [N, 100]
+y = data.y.squeeze()  # [N, 1]
 
 train_idx = split_idx['train']
 
@@ -60,12 +62,20 @@ w.tick('load data')
 
 comm = dist.Comm(args.rank, args.ws)
 
+
+def node_f(nodes, is_feature):
+    if is_feature:
+        return x[nodes]
+    else:
+        return y[nodes]
+
+
 train_loader = dist.SyncDistNeighborSampler(
-    comm,
-    (int(data.edge_index.max() + 1), data.edge_index,
-     torch.zeros(1, dtype=torch.long), local2global, global2local, node2rank),
+    comm, (int(data.edge_index.max() + 1), data.edge_index,
+           (x, y), local2global, global2local, node2rank),
     train_idx, [15, 10, 5],
     args.rank,
+    node_f,
     batch_size=1024)
 
 
@@ -136,8 +146,6 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = SAGE(dataset.num_features, 256, dataset.num_classes, num_layers=3)
 model = model.to(device)
 
-x = data.x.to(device)  # [N, 100]
-y = data.y.squeeze().to(device)  # [N, 1]
 w.tick('build model')
 
 
@@ -151,22 +159,24 @@ def train(epoch):
 
     total_loss = total_correct = 0
     w.turn_on('sample')
-    for batch_size, n_id, adjs in train_loader:
-        # `adjs` holds a list of `(esdge_index, e_id, size)` tuples.
+    for feature, label, adjs in train_loader:
+        # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
         # w1.tick('prepro')
         w.turn_off('sample')
         w.turn_on('train')
         adjs = [adj.to(device) for adj in adjs]
+        feature = feature.to(device)
+        label = label.to(device)
 
         optimizer.zero_grad()
-        out = model(x[n_id], adjs)
-        loss = F.nll_loss(out, y[n_id[:batch_size]])
+        out = model(feature, adjs)
+        loss = F.nll_loss(out, label)
         loss.backward()
         optimizer.step()
         # w1.tick('train')
 
         total_loss += float(loss)
-        total_correct += int(out.argmax(dim=-1).eq(y[n_id[:batch_size]]).sum())
+        total_correct += int(out.argmax(dim=-1).eq(label).sum())
         # pbar.update(batch_size)
         torch.cuda.synchronize(args.rank)
         w.turn_on('sample')

@@ -11,6 +11,7 @@ from quiver.profile_utils import StopWatch
 from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
 from quiver.trainers.saint_trainer import SAINT_trainer
 from quiver.models.saint_model import Net
+from quiver.cuda_sampler import CudaRWSampler
 from quiver.schedule.throughput import ThroughputStats, SamplerChooser
 
 print("loading the data...")
@@ -41,31 +42,32 @@ parser.add_argument('--use_normalization', action='store_true')
 args = parser.parse_args()
 w.tick('load data')
 
-loader = GraphSAINTRandomWalkSampler(data,
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+data=data.to(device)
+loader = CudaRWSampler(data,
                                      batch_size=6000,
                                      walk_length=2,
                                      num_steps=1,
-                                     sample_coverage=5,
+                                     sample_coverage=0,
                                      save_dir=dataset.processed_dir,
-                                     num_workers=4)
+                                     num_workers=0)
 
 w.tick('create train_loader')
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = Net(hidden_channels=256,
             num_node_features=dataset.num_node_features,
             num_classes=dataset.num_classes).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 w.tick('build model')
 
-trainer = SAINT_trainer(model, device, args.use_normalization)
-chooser = SamplerChooser(trainer)
-train_loader = chooser.choose_sampler((loader, loader))
-if isinstance(train_loader, GraphSAINTRandomWalkSampler):
-    print('choose cpu sampler')
-else:
-    print('choose cuda sampler')
-w.tick('choose sampler')
+# trainer = SAINT_trainer(model, device, args.use_normalization)
+# chooser = SamplerChooser(trainer)
+# train_loader = chooser.choose_sampler((loader, loader))
+# if isinstance(train_loader, GraphSAINTRandomWalkSampler):
+#     print('choose cpu sampler')
+# else:
+#     print('choose cuda sampler')
+# w.tick('choose sampler')
 
 
 def train():
@@ -118,8 +120,8 @@ def test():
 
 w.tick('start train')
 for epoch in range(1, 51):
-    #loss = train()
-    loss = model.train_m(args.use_normalization, loader, w, optimizer, device)
+    loss = train()
+    #loss = model.train_m(args.use_normalization, loader, w, optimizer, device)
     #accs = test()
     print(f'Epoch: {epoch:02d}, Loss: {loss:.4f},')
     # f'Train: {accs[0]:.4f}, '

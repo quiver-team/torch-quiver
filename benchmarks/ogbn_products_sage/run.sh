@@ -8,7 +8,10 @@ notify() {
 }
 
 cd $(dirname $0)
-export PYTHONPATH=$PWD/../../srcs/python
+#export PYTHONPATH=$PWD/../../srcs/python
+export PYTHONPATH=$PWD/../../srcs/python:
+#$PWD/../pytorch_sparse/
+#$:$HOME/.local/lib/python3.6/site-packages
 
 . ../../scripts/measure.sh
 
@@ -43,6 +46,9 @@ run_quiver() {
     # horovod distributed
     horovodrun -np 4 python3 cuda.py --runs 1 --epochs 1 --distribute horovod
 }
-
+run_graphsaint() {
+  python3 graphsaint_orig.py
+}
 # measure run_origin
-measure run_quiver
+# measure run_quiver
+ measure run_graphsaint

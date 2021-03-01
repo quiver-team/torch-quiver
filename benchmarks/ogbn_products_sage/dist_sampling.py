@@ -53,8 +53,10 @@ dataset = PygNodePropPredDataset('ogbn-products', root)
 split_idx = dataset.get_idx_split()
 evaluator = Evaluator(name='ogbn-products')
 data = dataset[0]
-x = data.x  # [N, 100]
-y = data.y.squeeze()  # [N, 1]
+dev = torch.device(args.rank)
+cpu = torch.device('cpu')
+x = data.x.to(dev)  # [N, 100]
+y = data.y.squeeze().to(dev)  # [N, 1]
 
 train_idx = split_idx['train']
 
@@ -65,9 +67,9 @@ comm = dist.Comm(args.rank, args.ws)
 
 def node_f(nodes, is_feature):
     if is_feature:
-        return x[nodes]
+        return x[nodes].to(cpu)
     else:
-        return y[nodes]
+        return y[nodes].to(cpu)
 
 
 train_loader = dist.SyncDistNeighborSampler(
@@ -165,18 +167,24 @@ def train(epoch):
         w.turn_off('sample')
         w.turn_on('train')
         adjs = [adj.to(device) for adj in adjs]
-        feature = feature.to(device)
-        label = label.to(device)
+        feature, order0 = feature
+        label, order1 = label
+        feature = torch.cat([f.to(device) for f in feature])
+        label = torch.cat([l.to(device) for l in label])
+        origin_feature = torch.empty_like(feature)
+        origin_label = torch.empty_like(label)
+        origin_feature[order0] = feature
+        origin_label[order1] = label
 
         optimizer.zero_grad()
-        out = model(feature, adjs)
-        loss = F.nll_loss(out, label)
+        out = model(origin_feature, adjs)
+        loss = F.nll_loss(out, origin_label)
         loss.backward()
         optimizer.step()
         # w1.tick('train')
 
         total_loss += float(loss)
-        total_correct += int(out.argmax(dim=-1).eq(label).sum())
+        total_correct += int(out.argmax(dim=-1).eq(origin_label).sum())
         # pbar.update(batch_size)
         torch.cuda.synchronize(args.rank)
         w.turn_on('sample')

@@ -52,6 +52,7 @@ class SyncDistNeighborSampler(torch.utils.data.DataLoader):
                                                       **kwargs)
 
     def get_data(self, n_id, is_feature):
+        cpu = torch.device('cpu')
         ranks = self.node2rank(n_id)
         input_orders = torch.arange(n_id.size(0), dtype=torch.long)
         reorder = torch.empty_like(input_orders)
@@ -80,21 +81,16 @@ class SyncDistNeighborSampler(torch.utils.data.DataLoader):
         if local_nodes is not None:
             nodes = self.global2local(local_nodes)
             if is_feature:
-                local_res = self.x[nodes]
+                local_res = self.x[nodes].to(cpu)
             else:
-                local_res = self.y[nodes]
+                local_res = self.y[nodes].to(cpu)
             res[self.comm.rank] = local_res
         for i in range(len(res)):
             if not isinstance(res[i], torch.Tensor):
                 res[i] = res[i].wait()
         dev = torch.device(self.comm.rank)
         cpu = torch.device('cpu')
-        res = [r.to(dev) for r in res]
-        res = torch.cat(res)
-        origin_res = torch.empty_like(res)
-        origin_res[reorder] = res
-        origin_res = origin_res.to(cpu)
-        return origin_res
+        return res, reorder
 
     def sample(self, batch):
         if not isinstance(batch, torch.Tensor):

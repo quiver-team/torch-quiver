@@ -6,6 +6,8 @@ import argparse
 import os
 import os.path as osp
 
+import kungfu.torch as kf
+from kungfu.python import current_cluster_size, current_rank
 import torch
 import torch.nn.functional as F
 from torch.distributed import rpc
@@ -53,8 +55,12 @@ dataset = PygNodePropPredDataset('ogbn-products', root)
 split_idx = dataset.get_idx_split()
 evaluator = Evaluator(name='ogbn-products')
 data = dataset[0]
-x = data.x  # [N, 100]
-y = data.y.squeeze()  # [N, 1]
+args.rank = current_rank()
+args.ws = current_cluster_size()
+dev = torch.device(0)
+cpu = torch.device('cpu')
+x = data.x.to(dev)  # [N, 100]
+y = data.y.squeeze().to(dev)  # [N, 1]
 
 train_idx = split_idx['train']
 
@@ -65,22 +71,22 @@ comm = dist.Comm(args.rank, args.ws)
 
 def node_f(nodes, is_feature):
     if is_feature:
-        return x[nodes]
+        return x[nodes].to(cpu)
     else:
-        return y[nodes]
+        return y[nodes].to(cpu)
 
 
 train_loader = dist.SyncDistNeighborSampler(
     comm, (int(data.edge_index.max() + 1), data.edge_index,
            (x, y), local2global, global2local, node2rank),
     train_idx, [15, 10, 5],
-    args.rank,
+    0,
     node_f,
     batch_size=1024)
 
 
 def sample_cuda(nodes, size):
-    torch.cuda.set_device(args.rank)
+    torch.cuda.set_device(0)
     nodes = train_loader.global2local(nodes)
     neighbors, counts = train_loader.quiver.sample_neighbor(0, nodes, size)
     neighbors = train_loader.local2global(neighbors)
@@ -165,20 +171,26 @@ def train(epoch):
         w.turn_off('sample')
         w.turn_on('train')
         adjs = [adj.to(device) for adj in adjs]
-        feature = feature.to(device)
-        label = label.to(device)
+        feature, order0 = feature
+        label, order1 = label
+        feature = torch.cat([f.to(device) for f in feature])
+        label = torch.cat([l.to(device) for l in label])
+        origin_feature = torch.empty_like(feature)
+        origin_label = torch.empty_like(label)
+        origin_feature[order0] = feature
+        origin_label[order1] = label
 
         optimizer.zero_grad()
-        out = model(feature, adjs)
-        loss = F.nll_loss(out, label)
+        out = model(origin_feature, adjs)
+        loss = F.nll_loss(out, origin_label)
         loss.backward()
         optimizer.step()
         # w1.tick('train')
 
         total_loss += float(loss)
-        total_correct += int(out.argmax(dim=-1).eq(label).sum())
+        total_correct += int(out.argmax(dim=-1).eq(origin_label).sum())
         # pbar.update(batch_size)
-        torch.cuda.synchronize(args.rank)
+        torch.cuda.synchronize(0)
         w.turn_on('sample')
         w.turn_off('train')
 
@@ -226,6 +238,10 @@ for run in range(1, 1 + args.runs):
 
     model.reset_parameters()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
+    optimizer = kf.optimizers.SynchronousSGDOptimizer(
+        optimizer, named_parameters=model.named_parameters())
+    # Broadcast parameters from rank 0 to all other processes.
+    kf.broadcast_parameters(model.state_dict())
 
     best_val_acc = final_test_acc = 0.0
     w.tick('?')

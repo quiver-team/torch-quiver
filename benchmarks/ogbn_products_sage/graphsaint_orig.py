@@ -12,7 +12,8 @@ from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
 from quiver.trainers.saint_trainer import SAINT_trainer
 from quiver.models.saint_model import Net
 from quiver.cuda_sampler import CudaRWSampler
-from quiver.schedule.throughput import ThroughputStats, SamplerChooser
+#from quiver.schedule.throughput import ThroughputStats, SamplerChooser
+from torch_geometric.nn import GraphConv
 
 print("loading the data...")
 w = StopWatch('main')
@@ -43,11 +44,11 @@ args = parser.parse_args()
 w.tick('load data')
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-data=data.to(device)
+
 loader = CudaRWSampler(data,
                                      batch_size=6000,
                                      walk_length=2,
-                                     num_steps=1,
+                                     num_steps=5,
                                      sample_coverage=0,
                                      save_dir=dataset.processed_dir,
                                      num_workers=0)
@@ -119,7 +120,7 @@ def test():
 
 
 w.tick('start train')
-for epoch in range(1, 51):
+for epoch in range(1, 2):
     loss = train()
     #loss = model.train_m(args.use_normalization, loader, w, optimizer, device)
     #accs = test()

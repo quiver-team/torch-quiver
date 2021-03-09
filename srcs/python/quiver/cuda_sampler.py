@@ -105,10 +105,38 @@ class CudaRWSampler(GraphSAINTSampler):
 
     def __sample_nodes__(self, batch_size):
         start = torch.randint(0, self.N, (batch_size, ), dtype=torch.long)
-        device = torch.device('cuda')
-        start = start.to(device)
+        cuda_device = torch.device('cuda')
+        start = start.to(cuda_device)
+        self.adj = self.adj.to(cuda_device)
         node_idx = self.adj.random_walk(start.flatten(), self.walk_length)
         return node_idx.view(-1)
+
+    def __cuda_saint_subgraph__(self, node_idx: torch.Tensor) -> Tuple[SparseTensor, torch.Tensor]:
+        row, col, value = self.adj.coo()
+        rowptr = self.adj.storage.rowptr()
+
+        data = qv.saint_subgraph(node_idx, rowptr, row, col)
+        row, col, edge_index = data
+
+        if value is not None:
+            value = value[edge_index]
+
+        out = SparseTensor(row=row, rowptr=None, col=col, value=value,
+                           sparse_sizes=(node_idx.size(0), node_idx.size(0)),
+                           is_sorted=True)
+        return out, edge_index
+
+    def __getitem__(self, idx):
+        start = time.clock()
+        node_idx = self.__sample_nodes__(self.__batch_size__).unique()
+        print(node_idx.shape)
+        start = time.clock()
+        adj, _ = self.__cuda_saint_subgraph__(node_idx)
+        end = time.clock()
+        print(end - start)
+        print("----------")
+        return node_idx, adj
+
 
 class CudaNeighborSampler(torch.utils.data.DataLoader):
     def __init__(self,

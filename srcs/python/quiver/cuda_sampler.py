@@ -13,6 +13,7 @@ from torch_sparse import SparseTensor
 import torch_quiver as qv
 from torch_geometric.data import GraphSAINTSampler
 
+
 class Adj(NamedTuple):
     edge_index: torch.Tensor
     e_id: torch.Tensor
@@ -56,8 +57,9 @@ class LayerSampleTask(TaskNode):
                 self.batch.size(0),
             ])
         else:
-            adj, result = self.adj.sample_adj(
-                self.batch, self.size, replace=False)
+            adj, result = self.adj.sample_adj(self.batch,
+                                              self.size,
+                                              replace=False)
             adj = adj.t()
             row, col, _ = adj.coo()
             size = adj.sparse_sizes()
@@ -84,15 +86,22 @@ class LayerSampleTask(TaskNode):
         adjs.insert(0, adj)
         return n_id, adjs
 
+
 class CudaRWSampler(GraphSAINTSampler):
     r"""The GraphSAINT random walk sampler class (see
     :class:`torch_geometric.data.GraphSAINTSampler`).
     Args:
         walk_length (int): The length of each random walk.
     """
-    def __init__(self, data, batch_size: int, walk_length: int,
-                 num_steps: int = 1, sample_coverage: int = 0,
-                 save_dir: Optional[str] = None, log: bool = True, **kwargs):
+    def __init__(self,
+                 data,
+                 batch_size: int,
+                 walk_length: int,
+                 num_steps: int = 1,
+                 sample_coverage: int = 0,
+                 save_dir: Optional[str] = None,
+                 log: bool = True,
+                 **kwargs):
         self.walk_length = walk_length
         super(CudaRWSampler,
               self).__init__(data, batch_size, num_steps, sample_coverage,
@@ -117,7 +126,8 @@ class CudaRWSampler(GraphSAINTSampler):
         # self.adj = self.adj.to(cpu_device)
         return node_idx.view(-1)
 
-    def __cuda_saint_subgraph__(self, node_idx: torch.Tensor) -> Tuple[SparseTensor, torch.Tensor]:
+    def __cuda_saint_subgraph__(
+            self, node_idx: torch.Tensor) -> Tuple[SparseTensor, torch.Tensor]:
         row, col, value = self.adj.coo()
         rowptr = self.adj.storage.rowptr()
 
@@ -127,7 +137,10 @@ class CudaRWSampler(GraphSAINTSampler):
         if value is not None:
             value = value[edge_index]
 
-        out = SparseTensor(row=row, rowptr=None, col=col, value=value,
+        out = SparseTensor(row=row,
+                           rowptr=None,
+                           col=col,
+                           value=value,
                            sparse_sizes=(node_idx.size(0), node_idx.size(0)),
                            is_sorted=True)
         return out, edge_index
@@ -153,13 +166,16 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
         N = int(edge_index.max() + 1) if num_nodes is None else num_nodes
         edge_attr = torch.arange(edge_index.size(1))
         if mode != 'sync':
-            adj = SparseTensor(row=edge_index[0], col=edge_index[1],
-                            value=edge_attr, sparse_sizes=(N, N),
-                            is_sorted=False)
+            adj = SparseTensor(row=edge_index[0],
+                               col=edge_index[1],
+                               value=edge_attr,
+                               sparse_sizes=(N, N),
+                               is_sorted=False)
             adj = adj.t()
             self.adj = adj.to('cpu')
         edge_id = torch.zeros(1, dtype=torch.long)
-        self.quiver = qv.new_quiver_from_edge_index(N, edge_index, edge_id, device)
+        self.quiver = qv.new_quiver_from_edge_index(N, edge_index, edge_id,
+                                                    device)
 
         if node_idx is None:
             node_idx = torch.arange(N)
@@ -186,8 +202,8 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
     def build_tasks(self):
         for i in range(len(self.sizes)):
             rank = -1 if i == len(self.sizes) - 1 else i
-            task = LayerSampleTask(
-                self.context, rank, self.quiver, self.adj, None, self.sizes[i], self.pool)
+            task = LayerSampleTask(self.context, rank, self.quiver, self.adj,
+                                   None, self.sizes[i], self.pool)
             self.tasks.append(task)
 
         for i in range(len(self.sizes) - 1):
@@ -233,7 +249,8 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
 
         n_id = batch
         for size in self.sizes:
-            result, row_idx, col_idx = self.quiver.sample_sub(self.rank, n_id, size)
+            result, row_idx, col_idx = self.quiver.sample_sub(
+                self.rank, n_id, size)
             # assert (row_idx.max() < n_id.size(0))
 
             row_idx, col_idx = col_idx, row_idx

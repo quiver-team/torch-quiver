@@ -45,13 +45,13 @@ w.tick('load data')
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-loader = GraphSAINTRandomWalkSampler(data,
-                                     batch_size=6000,
-                                     walk_length=2,
-                                     num_steps=5,
-                                     sample_coverage=0,
-                                     save_dir=dataset.processed_dir,
-                                     num_workers=4)
+loader = CudaRWSampler(data,
+                       batch_size=12000,
+                       walk_length=2,
+                       num_steps=5,
+                       sample_coverage=0,
+                       save_dir=dataset.processed_dir,
+                       num_workers=0)
 
 w.tick('create train_loader')
 
@@ -119,16 +119,14 @@ def test():
     return accs
 
 
-
 # warm up
-# for i in range(1,3):
-#     for data in loader:
-#         # do nothing
-#         continue
-
+for i in range(1, 11):
+    for data in loader:
+        # do nothing
+        continue
 
 w.tick('start train')
-for epoch in range(1, 51):
+for epoch in range(1, 2):
     loss = train()
     #loss = model.train_m(args.use_normalization, loader, w, optimizer, device)
     #accs = test()

@@ -106,9 +106,15 @@ class CudaRWSampler(GraphSAINTSampler):
     def __sample_nodes__(self, batch_size):
         start = torch.randint(0, self.N, (batch_size, ), dtype=torch.long)
         cuda_device = torch.device('cuda')
+        # cpu_device = torch.device('cpu')
         start = start.to(cuda_device)
         self.adj = self.adj.to(cuda_device)
+        # start_t  = time.time()
         node_idx = self.adj.random_walk(start.flatten(), self.walk_length)
+        # end = time.time()
+        # print(end - start_t)
+        # node_idx = node_idx.to(cpu_device)
+        # self.adj = self.adj.to(cpu_device)
         return node_idx.view(-1)
 
     def __cuda_saint_subgraph__(self, node_idx: torch.Tensor) -> Tuple[SparseTensor, torch.Tensor]:
@@ -127,14 +133,8 @@ class CudaRWSampler(GraphSAINTSampler):
         return out, edge_index
 
     def __getitem__(self, idx):
-        start = time.clock()
         node_idx = self.__sample_nodes__(self.__batch_size__).unique()
-        print(node_idx.shape)
-        start = time.clock()
         adj, _ = self.__cuda_saint_subgraph__(node_idx)
-        end = time.clock()
-        print(end - start)
-        print("----------")
         return node_idx, adj
 
 

@@ -9,10 +9,10 @@ s = SparseTensor(row=i[0], col=i[1], value=v,sparse_sizes=(5,5))
 print(s.to_dense())
 
 node_idx = torch.tensor([0, 1, 2])
-# start = time.clock()
+start = time.clock()
 out_cpu, _ = s.saint_subgraph(node_idx)
-# end = time.clock()
-# print(end-start)
+end = time.clock()
+print(end-start)
 print(out_cpu.to_dense())
 
 cuda_device = torch.device('cuda')
@@ -21,10 +21,10 @@ node_idx = node_idx.to(cuda_device)
 row, col, value = s.coo()
 rowptr = s.storage.rowptr()
 # subgraph
-# start = time.clock()
+start = time.clock()
 data = qv.saint_subgraph(node_idx, rowptr, row, col)
 row, col, edge_index = data
-# end = time.clock()
+end = time.clock()
 
 if value is not None:
     value = value[edge_index]
@@ -34,5 +34,5 @@ print(col.size(0))
 out_cuda = SparseTensor(row=row, rowptr=None, col=col, value=value,
                    sparse_sizes=(node_idx.size(0), node_idx.size(0)),
                    is_sorted=True)
-# print(end-start)
+print(end-start,"gpu")
 print(out_cuda.to_dense())

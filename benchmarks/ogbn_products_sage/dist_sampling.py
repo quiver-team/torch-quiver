@@ -5,6 +5,7 @@
 import argparse
 import os
 import os.path as osp
+import time
 
 import kungfu.torch as kf
 from kungfu.python import current_cluster_size, current_rank
@@ -18,10 +19,10 @@ from tqdm import tqdm
 
 p = argparse.ArgumentParser(description='')
 p.add_argument('--cuda', type=bool, default=True, help='cuda')
-p.add_argument('--ws', type=int, default=2, help='world size')
+p.add_argument('--ws', type=int, default=4, help='world size')
 p.add_argument('--rank', type=int, default=0, help='rank')
-p.add_argument('--runs', type=int, default=10, help='number of runs')
-p.add_argument('--epochs', type=int, default=20, help='number of epochs')
+p.add_argument('--runs', type=int, default=1, help='number of runs')
+p.add_argument('--epochs', type=int, default=1, help='number of epochs')
 args = p.parse_args()
 torch.cuda.set_device(args.rank)
 if args.cuda:
@@ -59,8 +60,8 @@ args.rank = current_rank()
 args.ws = current_cluster_size()
 dev = torch.device(0)
 cpu = torch.device('cpu')
-x = data.x.to(dev)  # [N, 100]
-y = data.y.squeeze().to(dev)  # [N, 1]
+x = data.x  # [N, 100]
+y = data.y.squeeze()  # [N, 1]
 
 train_idx = split_idx['train']
 
@@ -165,6 +166,7 @@ def train(epoch):
 
     total_loss = total_correct = 0
     w.turn_on('sample')
+    t0 = time.time()
     for feature, label, adjs in train_loader:
         # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
         # w1.tick('prepro')
@@ -193,6 +195,9 @@ def train(epoch):
         torch.cuda.synchronize(0)
         w.turn_on('sample')
         w.turn_off('train')
+        if args.rank == 0:
+            print(f'one step took {time.time() - t0}')
+        t0 = time.time()
 
     # pbar.close()
     w.turn_off('sample')

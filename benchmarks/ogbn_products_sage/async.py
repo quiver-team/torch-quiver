@@ -65,6 +65,7 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
     device, num = dev
     group = sync.rank // sync.world_size
     sync.rank = sync.rank % sync.world_size
+    torch.set_num_threads(5)
 
     def node2rank(nodes):
         ranks = torch.fmod(nodes, sync.world_size)
@@ -174,8 +175,8 @@ class SAGE(torch.nn.Module):
         return x.log_softmax(dim=-1)
 
 
-def TrainProcess(rank, sync, num_batch, num_features, num_hidden, num_classes,
-                 num_layers):
+def TrainProcess(rank, sync, data, num_batch, num_features, num_hidden,
+                 num_classes, num_layers):
     if sync.reduce:
         import kungfu.torch as kf
         from kungfu.python import current_cluster_size, current_rank
@@ -187,6 +188,8 @@ def TrainProcess(rank, sync, num_batch, num_features, num_hidden, num_classes,
     model.reset_parameters()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
     sync.rank = rank
+    x, y = data
+    torch.set_num_threads(5)
     if sync.reduce:
         optimizer = kf.optimizers.SynchronousSGDOptimizer(
             optimizer, named_parameters=model.named_parameters())
@@ -215,20 +218,22 @@ def TrainProcess(rank, sync, num_batch, num_features, num_hidden, num_classes,
             cpu_count += 1
         else:
             gpu_count += 1
-        feature, label, adjs = sample
+        batch_size, n_id, adjs = sample
         adjs = [adj.to(device) for adj in adjs]
-        feature, order0 = feature
-        label, order1 = label
-        feature = torch.cat([f.to(device) for f in feature])
-        label = torch.cat([l.to(device) for l in label])
-        origin_feature = torch.empty_like(feature)
-        origin_label = torch.empty_like(label)
-        origin_feature[order0] = feature
-        origin_label[order1] = label
+        feature = x[n_id].to(device)
+        label = y[n_id[:batch_size]].to(device)
+        # feature, order0 = feature
+        # label, order1 = label
+        # feature = torch.cat([f.to(device) for f in feature])
+        # label = torch.cat([l.to(device) for l in label])
+        # origin_feature = torch.empty_like(feature)
+        # origin_label = torch.empty_like(label)
+        # origin_feature[order0] = feature
+        # origin_label[order1] = label
 
         optimizer.zero_grad()
-        out = model(origin_feature, adjs)
-        loss = F.nll_loss(out, origin_label)
+        out = model(feature, adjs)
+        loss = F.nll_loss(out, label)
         loss.backward()
         if sync.reduce:
             t0 = time.time()
@@ -256,11 +261,7 @@ class Trainer:
         self.f(rank, *self.args)
 
 
-def main():
-    cpu_num = 0
-    gpu_num = 4
-    train_num = 4
-    device_num = 4
+def main(num_batch, cpu_num, gpu_num, train_num, device_num, batch_size):
     dist = True
     home = os.getenv('HOME')
     data_dir = osp.join(home, '.pyg')
@@ -281,39 +282,48 @@ def main():
     barrier2 = mp.Barrier(train_num + 1)
     sync = SyncConfig(0, device_num, queues, [barrier1, barrier2], 3,
                       train_num > 1, dist)
-    x, y = data.x, data.y.squeeze()
+    x, y = data.x.share_memory_(), data.y.squeeze().share_memory_()
+    samplers = []
     if cpu_num > 0:
         dev = ('cpu', cpu_num)
         sync.rank = i
         sync.dist = False
         cpu = mp.Process(target=SamplerProcess,
-                         args=(sync, dev, data.edge_index, train_idx,
-                               [15, 10, 5], 1024))
+                         args=(sync, dev, data.edge_index, (None, None),
+                               train_idx, [15, 10, 5], batch_size))
         cpu.start()
+        samplers.append(cpu)
     sync.dist = dist
     for i in range(gpu_num):
         sync.rank = i
         dev = (i % sync.world_size, i // sync.world_size)
         gpu0 = mp.Process(target=SamplerProcess,
-                          args=(sync, dev, data.edge_index, (x, y), train_idx,
-                                [15, 10, 5], 1024))
+                          args=(sync, dev, data.edge_index, (None, None),
+                                train_idx, [15, 10, 5], batch_size))
         gpu0.start()
+        samplers.append(gpu0)
         time.sleep(1)
     if train_num == 1:
         train = mp.Process(target=TrainProcess,
-                           args=(0, sync, 192, dataset.num_features, 256,
-                                 dataset.num_classes, 3))
+                           args=(0, sync, (x,
+                                           y), num_batch, dataset.num_features,
+                                 256, dataset.num_classes, 3))
         train.start()
+        trainers = [train]
     else:
-        train = Trainer(TrainProcess, sync, 192, dataset.num_features, 256,
-                        dataset.num_classes, 3)
+        train = Trainer(TrainProcess, sync, (x, y), 192, dataset.num_features,
+                        256, dataset.num_classes, 3)
         trainers = launch_multiprocess(train, train_num)
     barrier1.wait()
     t0 = time.time()
     barrier2.wait()
     print(f'end to end {time.time() - t0}')
+    for sampler in samplers:
+        sampler.kill()
+    for trainer in trainers:
+        trainer.kill()
 
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
-    main()
+    main(192, 0, 4, 4, 4, 1024)

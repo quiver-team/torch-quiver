@@ -30,7 +30,7 @@ class AsyncDataGenerator:
         if end > len(self.dataset):
             end = len(self.dataset)
         self.index = end
-        return self.dataset[beg: end]
+        return self.dataset[beg:end]
 
     def reset(self):
         self.shuffle()
@@ -77,14 +77,20 @@ class AsyncDataLoader:
             rank = hvd.local_rank()
         except ValueError:
             pass
-        proc = mp.Process(target=self.sample_process, args=(
-            rank, dataset, batch_size, num_worker, self.queue))
+        proc = mp.Process(target=self.sample_process,
+                          args=(rank, dataset, batch_size, num_worker,
+                                self.queue))
         proc.start()
         self.proc = proc
 
-    async def async_generate_process(self, dataset, batch_size, num_worker, queue, rank=0):
-        sampler = self.new_generator(
-            dataset, batch_size, num_worker, queue, rank)
+    async def async_generate_process(self,
+                                     dataset,
+                                     batch_size,
+                                     num_worker,
+                                     queue,
+                                     rank=0):
+        sampler = self.new_generator(dataset, batch_size, num_worker, queue,
+                                     rank)
         while True:
             batch = await sampler.get_once()
             while batch is not None:
@@ -101,8 +107,9 @@ class AsyncDataLoader:
     def sample_process(self, rank, dataset, batch_size, num_worker, queue):
         if torch.cuda.is_available():
             torch.cuda.set_device(rank)
-        asyncio.run(self.async_generate_process(
-            dataset, batch_size, num_worker, queue, rank))
+        asyncio.run(
+            self.async_generate_process(dataset, batch_size, num_worker, queue,
+                                        rank))
 
     def new_generator(self, dataset, batch_size, num_worker, queue, rank=0):
         return AsyncDataGenerator(dataset, batch_size, num_worker, queue, rank)
@@ -119,7 +126,7 @@ class AsyncDataLoader:
     def reset(self):
         self.queue.put(True)
         time.sleep(1)
-    
+
     def close(self):
         self.queue.put(False)
         time.sleep(1)

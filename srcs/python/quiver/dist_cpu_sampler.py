@@ -34,13 +34,11 @@ class Comm:
 class SyncDistNeighborSampler(torch.utils.data.DataLoader):
     def __init__(self, comm, graph, train_idx, layer_sizes, device,
                  feature_func, **kwargs):
-        torch.set_num_threads(5)
+        torch.set_num_threads(1)
         self.comm = comm
         self.sizes = layer_sizes
         N, edge_index, data, local2global, global2local, node2rank = graph
-        edge_id = torch.zeros(1, dtype=torch.long)
-        self.quiver = qv.new_quiver_from_edge_index(N, edge_index, edge_id,
-                                                    device)
+        self.quiver = qv.cpu_quiver_from_edge_index(N, edge_index)
         self.local2global = local2global
         self.global2local = global2local
         self.node2rank = node2rank
@@ -52,13 +50,11 @@ class SyncDistNeighborSampler(torch.utils.data.DataLoader):
                                                       **kwargs)
 
     def get_data(self, n_id, is_feature):
-        cpu = torch.device('cpu')
         ranks = self.node2rank(n_id)
         input_orders = torch.arange(n_id.size(0), dtype=torch.long)
         reorder = torch.empty_like(input_orders)
         res = []
         beg = 0
-        local_nodes = None
         for i in range(self.comm.world_size):
             mask = torch.eq(ranks, i)
             part_nodes = torch.masked_select(n_id, mask)
@@ -89,7 +85,10 @@ class SyncDistNeighborSampler(torch.utils.data.DataLoader):
         for i in range(len(res)):
             if not isinstance(res[i], torch.Tensor):
                 res[i] = res[i].wait()
-        return res, reorder
+        res = torch.cat(res)
+        origin_res = torch.empty_like(res)
+        origin_res[reorder] = res
+        return origin_res
 
     def sample(self, batch):
         if not isinstance(batch, torch.Tensor):
@@ -136,7 +135,7 @@ class SyncDistNeighborSampler(torch.utils.data.DataLoader):
             ordered_inputs = torch.cat(ordered_inputs)
             if local_nodes is not None:
                 nodes = self.global2local(local_nodes)
-                neighbors, counts = self.quiver.sample_neighbor(0, nodes, size)
+                neighbors, counts = self.quiver.sample_neighbor(nodes, size)
                 neighbors = self.local2global(neighbors)
                 res[self.comm.rank] = (neighbors, counts)
             for i in range(len(res)):
@@ -147,10 +146,8 @@ class SyncDistNeighborSampler(torch.utils.data.DataLoader):
                 ordered_outputs.append(n)
             ordered_counts = torch.cat(ordered_counts)
             ordered_outputs = torch.cat(ordered_outputs)
-            output_counts = ordered_counts[reorder]
             result, row_idx, col_idx = self.quiver.reindex_group(
-                0, reorder, n_id, ordered_counts, ordered_outputs,
-                output_counts)
+                ordered_inputs, n_id, ordered_counts, ordered_outputs)
             size = torch.LongTensor([
                 result.size(0),
                 n_id.size(0),

@@ -26,7 +26,13 @@ def create_extension(with_cuda=False):
     ]
     library_dirs = []
     libraries = []
-    extra_cxx_flags = ['-std=c++17']
+    extra_cxx_flags = [
+        '-std=c++17',
+        # TODO: enforce strict build
+        # '-Wall',
+        # '-Werror',
+        # '-Wfatal-errors',
+    ]
     if with_cuda:
         cuda_home = find_cuda()
         include_dirs += [os.path.join(cuda_home, 'include')]

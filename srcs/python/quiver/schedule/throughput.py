@@ -1,11 +1,12 @@
 import time
 
+
 # throughput statistics of sample & train
 class ThroughputStats:
     def __init__(self, num_warm=8, num_batch=64):
         self.num_warm = num_warm
         self.num_batch = num_batch
-    
+
     def test(self, sampler, trainer):
         count = 0
         beg = 0.0
@@ -37,4 +38,3 @@ class SamplerChooser:
                 cost = result
                 best = sampler
         return best
-                    

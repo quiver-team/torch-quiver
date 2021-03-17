@@ -5,27 +5,34 @@
 import argparse
 import os
 import os.path as osp
+import time
 
+import kungfu.torch as kf
+from kungfu.python import current_cluster_size, current_rank
 import torch
 import torch.nn.functional as F
 from torch.distributed import rpc
 from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
 from quiver.profile_utils import StopWatch
-import quiver.dist_cuda_sampler as dist
 from torch_geometric.nn import SAGEConv
 from tqdm import tqdm
 
-
 p = argparse.ArgumentParser(description='')
+p.add_argument('--cuda', type=bool, default=True, help='cuda')
+p.add_argument('--ws', type=int, default=4, help='world size')
 p.add_argument('--rank', type=int, default=0, help='rank')
-p.add_argument('--runs', type=int, default=10, help='number of runs')
-p.add_argument('--epochs', type=int, default=20, help='number of epochs')
+p.add_argument('--runs', type=int, default=1, help='number of runs')
+p.add_argument('--epochs', type=int, default=1, help='number of epochs')
 args = p.parse_args()
 torch.cuda.set_device(args.rank)
+if args.cuda:
+    import quiver.dist_cuda_sampler as dist
+else:
+    import quiver.dist_cpu_sampler as dist
 
 
 def node2rank(nodes):
-    ranks = torch.fmod(nodes, 2)
+    ranks = torch.fmod(nodes, args.ws)
     return ranks
 
 
@@ -49,22 +56,38 @@ dataset = PygNodePropPredDataset('ogbn-products', root)
 split_idx = dataset.get_idx_split()
 evaluator = Evaluator(name='ogbn-products')
 data = dataset[0]
+args.rank = current_rank()
+args.ws = current_cluster_size()
+dev = torch.device(0)
+cpu = torch.device('cpu')
+x = data.x  # [N, 100]
+y = data.y.squeeze()  # [N, 1]
 
 train_idx = split_idx['train']
 
 w.tick('load data')
 
-comm = dist.Comm(args.rank, 2)
+comm = dist.Comm(args.rank, args.ws)
 
-train_loader = dist.SyncDistNeighborSampler(comm, (int(data.edge_index.max() + 1),
-                                                   data.edge_index, torch.zeros(
-    1, dtype=torch.long), local2global,
-    global2local, node2rank), train_idx, [15, 10, 5], args.rank,
+
+def node_f(nodes, is_feature):
+    if is_feature:
+        return x[nodes].to(cpu)
+    else:
+        return y[nodes].to(cpu)
+
+
+train_loader = dist.SyncDistNeighborSampler(
+    comm, (int(data.edge_index.max() + 1), data.edge_index,
+           (x, y), local2global, global2local, node2rank),
+    train_idx, [15, 10, 5],
+    0,
+    node_f,
     batch_size=1024)
 
 
-def sample_n(nodes, size):
-    torch.cuda.set_device(args.rank)
+def sample_cuda(nodes, size):
+    torch.cuda.set_device(0)
     nodes = train_loader.global2local(nodes)
     neighbors, counts = train_loader.quiver.sample_neighbor(0, nodes, size)
     neighbors = train_loader.local2global(neighbors)
@@ -72,19 +95,26 @@ def sample_n(nodes, size):
     return neighbors, counts
 
 
-dist.sample_neighbor = sample_n
+def sample_cpu(nodes, size):
+    nodes = train_loader.global2local(nodes)
+    neighbors, counts = train_loader.quiver.sample_neighbor(nodes, size)
+    neighbors = train_loader.local2global(neighbors)
+
+    return neighbors, counts
+
+
+if args.cuda:
+    dist.sample_neighbor = sample_cuda
+else:
+    dist.sample_neighbor = sample_cpu
 
 w.tick('create train_loader')
 
-rpc.init_rpc(
-    f"worker{args.rank}",
-    rank=args.rank,
-    world_size=2,
-    rpc_backend_options=rpc.TensorPipeRpcBackendOptions(
-        num_worker_threads=8,
-        rpc_timeout=20
-    )
-)
+rpc.init_rpc(f"worker{args.rank}",
+             rank=args.rank,
+             world_size=args.ws,
+             rpc_backend_options=rpc.TensorPipeRpcBackendOptions(
+                 num_worker_threads=8, rpc_timeout=20))
 
 
 class SAGE(torch.nn.Module):
@@ -123,8 +153,6 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = SAGE(dataset.num_features, 256, dataset.num_classes, num_layers=3)
 model = model.to(device)
 
-x = data.x.to(device)  # [N, 100]
-y = data.y.squeeze().to(device)  # [N, 1]
 w.tick('build model')
 
 
@@ -138,26 +166,38 @@ def train(epoch):
 
     total_loss = total_correct = 0
     w.turn_on('sample')
-    for batch_size, n_id, adjs in train_loader:
-        # `adjs` holds a list of `(esdge_index, e_id, size)` tuples.
+    t0 = time.time()
+    for feature, label, adjs in train_loader:
+        # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
         # w1.tick('prepro')
         w.turn_off('sample')
         w.turn_on('train')
         adjs = [adj.to(device) for adj in adjs]
+        feature, order0 = feature
+        label, order1 = label
+        feature = torch.cat([f.to(device) for f in feature])
+        label = torch.cat([l.to(device) for l in label])
+        origin_feature = torch.empty_like(feature)
+        origin_label = torch.empty_like(label)
+        origin_feature[order0] = feature
+        origin_label[order1] = label
 
         optimizer.zero_grad()
-        out = model(x[n_id], adjs)
-        loss = F.nll_loss(out, y[n_id[:batch_size]])
+        out = model(origin_feature, adjs)
+        loss = F.nll_loss(out, origin_label)
         loss.backward()
         optimizer.step()
         # w1.tick('train')
 
         total_loss += float(loss)
-        total_correct += int(out.argmax(dim=-1).eq(y[n_id[:batch_size]]).sum())
+        total_correct += int(out.argmax(dim=-1).eq(origin_label).sum())
         # pbar.update(batch_size)
-        torch.cuda.synchronize(args.rank)
+        torch.cuda.synchronize(0)
         w.turn_on('sample')
         w.turn_off('train')
+        if args.rank == 0:
+            print(f'one step took {time.time() - t0}')
+        t0 = time.time()
 
     # pbar.close()
     w.turn_off('sample')
@@ -197,14 +237,16 @@ model.reset_parameters()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
 test_accs = []
 for run in range(1, 1 + args.runs):
-    if args.rank == 0:
-        break
     print('')
     print(f'Run {run:02d}:')
     print('')
 
     model.reset_parameters()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
+    optimizer = kf.optimizers.SynchronousSGDOptimizer(
+        optimizer, named_parameters=model.named_parameters())
+    # Broadcast parameters from rank 0 to all other processes.
+    kf.broadcast_parameters(model.state_dict())
 
     best_val_acc = final_test_acc = 0.0
     w.tick('?')

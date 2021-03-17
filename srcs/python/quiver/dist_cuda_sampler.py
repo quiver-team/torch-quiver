@@ -34,7 +34,6 @@ class Comm:
 class SyncDistNeighborSampler(torch.utils.data.DataLoader):
     def __init__(self, comm, graph, train_idx, layer_sizes, device,
                  feature_func, **kwargs):
-        torch.set_num_threads(5)
         self.comm = comm
         self.sizes = layer_sizes
         N, edge_index, data, local2global, global2local, node2rank = graph
@@ -160,9 +159,7 @@ class SyncDistNeighborSampler(torch.utils.data.DataLoader):
             e_id = torch.tensor([])
             adjs.append(Adj(edge_index, e_id, size))
             n_id = result
-        x = self.get_data(n_id, True)
-        y = self.get_data(n_id[:batch_size], False)
         if len(adjs) > 1:
-            return x, y, adjs[::-1]
+            return batch_size, n_id, adjs[::-1]
         else:
-            return x, y, adjs[0]
+            return batch_size, n_id, adjs[0]

@@ -38,17 +38,17 @@ run_origin() {
 
 run_quiver() {
     # single
-    python3 cuda.py --runs 1 --epochs 1
+    python3 cuda.py --runs 1 --epochs 51
 
     # kungfu distributed
-    kungfu_run -np 4 python3 cuda.py --runs 1 --epochs 1 --distribute kungfu
-
-    # horovod distributed
-    horovodrun -np 4 python3 cuda.py --runs 1 --epochs 1 --distribute horovod
+#    kungfu_run -np 4 python3 cuda.py --runs 1 --epochs 1 --distribute kungfu
+#
+#    # horovod distributed
+#    horovodrun -np 4 python3 cuda.py --runs 1 --epochs 1 --distribute horovod
 }
 run_graphsaint() {
   python3 graphsaint_orig.py
 }
 # measure run_origin
-# measure run_quiver
- measure run_graphsaint
+#measure run_quiver
+measure run_graphsaint

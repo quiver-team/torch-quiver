@@ -5,9 +5,10 @@
 import argparse
 import os
 import os.path as osp
+import time
 
 import kungfu.torch as kf
-from kungfu.python import current_cluster_size, current_rank
+from kungfu.python import current_cluster_size, current_rank, run_barrier
 import torch
 import torch.nn.functional as F
 from torch.distributed import rpc
@@ -18,10 +19,10 @@ from tqdm import tqdm
 
 p = argparse.ArgumentParser(description='')
 p.add_argument('--cuda', type=bool, default=True, help='cuda')
-p.add_argument('--ws', type=int, default=2, help='world size')
+p.add_argument('--ws', type=int, default=4, help='world size')
 p.add_argument('--rank', type=int, default=0, help='rank')
-p.add_argument('--runs', type=int, default=10, help='number of runs')
-p.add_argument('--epochs', type=int, default=20, help='number of epochs')
+p.add_argument('--runs', type=int, default=1, help='number of runs')
+p.add_argument('--epochs', type=int, default=1, help='number of epochs')
 args = p.parse_args()
 torch.cuda.set_device(args.rank)
 if args.cuda:
@@ -59,8 +60,8 @@ args.rank = current_rank()
 args.ws = current_cluster_size()
 dev = torch.device(0)
 cpu = torch.device('cpu')
-x = data.x.to(dev)  # [N, 100]
-y = data.y.squeeze().to(dev)  # [N, 1]
+x = data.x.share_memory_()  # [N, 100]
+y = data.y.squeeze().share_memory_()  # [N, 1]
 
 train_idx = split_idx['train']
 
@@ -165,34 +166,43 @@ def train(epoch):
 
     total_loss = total_correct = 0
     w.turn_on('sample')
-    for feature, label, adjs in train_loader:
+    t0 = time.time()
+    torch.set_num_threads(5)
+    samples = [sample for sample in train_loader]
+    run_barrier()
+    for n_id, batch_size, adjs in samples:
         # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
         # w1.tick('prepro')
         w.turn_off('sample')
         w.turn_on('train')
         adjs = [adj.to(device) for adj in adjs]
-        feature, order0 = feature
-        label, order1 = label
-        feature = torch.cat([f.to(device) for f in feature])
-        label = torch.cat([l.to(device) for l in label])
-        origin_feature = torch.empty_like(feature)
-        origin_label = torch.empty_like(label)
-        origin_feature[order0] = feature
-        origin_label[order1] = label
+        feature = x[n_id].to(device)
+        label = y[n_id[:batch_size]].to(device)
+        # feature, order0 = feature
+        # label, order1 = label
+        # feature = torch.cat([f.to(device) for f in feature])
+        # label = torch.cat([l.to(device) for l in label])
+        # origin_feature = torch.empty_like(feature)
+        # origin_label = torch.empty_like(label)
+        # origin_feature[order0] = feature
+        # origin_label[order1] = label
 
         optimizer.zero_grad()
-        out = model(origin_feature, adjs)
-        loss = F.nll_loss(out, origin_label)
+        out = model(feature, adjs)
+        loss = F.nll_loss(out, label)
         loss.backward()
         optimizer.step()
         # w1.tick('train')
 
         total_loss += float(loss)
-        total_correct += int(out.argmax(dim=-1).eq(origin_label).sum())
+        total_correct += int(out.argmax(dim=-1).eq(label).sum())
         # pbar.update(batch_size)
         torch.cuda.synchronize(0)
         w.turn_on('sample')
         w.turn_off('train')
+        # if args.rank == 0:
+        #     print(f'one step took {time.time() - t0}')
+        t0 = time.time()
 
     # pbar.close()
     w.turn_off('sample')

@@ -34,7 +34,6 @@ class Comm:
 class SyncDistNeighborSampler(torch.utils.data.DataLoader):
     def __init__(self, comm, graph, train_idx, layer_sizes, device,
                  feature_func, **kwargs):
-        torch.set_num_threads(1)
         self.comm = comm
         self.sizes = layer_sizes
         N, edge_index, data, local2global, global2local, node2rank = graph
@@ -58,6 +57,7 @@ class SyncDistNeighborSampler(torch.utils.data.DataLoader):
         reorder = torch.empty_like(input_orders)
         res = []
         beg = 0
+        local_nodes = None
         for i in range(self.comm.world_size):
             mask = torch.eq(ranks, i)
             part_nodes = torch.masked_select(n_id, mask)
@@ -81,15 +81,13 @@ class SyncDistNeighborSampler(torch.utils.data.DataLoader):
         if local_nodes is not None:
             nodes = self.global2local(local_nodes)
             if is_feature:
-                local_res = self.x[nodes].to(cpu)
+                local_res = self.x[nodes]
             else:
-                local_res = self.y[nodes].to(cpu)
+                local_res = self.y[nodes]
             res[self.comm.rank] = local_res
         for i in range(len(res)):
             if not isinstance(res[i], torch.Tensor):
                 res[i] = res[i].wait()
-        dev = torch.device(self.comm.rank)
-        cpu = torch.device('cpu')
         return res, reorder
 
     def sample(self, batch):
@@ -161,9 +159,7 @@ class SyncDistNeighborSampler(torch.utils.data.DataLoader):
             e_id = torch.tensor([])
             adjs.append(Adj(edge_index, e_id, size))
             n_id = result
-        x = self.get_data(n_id, True)
-        y = self.get_data(n_id[:batch_size], False)
         if len(adjs) > 1:
-            return x, y, adjs[::-1]
+            return batch_size, n_id, adjs[::-1]
         else:
-            return x, y, adjs[0]
+            return batch_size, n_id, adjs[0]

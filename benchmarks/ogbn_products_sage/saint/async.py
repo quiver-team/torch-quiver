@@ -14,7 +14,7 @@ from torch.distributed import rpc
 
 from quiver.cuda_sampler import CudaNeighborSampler
 from torch_geometric.data import NeighborSampler
-from quiver.cuda_sampler import CudaRWSampler
+from quiver.saint_sampler import  CudaRWSampler
 from quiver.models.saint_model import Net
 from torch_geometric.data import GraphSAINTRandomWalkSampler
 
@@ -34,7 +34,26 @@ class SyncConfig:
 local_rank = None
 loader = None
 
+def sample_cuda(nodes, walk_length):
+    torch.cuda.set_device(local_rank)
+    nodes = loader.global2local(nodes)
+    device = torch.device('cuda:' + str(local_rank))
+    node_idx = loader.adj.random_walk(nodes.to(device), walk_length)
+    row, col, value = loader.__cuda_saint_subgraph__(node_idx)
+    return  node_idx.to(torch.device('cpu')), row, col, value
 
+
+def sample_cpu(nodes, batch_size):
+    nodes = loader.global2local(nodes)
+    node_idx = loader.adj.random_walk(nodes, batch_size)
+    return node_idx
+
+def node_f(nodes, is_feature):
+    cpu = torch.device('cpu')
+    if is_feature:
+        return loader.x[nodes].to(cpu)
+    else:
+        return loader.y[nodes].to(cpu)
 
 
 def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
@@ -55,24 +74,68 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
     def global2local(nodes):
         return nodes
 
-    print("in precccccccc")
     if device != 'cpu':
         torch.cuda.set_device(device)
-        loader = CudaRWSampler(data,
-                               batch_size = batch_size,
-                               walk_length=2,
-                               num_steps=10,
-                               sample_coverage=0,
-                               save_dir="/home/guest/leahli/pytorch_quiver/benchmarks/ogbn_products_sage/saint/cuda/",
-                               num_workers=0)
+        if sync.dist:
+            import quiver.dist_saint_cuda_sampler as dist
+            comm = dist.Comm(sync.rank, sync.world_size)
+            local_rank = sync.rank % 4
+            print("local rank", local_rank)
+            print("device", device)
+            torch.cuda.set_device(device)
+            loader = dist.distributeCudaRWSampler(
+                comm, (data, local2global, global2local, node2rank),
+                node_f, device,
+                batch_size=batch_size, walk_length=2,
+                num_steps=10,
+                sample_coverage=0,
+                save_dir="/home/guest/leahli/pytorch_quiver/benchmarks/ogbn_products_sage/saint/cuda/",
+                num_workers=0)
+            dist.sample_nodes = sample_cuda
+        else:
+            loader = CudaRWSampler(data,
+                                   batch_size = batch_size,
+                                   walk_length=2,
+                                   num_steps=10,
+                                   sample_coverage=0,
+                                   save_dir="/home/guest/leahli/pytorch_quiver/benchmarks/ogbn_products_sage/saint/cuda/",
+                                   num_workers=0)
     else:
-        loader = GraphSAINTRandomWalkSampler(data,
-                                           batch_size = batch_size,
-                                           walk_length = 2,
-                                           num_steps=10,
-                                           sample_coverage=0,
-                                           save_dir="/home/guest/leahli/pytorch_quiver/benchmarks/ogbn_products_sage/saint/cpu/",
-                                           num_workers=num)
+        if sync.dist:
+            # import quiver.dist_saint_cpu_sampler as dist
+            # comm = dist.Comm(sync.rank, sync.world_size)
+            # loader = dist.SyncDistNeighborSampler(
+            #     comm, (int(edge_index.max() + 1), edge_index,
+            #            torch.zeros(1, dtype=torch.long), local2global,
+            #            global2local, node2rank),
+            #     train_idx, [15, 10, 5],
+            #     sync.rank,
+            #     batch_size=batch_size)
+            # dist.sample_neighbor = sample_cpu
+            print("done nothing")
+        else:
+            loader = GraphSAINTRandomWalkSampler(data,
+                                                 batch_size = batch_size,
+                                                 walk_length = 2,
+                                                 num_steps=10,
+                                                 sample_coverage=0,
+                                                 save_dir="/home/guest/leahli/pytorch_quiver/benchmarks/ogbn_products_sage/saint/cpu/",
+                                                 num_workers=num)
+    print("before init rpc")
+    if sync.dist:
+        os.environ['MASTER_ADDR'] = 'localhost'
+        if device == 'cpu':
+            group += 32
+        port = str(29500 + 100 * group)
+        os.environ['MASTER_PORT'] = port
+        print("in init rpc the sync rank", sync.rank)
+        print("world size is ", sync.world_size)
+        rpc.init_rpc(f"worker{sync.rank}",
+                     rank=sync.rank,
+                     world_size=sync.world_size,
+                     rpc_backend_options=rpc.TensorPipeRpcBackendOptions(
+                         num_worker_threads=1, rpc_timeout=20))
+    print("after init rpc")
     cont = True
     count = 0
     wait = 0.0
@@ -100,6 +163,7 @@ def TrainProcess(rank, sync, data, num_batch, num_features, num_hidden,
     if sync.reduce:
         import kungfu.torch as kf
         from kungfu.python import current_cluster_size, current_rank
+    print("intrain")
     device = torch.device('cuda:' +
                           str(rank) if torch.cuda.is_available() else 'cpu')
     torch.cuda.set_device(rank)
@@ -182,7 +246,7 @@ class Trainer:
 
 
 def main(num_batch, cpu_num, gpu_num, train_num, device_num, batch_size):
-    dist = False
+    dist = True
     home = os.getenv('HOME')
     data_dir = osp.join(home, '.pyg')
     root = osp.join(data_dir, 'data', 'products')
@@ -204,7 +268,7 @@ def main(num_batch, cpu_num, gpu_num, train_num, device_num, batch_size):
         num += 1
     barrier1 = mp.Barrier(num)
     barrier2 = mp.Barrier(train_num + 1)
-    sync = SyncConfig(0, device_num, queues, [barrier1,barrier2], 3,
+    sync = SyncConfig(0, device_num, queues, [barrier1, barrier2], 3,
                       train_num > 1, dist)
     x, y = data.x.share_memory_(), data.y.squeeze().share_memory_()
     samplers = []
@@ -250,4 +314,4 @@ def main(num_batch, cpu_num, gpu_num, train_num, device_num, batch_size):
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
-    main(192, 4, 1, 1, 4, 24000)
+    main(1800, 0, 4, 1, 4, 24000)

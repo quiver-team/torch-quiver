@@ -11,7 +11,8 @@ from quiver.profile_utils import StopWatch
 from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
 from quiver.trainers.saint_trainer import SAINT_trainer
 from quiver.models.saint_model import Net
-from quiver.saint_sampler import CudaRWSampler
+from quiver.cuda_sampler import CudaRWSampler
+from quiver.saint_sampler import GraphSAINTEdgeSampler
 #from quiver.schedule.throughput import ThroughputStats, SamplerChooser
 from torch_geometric.nn import GraphConv
 
@@ -31,7 +32,6 @@ data.train_mask = train_mask
 valid_mask = torch.zeros(data.num_nodes, dtype=torch.bool)
 valid_mask[split_idx['valid']] = True
 data.val_mask = valid_mask
-data.val_mask = valid_mask
 
 test_mask = torch.zeros(data.num_nodes, dtype=torch.bool)
 test_mask[split_idx['test']] = True
@@ -44,22 +44,23 @@ data.edge_weight = 1. / degree(col, data.num_nodes)[col]  # Norm by in-degree.
 # dataset = Flickr(path)
 # data = dataset[0]
 # row, col = data.edge_index
+# data.edge_weight = 1. / degree(col, data.num_nodes)[col]  # Norm by in-degree.
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--use_normalization', type=bool, default=False)
+parser.add_argument('--use_normalization', type=bool, default=True)
 args = parser.parse_args()
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 evaluator = Evaluator(name='ogbn-products')
 y = data.y.squeeze() # [N, 1]
 w.tick('load data')
-loader = CudaRWSampler(data,
-                       batch_size=24000,
-                       walk_length=2,
-                       num_steps=10,
+loader = GraphSAINTEdgeSampler(data,
+                       batch_size=2000,
+                       num_steps=1,
                        sample_coverage=0,
                        save_dir=dataset.processed_dir,
-                       num_workers=0)
+                       num_workers=4)
+
 # subgraph_loader = GraphSAINTRandomWalkSampler(data,
 #                        batch_size=200000,
 #                        walk_length = 1,
@@ -67,6 +68,7 @@ loader = CudaRWSampler(data,
 #                        sample_coverage=0,
 #                        save_dir=dataset.processed_dir,
 #                        num_workers=4)
+
 w.tick('create train_loader')
 
 model = Net(hidden_channels=256,
@@ -76,14 +78,6 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 #optimizer = torch.optim.Adam(model.parameters(), lr=0.03)
 w.tick('build model')
 
-# trainer = SAINT_trainer(model, device, args.use_normalization)
-# chooser = SamplerChooser(trainer)
-# train_loader = chooser.choose_sampler((loader, loader))
-# if isinstance(train_loader, GraphSAINTRandomWalkSampler):
-#     print('choose cpu sampler')
-# else:
-#     print('choose cuda sampler')
-# w.tick('choose sampler')
 
 def train():
     print(args.use_normalization)
@@ -114,7 +108,6 @@ def train():
         total_examples += data.num_nodes
     w.turn_off('sample')
     return total_loss / total_examples
-
 @torch.no_grad()
 def test():
     model.eval()
@@ -130,19 +123,19 @@ def test():
         return accs
 
 # warm up
-# for i in range(1, 11):
-#    for data in loader:
-#        # do nothing
-#        continue
+for i in range(1, 11):
+   for data in loader:
+       # do nothing
+       continue
 
 w.tick('start train')
-for epoch in range(1, 181):
+for epoch in range(1, 2):
     loss = train()
     print(f'Epoch: {epoch:02d}, Loss: {loss:.4f},')
     w.tick('train one epoch')
 
-# accs = test()
-# print(f'Epoch: {epoch:02d}, Loss: {loss:.4f}, Train: {accs[0]:.4f}, '
-#       f'Val: {accs[1]:.4f}, Test: {accs[2]:.4f}')
+accs = test()
+print(f'Epoch: {epoch:02d}, Loss: {loss:.4f}, Train: {accs[0]:.4f}, '
+      f'Val: {accs[1]:.4f}, Test: {accs[2]:.4f}')
 w.tick('finish')
 del w

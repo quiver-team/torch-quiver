@@ -110,7 +110,7 @@ class distributeRWSampler(GraphSAINTSampler):
                 else:
                     res.append(
                         rpc.rpc_async(f"worker{i}",
-                                      sample_nodes,
+                                      part_nodes,
                                       args=(nodes, batch_size),
                                       kwargs=None,
                                       timeout=-1.0))

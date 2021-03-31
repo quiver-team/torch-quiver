@@ -36,11 +36,14 @@ loader = None
 
 def sample_cuda(nodes, walk_length):
     torch.cuda.set_device(local_rank)
-    nodes = loader.global2local(nodes)
     device = torch.device('cuda:' + str(local_rank))
-    node_idx = loader.adj.random_walk(nodes.to(device), walk_length)
-    row, col, value = loader.__cuda_saint_subgraph__(node_idx)
-    return  node_idx.to(torch.device('cpu')), row, col, value
+    cu_nodes = loader.global2local(nodes).to(device)
+    node_idx = loader.adj.random_walk(cu_nodes, walk_length).view(-1)
+    cpu_ret = node_idx.to(torch.device('cpu'))
+    del cu_nodes
+    del node_idx
+    torch.cuda.empty_cache()
+    return cpu_ret
 
 
 def sample_cpu(nodes, batch_size):
@@ -152,6 +155,7 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
             except queue.Full:
                 cont = False
                 break
+    time.sleep(1)
     print(dev)
     print('sample wait: ' + str(wait))
 
@@ -163,7 +167,7 @@ def TrainProcess(rank, sync, data, num_batch, num_features, num_hidden,
     if sync.reduce:
         import kungfu.torch as kf
         from kungfu.python import current_cluster_size, current_rank
-    print("intrain")
+    print("intrain", rank)
     device = torch.device('cuda:' +
                           str(rank) if torch.cuda.is_available() else 'cpu')
     torch.cuda.set_device(rank)
@@ -174,11 +178,11 @@ def TrainProcess(rank, sync, data, num_batch, num_features, num_hidden,
     model.reset_parameters()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
     sync.rank = rank
-    # torch.set_num_threads(5)
-    # if sync.reduce:
-    #     optimizer = kf.optimizers.SynchronousSGDOptimizer(
-    #         optimizer, named_parameters=model.named_parameters())
-    #     kf.broadcast_parameters(model.state_dict())
+    torch.set_num_threads(5)
+    if sync.reduce:
+        optimizer = kf.optimizers.SynchronousSGDOptimizer(
+            optimizer, named_parameters=model.named_parameters())
+        kf.broadcast_parameters(model.state_dict())
 
     model.train()
     cpu_count = gpu_count = 0
@@ -219,13 +223,13 @@ def TrainProcess(rank, sync, data, num_batch, num_features, num_hidden,
         out = model(feature, one_sample.edge_index.to(device))
         loss = F.nll_loss(out[one_sample.train_mask], label[one_sample.train_mask].squeeze_())
         loss.backward()
-        # if sync.reduce:
-        #     t0 = time.time()
-        #     optimizer.sync_gradients()
-        #     rd += time.time() - t0
-        #     optimizer.pure_step()
-        # else:
-        optimizer.step()
+        if sync.reduce:
+            t0 = time.time()
+            optimizer.sync_gradients()
+            rd += time.time() - t0
+            optimizer.pure_step()
+        else:
+            optimizer.step()
     print('cpu count: ' + str(cpu_count))
     print('gpu count: ' + str(gpu_count))
     print('train wait: ' + str(wait))
@@ -314,4 +318,4 @@ def main(num_batch, cpu_num, gpu_num, train_num, device_num, batch_size):
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
-    main(1800, 0, 4, 1, 4, 24000)
+    main(180, 0, 4, 0, 4, 24000)

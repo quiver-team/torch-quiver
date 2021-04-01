@@ -28,12 +28,10 @@ class Policy:
         self.group_part.insert(0, part)
 
     def remove_group(self):
-        assert self.num_group > 1, "not remove last"
         self.num_group -= 1
         self.group_part.pop()
 
     def remove_sub_group(self):
-        assert self.num_sub > 1, "not remove last"
         self.num_group -= 1
         self.num_sub -= 1
         self.group_part.pop(0)

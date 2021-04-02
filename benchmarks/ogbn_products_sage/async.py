@@ -44,8 +44,9 @@ class SyncConfig:
         self.dist = dist
 
 
-train_thread = 5
-sample_thread = 5
+num_device = torch.cuda.device_count()
+train_thread = psutil.cpu_count() // num_device
+sample_thread = psutil.cpu_count() // num_device
 local_rank = None
 loader = None
 
@@ -98,7 +99,7 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
         if sync.dist:
             import quiver.dist_cuda_sampler as dist
             comm = dist.Comm(sync.rank, sync.world_size)
-            local_rank = sync.rank % 4
+            local_rank = sync.rank
             loader = dist.SyncDistNeighborSampler(
                 comm, (int(edge_index.max() + 1), edge_index, data,
                        local2global, global2local, node2rank),
@@ -368,10 +369,9 @@ def main(policy, num_batch=64, use_products=False):
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
-    batch_size = 1024
-    num_device = 4
-    cpu_num = 10
-    normal = Policy(batch_size, num_device, num_device, 0)
+    batch_size = 512
+    cpu_num = psutil.cpu_count() // num_device
+    normal = Policy(batch_size, num_device, num_device, cpu_num)
     pyg = Policy(batch_size, num_device, num_device, cpu_num)
     pyg.remove_group()
     pf = PolicyFilter(batch_size, num_device, 0)
@@ -385,6 +385,9 @@ if __name__ == '__main__':
     stats = main(policy)
     print('finish base')
     dur, per, qs = stats
+    res_all = 999.99, 0, 0
+    res_sub = 999.99, 0, 0
+    res_cpu = 999.99, 0, 0
     if qs <= policy.count() * num_device - policy.count_sub(
     ) * policy.num_train:
         if policy.count_sub() > 0:
@@ -392,15 +395,16 @@ if __name__ == '__main__':
             res_sub = main(policy)
             print('finish sub')
             policy.remove_sub_group()
-            stats = max((stats, res_sub))
+            stats = min((stats, res_sub))
         policy.num_cpu = int((100 - per) / 100 * psutil.cpu_count())
         print(f'cpu num {policy.num_cpu}')
         res_cpu = main(policy)
         print('finish cpu')
-        stats = max((stats, res_cpu))
-        policy.add_sub_group()
-        res_all = main(policy)
-        stats = max((stats, res_all))
+        stats = min((stats, res_cpu))
+        if policy.count_sub() > 0:
+            policy.add_sub_group()
+            res_all = main(policy)
+            stats = min((stats, res_all))
         if stats == res_sub:
             policy.num_cpu = 0
             print('sub win')

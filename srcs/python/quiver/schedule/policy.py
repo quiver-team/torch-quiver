@@ -62,6 +62,7 @@ class PolicyFilter:
         self.finished = [False] * num_dev
         self.stats = [None] * num_dev
         self.first = True
+        self.prev = 999.99, 0, 0
 
     def __iter__(self):
         return self
@@ -71,9 +72,14 @@ class PolicyFilter:
                 self.index].count_sub() >= 3:
             self.finished[self.index] = True
         if self.finished[self.index]:
-            self.index += 1
-            if self.index >= self.num_dev:
+            a, b, c = self.prev
+            a *= 0.95
+            b *= 0.95
+            c *= 0.95
+            if self.index >= self.num_dev or self.stats[self.index] > (a, b, c):
                 raise StopIteration
+            self.prev = self.stats[self.index]
+            self.index += 1
         elif not self.first:
             self.policies[self.index].add_group()
         self.first = False
@@ -93,6 +99,8 @@ class PolicyFilter:
         ret = 999.99, 1, 1
         index = 0
         for i in range(self.num_dev):
+            if self.stats[i] is None:
+                break
             if self.stats[i] < ret:
                 ret = self.stats[i]
                 index = i

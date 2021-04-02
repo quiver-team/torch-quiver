@@ -11,12 +11,18 @@ def sample_n(nodes, size):
 
     return neighbors, counts
 
+def subgraph_nodes_n(nodes, i):
+    row, col, edge_index = None, None, None
+    return row, col, edge_index
+
 class Comm:
     def __init__(self, rank, world_size):
         self.rank = rank
         self.world_size = world_size
 
 sample_nodes = sample_n
+subgraph_nodes = subgraph_nodes_n
+
 class distributeCudaRWSampler(GraphSAINTSampler):
     r"""The GraphSAINT random walk sampler class (see
     :class:`torch_geometric.data.GraphSAINTSampler`).
@@ -47,7 +53,6 @@ class distributeCudaRWSampler(GraphSAINTSampler):
                              save_dir, log, **kwargs)
         self.cuda_device = torch.device('cuda:' + str(device))
         self.adj = self.adj.to(self.cuda_device)
-        print("after init")
 
     @property
     def __filename__(self):
@@ -102,17 +107,12 @@ class distributeCudaRWSampler(GraphSAINTSampler):
         local_nodes = None
         res = []
         node_indices = []
-        # cols = []
-        # rows = []
-        # values = []
-        # input_orders = torch.arange(start.size(0), dtype=torch.long)
+        acc = [start]
         for step in range(self.walk_length):
             for i in range(self.comm.world_size):
                 # for every device check how many nodes
                 mask = torch.eq(ranks, i)
                 part_nodes = torch.masked_select(start, mask)
-                # input orders which order it is input?
-                # part_orders = torch.masked_select(input_orders, mask)
                 # nodes as the the current, pointer ordered inputs to accumulate the partial nodes
                 if part_nodes.size(0) >= 1:
                     # if current server then local
@@ -124,69 +124,102 @@ class distributeCudaRWSampler(GraphSAINTSampler):
                         res.append(
                             rpc.rpc_async(f"worker{i}",
                                           sample_nodes,
-                                          args=(part_nodes, self.walk_length),
+                                          args=(part_nodes, 1),
                                           kwargs=None,
                                           timeout=-1.0))
 
-                        # nodes = part_nodes
-                        # reorder[beg:beg + part_nodes.size(0)] = part_orders
-                        # where to begin this is the server
-                        # beg += part_nodes.size(0)s
                 else:
-                    # no  nodes at i at all
-                    # res.append((torch.LongTensor([]),
-                    #             torch.LongTensor([]),
-                    #             torch.LongTensor([]),
-                    #             torch.LongTensor([])))
                     res.append(torch.LongTensor([]))
             # local server has nodes
-
             if local_nodes is not None:
                 nodes = self.global2local(local_nodes)
                 nodes = nodes.to(self.cuda_device)
                 # walk length in current step is 1
-                node_idx = self.adj.random_walk(nodes, 1).view(-1)
+                node_idx = self.adj.random_walk(nodes, 1)[:, 1]
                 res[self.comm.rank] = node_idx.to(torch.device('cpu'))
-            del nodes
-            del node_idx
-            torch.cuda.empty_cache()
             for i in range(len(res)):
                 # if not isinstance(res[i], tuple):
                 if not isinstance(res[i], torch.Tensor):
                     res[i] = res[i].wait()
                 return_nodes = res[i]
                 node_indices.append(return_nodes)
-
-            node_indices = torch.cat(node_indices)
             if step < self.walk_length - 1:
-                start = node_indices
+                start = torch.cat(node_indices)
                 ranks = self.node2rank(start)
-                del node_indices
+                acc.append(start)
                 node_indices = []
-                torch.cuda.empty_cache()
-        return node_indices
+                res = []
+                local_nodes = None
+            else:
+                acc.append(torch.cat(node_indices))
+                acc = torch.cat(acc)
+        return acc
 
     def __cuda_saint_subgraph__(
             self, node_idx: torch.Tensor) -> Tuple[SparseTensor, torch.Tensor]:
-        row, col, value = self.adj.coo()
-        rowptr = self.adj.storage.rowptr()
+        rows = []
+        cols = []
+        edge_indices = []
+        # splite node idx
+        ranks = self.node2rank(node_idx)
+        local_nodes = None
+        futures = []
+        adj_row, adj_col, adj_value = self.adj.coo()
+        adj_rowptr = self.adj.storage.rowptr()
+        cpu = torch.device('cpu')
 
-        data = qv.saint_subgraph(node_idx, rowptr, row, col)
-        row, col, edge_index = data
+        for i in range(self.comm.world_size):
+            # for every device check how many nodes on the device
+            mask = torch.eq(ranks, i)
+            part_nodes = torch.masked_select(node_idx, mask)
+            # nodes as the the current, pointer ordered inputs to accumulate the partial nodes
+            if part_nodes.size(0) >= 1:
+                # if current server then local
+                if i == self.comm.rank:
+                    local_nodes = part_nodes
+                    futures.append((torch.LongTensor([]), torch.LongTensor([]), torch.LongTensor([])))
+                # remote server
+                else:
+                    futures.append(
+                        rpc.rpc_async(f"worker{i}",
+                                      subgraph_nodes,
+                                      args=(part_nodes, 1),
+                                      kwargs=None,
+                                      timeout=-1.0))
 
+            else:
+                futures.append((torch.LongTensor([]), torch.LongTensor([]), torch.LongTensor([])))
+        # local server has nodes
+        if local_nodes is not None:
+            nodes = self.global2local(local_nodes)
+            nodes = nodes.to(self.cuda_device)
+            row, col, edge_index = qv.saint_subgraph(nodes, adj_rowptr, adj_row, adj_col)
+            futures[self.comm.rank] = row.to(cpu), col.to(cpu), edge_index.to(cpu)
 
-        if value is not None:
-            value = value[edge_index]
+        for i in range(len(futures)):
+            if not isinstance(futures[i], tuple):
+                futures[i] = futures[i].wait()
+            row, col, edge_index = futures[i]
+            rows.append(row)
+            cols.append(col)
+            edge_indices.append(edge_index)
 
-        out = SparseTensor(row=row,
-                           rowptr=None,
-                           col=col,
-                           value=value,
+        ret_row = torch.cat(rows)
+        ret_cols = torch.cat(cols)
+        ret_edgeindex = torch.cat(edge_indices)
+
+        if adj_value is not None:
+            ret_vals = adj_value[ret_edgeindex].to(cpu)
+
+        out = SparseTensor(row = ret_row,
+                           rowptr = None,
+                           col= ret_cols,
+                           value = ret_vals,
                            sparse_sizes=(node_idx.size(0), node_idx.size(0)),
-                           is_sorted=True)
-        return out, edge_index
+                           is_sorted=False)
+        return out, ret_edgeindex
 
     def __getitem__(self, idx):
         node_idx = self.__sample_nodes__(self.__batch_size__).unique()
-        adj, _ = self.__cuda_saint_subgraph__(node_idx.to(self.cuda_device))
-        return node_idx, adj.to(torch.device('cpu'))
+        adj, _ = self.__cuda_saint_subgraph__(node_idx)
+        return node_idx, adj

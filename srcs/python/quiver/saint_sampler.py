@@ -15,6 +15,7 @@ class CudaRWSampler(GraphSAINTSampler):
     """
     def __init__(self,
                  data,
+                 device,
                  batch_size: int,
                  walk_length: int,
                  num_steps: int = 1,
@@ -23,9 +24,11 @@ class CudaRWSampler(GraphSAINTSampler):
                  log: bool = True,
                  **kwargs):
         self.walk_length = walk_length
+        self.cuda_device = torch.device('cuda:' + str(device))
         super(CudaRWSampler,
               self).__init__(data, batch_size, num_steps, sample_coverage,
                              save_dir, log, **kwargs)
+        self.adj = self.adj.to(self.cuda_device)
 
     @property
     def __filename__(self):
@@ -34,13 +37,8 @@ class CudaRWSampler(GraphSAINTSampler):
 
     def __sample_nodes__(self, batch_size):
         start = torch.randint(0, self.N, (batch_size, ), dtype=torch.long)
-        cuda_device = torch.device('cuda')
-        start = start.to(cuda_device)
-        self.adj = self.adj.to(cuda_device)
-        # start_t  = time.time()
+        start = start.to(self.cuda_device)
         node_idx = self.adj.random_walk(start.flatten(), self.walk_length)
-        # end = time.time()
-        # print(end - start_t)
         return node_idx.view(-1)
 
     def __cuda_saint_subgraph__(

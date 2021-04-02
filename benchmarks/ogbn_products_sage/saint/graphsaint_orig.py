@@ -54,6 +54,7 @@ evaluator = Evaluator(name='ogbn-products')
 y = data.y.squeeze() # [N, 1]
 w.tick('load data')
 loader = CudaRWSampler(data,
+                       0,
                        batch_size=24000,
                        walk_length=2,
                        num_steps=10,

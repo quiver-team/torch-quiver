@@ -12,12 +12,10 @@ import torch
 import torch.nn.functional as F
 from torch.distributed import rpc
 
-from quiver.cuda_sampler import CudaNeighborSampler
-from torch_geometric.data import NeighborSampler
 from quiver.saint_sampler import  CudaRWSampler
 from quiver.models.saint_model import Net
 from torch_geometric.data import GraphSAINTRandomWalkSampler
-
+import torch_quiver as qv
 
 class SyncConfig:
     def __init__(self, rank, world_size, queues, barriers, timeout, reduce,
@@ -38,18 +36,25 @@ def sample_cuda(nodes, walk_length):
     torch.cuda.set_device(local_rank)
     device = torch.device('cuda:' + str(local_rank))
     cu_nodes = loader.global2local(nodes).to(device)
-    node_idx = loader.adj.random_walk(cu_nodes, walk_length).view(-1)
-    cpu_ret = node_idx.to(torch.device('cpu'))
-    del cu_nodes
-    del node_idx
-    torch.cuda.empty_cache()
-    return cpu_ret
+    node_idx = loader.adj.random_walk(cu_nodes, walk_length)[:,1]
+    return  node_idx.to(torch.device('cpu'))
 
+def sample_cpu(nodes, walk_length):
+    node_idx = loader.adj.random_walk(nodes, walk_length)[:,1]
+local_rank = None
 
-def sample_cpu(nodes, batch_size):
-    nodes = loader.global2local(nodes)
-    node_idx = loader.adj.random_walk(nodes, batch_size)
-    return node_idx
+def subgraph_cuda(nodes, i):
+    torch.cuda.set_device(local_rank)
+    device = torch.device('cuda:' + str(local_rank))
+    adj_row, adj_col, _ = loader.adj.coo()
+    adj_rowptr = loader.adj.storage.rowptr()
+    row, col, edge_index = qv.saint_subgraph(nodes.to(device), adj_rowptr, adj_row, adj_col)
+    cpu = torch.device('cpu')
+    return row.to(cpu), col.to(cpu), edge_index.to(cpu)
+
+def subgraph_cpu(nodes, i):
+    adj, edge_index = loader.adj.saint_subgraph(nodes)
+    return adj, edge_index
 
 def node_f(nodes, is_feature):
     cpu = torch.device('cpu')
@@ -83,48 +88,45 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
             import quiver.dist_saint_cuda_sampler as dist
             comm = dist.Comm(sync.rank, sync.world_size)
             local_rank = sync.rank % 4
-            print("local rank", local_rank)
-            print("device", device)
             torch.cuda.set_device(device)
             loader = dist.distributeCudaRWSampler(
                 comm, (data, local2global, global2local, node2rank),
                 node_f, device,
-                batch_size=batch_size, walk_length=2,
+                batch_size = batch_size, walk_length=2,
                 num_steps=10,
                 sample_coverage=0,
-                save_dir="/home/guest/leahli/pytorch_quiver/benchmarks/ogbn_products_sage/saint/cuda/",
-                num_workers=0)
+                save_dir="./cuda/")
             dist.sample_nodes = sample_cuda
+            dist.subgraph_nodes = subgraph_cuda
         else:
             loader = CudaRWSampler(data,
                                    batch_size = batch_size,
                                    walk_length=2,
                                    num_steps=10,
                                    sample_coverage=0,
-                                   save_dir="/home/guest/leahli/pytorch_quiver/benchmarks/ogbn_products_sage/saint/cuda/",
-                                   num_workers=0)
+                                   save_dir="./cuda/")
     else:
         if sync.dist:
-            # import quiver.dist_saint_cpu_sampler as dist
-            # comm = dist.Comm(sync.rank, sync.world_size)
-            # loader = dist.SyncDistNeighborSampler(
-            #     comm, (int(edge_index.max() + 1), edge_index,
-            #            torch.zeros(1, dtype=torch.long), local2global,
-            #            global2local, node2rank),
-            #     train_idx, [15, 10, 5],
-            #     sync.rank,
-            #     batch_size=batch_size)
-            # dist.sample_neighbor = sample_cpu
-            print("done nothing")
+            import quiver.dist_saint_cpu_sampler as dist
+            comm = dist.Comm(sync.rank, sync.world_size)
+            local_rank = sync.rank % 4
+            loader = dist.distributeRWSampler(
+                comm, (data, local2global, global2local, node2rank),
+                node_f,
+                batch_size=batch_size, walk_length=2,
+                num_steps=10,
+                sample_coverage=0,
+                save_dir="./cpu/")
+            dist.sample_nodes = sample_cuda
+            dist.subgraph_nodes = subgraph_cpu
         else:
             loader = GraphSAINTRandomWalkSampler(data,
                                                  batch_size = batch_size,
                                                  walk_length = 2,
-                                                 num_steps=10,
+                                                 num_steps = 10,
                                                  sample_coverage=0,
-                                                 save_dir="/home/guest/leahli/pytorch_quiver/benchmarks/ogbn_products_sage/saint/cpu/",
+                                                 save_dir="./cpu/",
                                                  num_workers=num)
-    print("before init rpc")
     if sync.dist:
         os.environ['MASTER_ADDR'] = 'localhost'
         if device == 'cpu':
@@ -138,7 +140,6 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
                      world_size=sync.world_size,
                      rpc_backend_options=rpc.TensorPipeRpcBackendOptions(
                          num_worker_threads=1, rpc_timeout=20))
-    print("after init rpc")
     cont = True
     count = 0
     wait = 0.0
@@ -210,14 +211,6 @@ def TrainProcess(rank, sync, data, num_batch, num_features, num_hidden,
         one_sample = sample
         feature = one_sample.x.to(device)
         label = one_sample.y.to(device)
-        # feature, order0 = feature
-        # label, order1 = label
-        # feature = torch.cat([f.to(device) for f in feature])
-        # label = torch.cat([l.to(device) for l in label])
-        # origin_feature = torch.empty_like(feature)
-        # origin_label = torch.empty_like(label)
-        # origin_feature[order0] = feature
-        # origin_label[order1] = label
         model.set_aggr('mean')
         optimizer.zero_grad()
         out = model(feature, one_sample.edge_index.to(device))
@@ -279,7 +272,7 @@ def main(num_batch, cpu_num, gpu_num, train_num, device_num, batch_size):
     if cpu_num > 0:
         dev = ('cpu', cpu_num)
         sync.rank = i
-        sync.dist = False
+        sync.dist = True
         cpu = mp.Process(target=SamplerProcess,
                          args=(sync, dev, data.edge_index,data,
                                train_idx, [], batch_size))
@@ -318,4 +311,4 @@ def main(num_batch, cpu_num, gpu_num, train_num, device_num, batch_size):
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
-    main(180, 0, 4, 0, 4, 24000)
+    main(1800, 2, 0, 4, 4, 24000)

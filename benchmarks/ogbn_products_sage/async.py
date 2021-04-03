@@ -21,6 +21,16 @@ from torch_geometric.nn import SAGEConv
 from tqdm import tqdm
 
 
+class ProductsDataset:
+    def __init__(self, train_idx, edge_index, x, y, f, c):
+        self.train_idx = train_idx
+        self.edge_index = edge_index
+        self.x = x
+        self.y = y
+        self.num_features = f
+        self.num_classes = c
+
+
 class SyncConfig:
     def __init__(self, group, rank, world_size, queues, barriers, timeout,
                  reduce, dist):
@@ -34,6 +44,9 @@ class SyncConfig:
         self.dist = dist
 
 
+num_device = torch.cuda.device_count()
+train_thread = psutil.cpu_count() // num_device
+sample_thread = psutil.cpu_count() // num_device
 local_rank = None
 loader = None
 
@@ -69,7 +82,7 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
     device, num = dev
     group = sync.group
     sync.rank = sync.rank % sync.world_size
-    torch.set_num_threads(5)
+    torch.set_num_threads(sample_thread)
 
     def node2rank(nodes):
         ranks = torch.fmod(nodes, sync.world_size)
@@ -86,7 +99,7 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
         if sync.dist:
             import quiver.dist_cuda_sampler as dist
             comm = dist.Comm(sync.rank, sync.world_size)
-            local_rank = sync.rank % 4
+            local_rank = sync.rank
             loader = dist.SyncDistNeighborSampler(
                 comm, (int(edge_index.max() + 1), edge_index, data,
                        local2global, global2local, node2rank),
@@ -104,6 +117,7 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
                                          batch_size=batch_size,
                                          shuffle=True)
     else:
+        torch.set_num_threads(1)
         if sync.dist:
             import quiver.dist_cpu_sampler as dist
             comm = dist.Comm(sync.rank, sync.world_size)
@@ -131,6 +145,7 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
         rpc.init_rpc(f"worker{sync.rank}",
                      rank=sync.rank,
                      world_size=sync.world_size,
+                     backend=rpc.BackendType.TENSORPIPE,
                      rpc_backend_options=rpc.TensorPipeRpcBackendOptions(
                          num_worker_threads=1, rpc_timeout=20))
     cont = True
@@ -194,7 +209,7 @@ def TrainProcess(rank, sync, data, num_batch, num_features, num_hidden,
     optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
     sync.rank = rank
     x, y = data
-    torch.set_num_threads(5)
+    torch.set_num_threads(train_thread)
     if sync.reduce:
         optimizer = kf.optimizers.SynchronousSGDOptimizer(
             optimizer, named_parameters=model.named_parameters())
@@ -227,14 +242,6 @@ def TrainProcess(rank, sync, data, num_batch, num_features, num_hidden,
         adjs = [adj.to(device) for adj in adjs]
         feature = x[n_id].to(device)
         label = y[n_id[:batch_size]].to(device)
-        # feature, order0 = feature
-        # label, order1 = label
-        # feature = torch.cat([f.to(device) for f in feature])
-        # label = torch.cat([l.to(device) for l in label])
-        # origin_feature = torch.empty_like(feature)
-        # origin_label = torch.empty_like(label)
-        # origin_feature[order0] = feature
-        # origin_label[order1] = label
 
         optimizer.zero_grad()
         out = model(feature, adjs)
@@ -267,20 +274,28 @@ class Trainer:
         self.f(rank, *self.args)
 
 
-def main(policy, num_batch=64):
+def main(policy, num_batch=64, use_products=False):
     train_num = policy.num_train
     device_num = policy.num_dev
     cpu_num = policy.num_cpu
     batch_size = policy.batch_size
     dist = True
-    home = os.getenv('HOME')
-    data_dir = osp.join(home, '.pyg')
-    root = osp.join(data_dir, 'data', 'products')
-    dataset = PygNodePropPredDataset('ogbn-products', root)
-    split_idx = dataset.get_idx_split()
-    data = dataset[0]
-
-    train_idx = split_idx['train']
+    if use_products:
+        root = './products.pt'
+        dataset = torch.load(root)
+        train_idx = dataset.train_idx
+        edge_index = dataset.edge_index
+        x, y = dataset.x.share_memory_(), dataset.y.squeeze().share_memory_()
+    else:
+        home = os.getenv('HOME')
+        data_dir = osp.join(home, '.pyg')
+        root = osp.join(data_dir, 'data', 'products')
+        dataset = PygNodePropPredDataset('ogbn-products', root)
+        split_idx = dataset.get_idx_split()
+        data = dataset[0]
+        train_idx = split_idx['train']
+        edge_index = data.edge_index
+        x, y = data.x.share_memory_(), data.y.squeeze().share_memory_()
 
     queues = [mp.Queue(16), mp.Queue(8)]
     num = -train_num * policy.count_sub() + device_num * \
@@ -297,7 +312,7 @@ def main(policy, num_batch=64):
             sync = SyncConfig(group, j, device_num - train_num, queues,
                               [barrier1, barrier2], 3, train_num > 1, dist)
             gpu0 = mp.Process(target=SamplerProcess,
-                              args=(sync, dev, data.edge_index, (None, None),
+                              args=(sync, dev, edge_index, (None, None),
                                     train_idx, [15, 10, 5], batch_size))
             gpu0.start()
             samplers.append(gpu0)
@@ -309,7 +324,7 @@ def main(policy, num_batch=64):
             sync = SyncConfig(group, j, device_num, queues,
                               [barrier1, barrier2], 3, train_num > 1, dist)
             gpu0 = mp.Process(target=SamplerProcess,
-                              args=(sync, dev, data.edge_index, (None, None),
+                              args=(sync, dev, edge_index, (None, None),
                                     train_idx, [15, 10, 5], batch_size))
             gpu0.start()
             samplers.append(gpu0)
@@ -321,11 +336,10 @@ def main(policy, num_batch=64):
         sync = SyncConfig(0, 0, device_num, queues, [barrier1, barrier2], 3,
                           train_num > 1, False)
         cpu = mp.Process(target=SamplerProcess,
-                         args=(sync, dev, data.edge_index, (None, None),
+                         args=(sync, dev, edge_index, (None, None),
                                train_idx, [15, 10, 5], batch_size))
         cpu.start()
         samplers.append(cpu)
-    x, y = data.x.share_memory_(), data.y.squeeze().share_memory_()
 
     sync = SyncConfig(group, 0, device_num, queues, [barrier1, barrier2], 3,
                       train_num > 1, dist)
@@ -357,9 +371,13 @@ def main(policy, num_batch=64):
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
-    batch_size = 1024
-    normal = Policy(batch_size, 4, 4, 0)
-    pf = PolicyFilter(batch_size, 4, 0)
+    batch_size = 512
+    cpu_num = psutil.cpu_count() // num_device
+    print(f'cpu worker {cpu_num}')
+    normal = Policy(batch_size, num_device, num_device, cpu_num)
+    pyg = Policy(batch_size, num_device, num_device, cpu_num)
+    pyg.remove_group()
+    pf = PolicyFilter(batch_size, num_device, 0)
     for policy in pf:
         print(f'trainer {policy.num_train} group {policy.num_group}')
         stats = main(policy)
@@ -367,26 +385,30 @@ if __name__ == '__main__':
         print(f'time {stats}')
     policy, stats = pf.best_group()
     print(f'best trainer {policy.num_train} group {policy.num_group}')
-    # policy = Policy(batch_size, 4, 3, 0)
-    # policy.add_group()
     stats = main(policy)
     print('finish base')
     dur, per, qs = stats
-    if qs <= policy.count() * 4 - policy.count_sub() * policy.num_train:
+    res_all = 999.99, 0, 0
+    res_sub = 999.99, 0, 0
+    res_cpu = 999.99, 0, 0
+    if qs <= policy.count() * num_device - policy.count_sub(
+    ) * policy.num_train:
         if policy.count_sub() > 0:
             policy.add_sub_group()
             res_sub = main(policy)
             print('finish sub')
             policy.remove_sub_group()
-            stats = max((stats, res_sub))
+            stats = min((stats, res_sub))
         policy.num_cpu = int((100 - per) / 100 * psutil.cpu_count())
+        policy.num_cpu = min(policy.num_cpu, cpu_num)
         print(f'cpu num {policy.num_cpu}')
         res_cpu = main(policy)
         print('finish cpu')
-        stats = max((stats, res_cpu))
-        policy.add_sub_group()
-        res_all = main(policy)
-        stats = max((stats, res_all))
+        stats = min((stats, res_cpu))
+        if policy.count_sub() > 0:
+            policy.add_sub_group()
+            res_all = main(policy)
+            stats = min((stats, res_all))
         if stats == res_sub:
             policy.num_cpu = 0
             print('sub win')
@@ -396,6 +418,13 @@ if __name__ == '__main__':
         if stats == res_all:
             print('all win')
     print(str(policy))
+    time.sleep(5)
+    cpu, _, _, = main(pyg, 192)
+    print(f'pyg finish {cpu}')
+    time.sleep(5)
     tuned, _, _ = main(policy, 192)
-    non, _, _, = main(normal, 192)
-    print(f'non {non} vs tuned {tuned}')
+    print(f'tuned finish {tuned}')
+    time.sleep(5)
+    norm, _, _, = main(normal, 192)
+    print(f'norm finish {norm}')
+    print(f'cpu {cpu} vs norm {norm} vs tuned {tuned}')

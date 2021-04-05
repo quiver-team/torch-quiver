@@ -411,6 +411,19 @@ saint_subgraph(const torch::Tensor &idx, const torch::Tensor &rowptr,
     thrust::device_vector<uint64_t> output_counts;
     thrust::device_vector<uint64_t> output_ptr;
 
+    output_counts.resize(num_of_sampled_node);
+    output_ptr.resize(num_of_sampled_node);
+
+    thrust::transform(
+        policy, idx_ptr_t, idx_ptr_t + num_of_sampled_node,
+        output_counts.begin(),
+        get_adj_diff<int64_t>(rowptr.data_ptr<int64_t>(),
+                        num_of_nodes, num_of_edges));
+
+    thrust::exclusive_scan(policy, output_counts.begin(),
+                           output_counts.end(), output_ptr.begin());
+
+    uint64_t num_sampled_edge = output_ptr[num_of_sampled_node-1] + output_counts[num_of_sampled_node-1];
     auto assoc = torch::full({rowptr.size(0) - 1}, -1, idx.options());
     assoc.index_copy_(0, idx, torch::arange(idx.size(0), idx.options()));
     thrust::device_vector<thrust::tuple<int64_t, int64_t, int64_t>> edges(num_sampled_edge);

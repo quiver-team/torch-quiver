@@ -4,7 +4,7 @@ from typing import Optional, List, NamedTuple, Optional, Tuple
 from torch.distributed import rpc
 from torch_geometric.data import GraphSAINTSampler
 import torch
-
+import time
 
 def sample_n(nodes, size):
     neighbors, counts = None, None
@@ -53,6 +53,7 @@ class distributeCudaRWSampler(GraphSAINTSampler):
                              save_dir, log, **kwargs)
         self.cuda_device = torch.device('cuda:' + str(device))
         self.adj = self.adj.to(self.cuda_device)
+        self.deg = self.deg_out = self.adj.storage.rowcount()
 
     @property
     def __filename__(self):
@@ -133,10 +134,19 @@ class distributeCudaRWSampler(GraphSAINTSampler):
             # local server has nodes
             if local_nodes is not None:
                 nodes = self.global2local(local_nodes)
+                # start_t = time.time()
                 nodes = nodes.to(self.cuda_device)
+                # end = time.time()
+                # dur = end - start_t
                 # walk length in current step is 1
+                start_t = time.time()
                 node_idx = self.adj.random_walk(nodes, 1)[:, 1]
+                end = time.time()
+                print(" rw ", end - start_t)
+                # start_t = time.time()
                 res[self.comm.rank] = node_idx.to(torch.device('cpu'))
+                # end = time.time()
+                # print("copy 1", end - start_t + dur)
             for i in range(len(res)):
                 # if not isinstance(res[i], tuple):
                 if not isinstance(res[i], torch.Tensor):
@@ -192,9 +202,25 @@ class distributeCudaRWSampler(GraphSAINTSampler):
         # local server has nodes
         if local_nodes is not None:
             nodes = self.global2local(local_nodes)
+            # start_t = time.time()
             nodes = nodes.to(self.cuda_device)
-            row, col, edge_index = qv.saint_subgraph(nodes, adj_rowptr, adj_row, adj_col)
-            futures[self.comm.rank] = row.to(cpu), col.to(cpu), edge_index.to(cpu)
+            # end = time.time()
+            # dur = end - start_t
+
+            start_t = time.time()
+            deg = torch.index_select(self.deg_out, 0, nodes)
+            row, col, edge_index = qv.saint_subgraph(nodes, adj_rowptr, adj_row, adj_col, deg)
+            end = time.time()
+            print("subgraph", end - start_t)
+
+            # start_t = time.time()
+            row = row.to(cpu)
+            col = col.to(cpu)
+            edge_index = edge_index.to(cpu)
+            end = time.time()
+            # print("copy2", end - start_t + dur)
+
+            futures[self.comm.rank] = row, col, edge_index
 
         for i in range(len(futures)):
             if not isinstance(futures[i], tuple):
@@ -210,13 +236,15 @@ class distributeCudaRWSampler(GraphSAINTSampler):
 
         if adj_value is not None:
             ret_vals = adj_value[ret_edgeindex].to(cpu)
-
+        # start_t = time.time()
         out = SparseTensor(row = ret_row,
                            rowptr = None,
                            col= ret_cols,
                            value = ret_vals,
                            sparse_sizes=(node_idx.size(0), node_idx.size(0)),
                            is_sorted=False)
+        # end = time.time()
+        # print(" formingh one subgraph sparse costs", end - start_t)
         return out, ret_edgeindex
 
     def __getitem__(self, idx):

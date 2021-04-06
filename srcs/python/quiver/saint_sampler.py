@@ -5,7 +5,7 @@ import random
 import torch_quiver as qv
 from torch_sparse import SparseTensor
 from typing import Optional, List, NamedTuple, Tuple
-
+import time
 
 class CudaRWSampler(GraphSAINTSampler):
     r"""The GraphSAINT random walk sampler class (see
@@ -29,6 +29,7 @@ class CudaRWSampler(GraphSAINTSampler):
               self).__init__(data, batch_size, num_steps, sample_coverage,
                              save_dir, log, **kwargs)
         self.adj = self.adj.to(self.cuda_device)
+        self.deg_out = self.adj.storage.rowcount()
 
     @property
     def __filename__(self):
@@ -38,15 +39,21 @@ class CudaRWSampler(GraphSAINTSampler):
     def __sample_nodes__(self, batch_size):
         start = torch.randint(0, self.N, (batch_size, ), dtype=torch.long)
         start = start.to(self.cuda_device)
+        # start_t  = time.time()
         node_idx = self.adj.random_walk(start.flatten(), self.walk_length)
+        end = time.time()
+        # print("rw", end - start_t)
         return node_idx.view(-1)
 
     def __cuda_saint_subgraph__(
             self, node_idx: torch.Tensor) -> Tuple[SparseTensor, torch.Tensor]:
         row, col, value = self.adj.coo()
         rowptr = self.adj.storage.rowptr()
-
-        data = qv.saint_subgraph(node_idx, rowptr, row, col)
+        # start_t = time.time()
+        deg = torch.index_select(self.deg_out, 0, node_idx)
+        data = qv.saint_subgraph(node_idx, rowptr, row, col, deg)
+        # end = time.time()
+        # print("subgraph: ", end - start_t)
         row, col, edge_index = data
 
         if value is not None:
@@ -61,8 +68,19 @@ class CudaRWSampler(GraphSAINTSampler):
         return out, edge_index
 
     def __getitem__(self, idx):
-        node_idx = self.__sample_nodes__(self.__batch_size__).unique()
+        start = time.time()
+        node_idx = self.__sample_nodes__(self.__batch_size__)
+        end = time.time()
+        print("TOTAL RW takes : ", end - start)
+        start = time.time()
+        node_idx = node_idx.unique()
+        end = time.time()
+        print("unique takes : ", end - start)
+        print(node_idx)
+        start = time.time()
         adj, _ = self.__cuda_saint_subgraph__(node_idx)
+        end = time.time()
+        print("TOTAL subgraph takes : ", end - start)
         return node_idx, adj
 
 class QuiverSAINTEdgeSampler(GraphSAINTSampler):

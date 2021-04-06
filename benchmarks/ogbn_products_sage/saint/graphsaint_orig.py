@@ -36,7 +36,6 @@ data.val_mask = valid_mask
 test_mask = torch.zeros(data.num_nodes, dtype=torch.bool)
 test_mask[split_idx['test']] = True
 data.test_mask= test_mask
-
 row, col = data.edge_index
 data.edge_weight = 1. / degree(col, data.num_nodes)[col]  # Norm by in-degree.
 # -----below is flicker-----------
@@ -53,11 +52,12 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 evaluator = Evaluator(name='ogbn-products')
 y = data.y.squeeze() # [N, 1]
 w.tick('load data')
+# num ste p is calculated by (train_idx/size(0)) / v_subgraph =20
 loader = CudaRWSampler(data,
                        0,
-                       batch_size=24000,
-                       walk_length=2,
-                       num_steps=10,
+                       batch_size=20000,
+                       walk_length=1,
+                       num_steps=5,
                        sample_coverage=0,
                        save_dir=dataset.processed_dir,
                        num_workers=0)
@@ -73,8 +73,8 @@ w.tick('create train_loader')
 model = Net(hidden_channels=256,
             num_node_features=dataset.num_node_features,
             num_classes=dataset.num_classes).to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-#optimizer = torch.optim.Adam(model.parameters(), lr=0.03)
+# optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 w.tick('build model')
 
 # trainer = SAINT_trainer(model, device, args.use_normalization)
@@ -130,7 +130,7 @@ def test():
             accs.append(correct[mask].sum().item() / mask.sum().item())
         return accs
 
-# warm up
+# # warm up
 # for i in range(1, 11):
 #    for data in loader:
 #        # do nothing
@@ -145,5 +145,5 @@ for epoch in range(1, 181):
 # accs = test()
 # print(f'Epoch: {epoch:02d}, Loss: {loss:.4f}, Train: {accs[0]:.4f}, '
 #       f'Val: {accs[1]:.4f}, Test: {accs[2]:.4f}')
-w.tick('finish')
+# w.tick('finish')
 del w

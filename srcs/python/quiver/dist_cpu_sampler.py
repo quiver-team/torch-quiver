@@ -15,6 +15,20 @@ def sample_n(nodes, size):
 sample_neighbor = sample_n
 
 
+def node_f(nodes, is_feature):
+    return None
+
+
+node_features = node_f
+
+
+def select_f(nodes, is_feature):
+    return None
+
+
+select_features = select_f
+
+
 class Adj(NamedTuple):
     edge_index: torch.Tensor
     e_id: torch.Tensor
@@ -47,47 +61,6 @@ class SyncDistNeighborSampler(torch.utils.data.DataLoader):
         super(SyncDistNeighborSampler, self).__init__(train_idx.tolist(),
                                                       collate_fn=self.sample,
                                                       **kwargs)
-
-    def get_data(self, n_id, is_feature):
-        ranks = self.node2rank(n_id)
-        input_orders = torch.arange(n_id.size(0), dtype=torch.long)
-        reorder = torch.empty_like(input_orders)
-        res = []
-        beg = 0
-        for i in range(self.comm.world_size):
-            mask = torch.eq(ranks, i)
-            part_nodes = torch.masked_select(n_id, mask)
-            part_orders = torch.masked_select(input_orders, mask)
-            if part_nodes.size(0) >= 1:
-                if i == self.comm.rank:
-                    local_nodes = part_nodes
-                    res.append(torch.LongTensor([]))
-                else:
-                    res.append(
-                        rpc.rpc_async(f"worker{i}",
-                                      self.node_feature,
-                                      args=(part_nodes, is_feature),
-                                      kwargs=None,
-                                      timeout=-1.0))
-                nodes = part_nodes
-                reorder[beg:beg + part_nodes.size(0)] = part_orders
-                beg += part_nodes.size(0)
-            else:
-                res.append(torch.LongTensor([]))
-        if local_nodes is not None:
-            nodes = self.global2local(local_nodes)
-            if is_feature:
-                local_res = self.x[nodes]
-            else:
-                local_res = self.y[nodes]
-            res[self.comm.rank] = local_res
-        for i in range(len(res)):
-            if not isinstance(res[i], torch.Tensor):
-                res[i] = res[i].wait()
-        res = torch.cat(res)
-        origin_res = torch.empty_like(res)
-        origin_res[reorder] = res
-        return origin_res
 
     def sample(self, batch):
         if not isinstance(batch, torch.Tensor):
@@ -160,3 +133,54 @@ class SyncDistNeighborSampler(torch.utils.data.DataLoader):
             return batch_size, n_id, adjs[::-1]
         else:
             return batch_size, n_id, adjs[0]
+
+
+class SyncDistFeatureSelector:
+    def __init__(self, comm, graph, **kwargs):
+        self.comm = comm
+        data, local2global, global2local, node2rank = graph
+        self.local2global = local2global
+        self.global2local = global2local
+        self.node2rank = node2rank
+        self.x, self.y = data
+        self.node_features = node_f
+
+    def get_data(self, n_id, is_feature):
+        cpu = torch.device('cpu')
+        ranks = self.node2rank(n_id)
+        input_orders = torch.arange(n_id.size(0), dtype=torch.long)
+        reorder = torch.empty_like(input_orders)
+        res = []
+        beg = 0
+        local_nodes = None
+        for i in range(self.comm.world_size):
+            mask = torch.eq(ranks, i)
+            part_nodes = torch.masked_select(n_id, mask)
+            part_orders = torch.masked_select(input_orders, mask)
+            if part_nodes.size(0) >= 1:
+                if i == self.comm.rank:
+                    local_nodes = part_nodes
+                    res.append(torch.LongTensor([]))
+                else:
+                    res.append(
+                        rpc.rpc_async(f"feature{i}",
+                                      self.node_feature,
+                                      args=(part_nodes, is_feature),
+                                      kwargs=None,
+                                      timeout=-1.0))
+                nodes = part_nodes
+                reorder[beg:beg + part_nodes.size(0)] = part_orders
+                beg += part_nodes.size(0)
+            else:
+                res.append(torch.LongTensor([]))
+        if local_nodes is not None:
+            nodes = self.global2local(local_nodes)
+            if is_feature:
+                local_res = self.x[nodes]
+            else:
+                local_res = self.y[nodes]
+            res[self.comm.rank] = local_res
+        for i in range(len(res)):
+            if not isinstance(res[i], torch.Tensor):
+                res[i] = res[i].wait()
+        return res, reorder

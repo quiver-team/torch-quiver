@@ -272,7 +272,7 @@ class Trainer:
         self.f(rank, *self.args)
 
 
-def main(policy, num_batch=64, use_products=False):
+def main(policy, num_batch=64, use_products=True):
     train_num = policy.num_train
     device_num = policy.num_dev
     cpu_num = policy.num_cpu
@@ -334,8 +334,8 @@ def main(policy, num_batch=64, use_products=False):
         sync = SyncConfig(0, 0, device_num, queues, [barrier1, barrier2], 3,
                           train_num > 1, False)
         cpu = mp.Process(target=SamplerProcess,
-                         args=(sync, dev, data.edge_index, (None, None),
-                               train_idx, [15, 10, 5], batch_size))
+                         args=(sync, dev, edge_index, (None, None), train_idx,
+                               [15, 10, 5], batch_size))
         cpu.start()
         samplers.append(cpu)
 
@@ -397,6 +397,7 @@ if __name__ == '__main__':
             policy.remove_sub_group()
             stats = min((stats, res_sub))
         policy.num_cpu = int((100 - per) / 100 * psutil.cpu_count())
+        policy.num_cpu = min(policy.num_cpu, cpu_num)
         print(f'cpu num {policy.num_cpu}')
         res_cpu = main(policy)
         print('finish cpu')

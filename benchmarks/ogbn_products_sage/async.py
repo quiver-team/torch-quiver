@@ -117,7 +117,7 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
                                          batch_size=batch_size,
                                          shuffle=True)
     else:
-        torch.set_num_threads(1)
+       # torch.set_num_threads(1)
         if sync.dist:
             import quiver.dist_cpu_sampler as dist
             comm = dist.Comm(sync.rank, sync.world_size)

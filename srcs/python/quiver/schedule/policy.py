@@ -76,7 +76,8 @@ class PolicyFilter:
             a *= 0.95
             b *= 0.95
             c *= 0.95
-            if self.index >= self.num_dev or self.stats[self.index] > (a, b, c):
+            if self.index >= self.num_dev or self.stats[self.index] > (a, b,
+                                                                       c):
                 raise StopIteration
             self.prev = self.stats[self.index]
             self.index += 1

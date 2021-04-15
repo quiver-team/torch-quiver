@@ -5,7 +5,7 @@ from torch.distributed import rpc
 from torch_geometric.data import GraphSAINTSampler
 import torch
 import time
-
+from torch_geometric.data import Data
 def sample_n(nodes, size):
     neighbors, counts = None, None
 
@@ -57,7 +57,8 @@ class distributeCudaRWSampler(GraphSAINTSampler):
 
     @property
     def __filename__(self):
-        return (f'{self.__class__.__name__.lower()}_{self.walk_length}_'
+        hardcode = "GraphSAINTRandomWalkSampler"
+        return (f'{hardcode.lower()}_{self.walk_length}_'
                 f'{self.sample_coverage}.pt')
 
     def get_data(self, n_id, is_feature):
@@ -142,7 +143,7 @@ class distributeCudaRWSampler(GraphSAINTSampler):
                 start_t = time.time()
                 node_idx = self.adj.random_walk(nodes, 1)[:, 1]
                 end = time.time()
-                print(" rw ", end - start_t)
+                # print(" rw ", end - start_t)
                 # start_t = time.time()
                 res[self.comm.rank] = node_idx.to(torch.device('cpu'))
                 # end = time.time()
@@ -211,7 +212,7 @@ class distributeCudaRWSampler(GraphSAINTSampler):
             deg = torch.index_select(self.deg_out, 0, nodes)
             row, col, edge_index = qv.saint_subgraph(nodes, adj_rowptr, adj_row, adj_col, deg)
             end = time.time()
-            print("subgraph", end - start_t)
+            # print("subgraph", end - start_t)
 
             # start_t = time.time()
             row = row.to(cpu)
@@ -251,3 +252,20 @@ class distributeCudaRWSampler(GraphSAINTSampler):
         node_idx = self.__sample_nodes__(self.__batch_size__).unique()
         adj, _ = self.__cuda_saint_subgraph__(node_idx)
         return node_idx, adj
+
+    def __collate__(self, data_list):
+        assert len(data_list) == 1
+        node_idx, adj = data_list[0]
+        # get the node_idx and adj
+
+        data = Data()
+        data.num_nodes = node_idx.size(0)
+        row, col, edge_idx = adj.coo()
+        data.edge_index = torch.stack([row, col], dim=0)
+        data.train_mask = self.data.train_mask[node_idx]
+
+        if self.sample_coverage > 0:
+            data.node_norm = self.node_norm[node_idx]
+            data.edge_norm = self.edge_norm[edge_idx]
+
+        return data, node_idx

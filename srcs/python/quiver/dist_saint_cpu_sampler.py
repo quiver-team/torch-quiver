@@ -4,7 +4,7 @@ from typing import Optional, List, NamedTuple, Optional, Tuple
 from torch.distributed import rpc
 from torch_geometric.data import GraphSAINTSampler
 import torch
-
+from torch_geometric.data import Data
 
 def sample_n(nodes, size):
     neighbors, counts = None, None
@@ -48,6 +48,11 @@ class distributeRWSampler(GraphSAINTSampler):
         super(distributeRWSampler,
               self).__init__(data, batch_size, num_steps, sample_coverage,
                              save_dir, log, **kwargs)
+    @property
+    def __filename__(self):
+        hardcode = "GraphSAINTRandomWalkSampler"
+        return (f'{hardcode.lower()}_{self.walk_length}_'
+                f'{self.sample_coverage}.pt')
 
     def get_data(self, n_id, is_feature):
         ranks = self.node2rank(n_id)
@@ -206,3 +211,20 @@ class distributeRWSampler(GraphSAINTSampler):
         node_idx = self.__sample_nodes__(self.__batch_size__).unique()
         adj, _ = self.__cuda_saint_subgraph__(node_idx)
         return node_idx, adj
+
+    def __collate__(self, data_list):
+        assert len(data_list) == 1
+        node_idx, adj = data_list[0]
+        # get the node_idx and adj
+
+        data = Data()
+        data.num_nodes = node_idx.size(0)
+        row, col, edge_idx = adj.coo()
+        data.edge_index = torch.stack([row, col], dim=0)
+        data.train_mask = self.data.train_mask[node_idx]
+
+        if self.sample_coverage > 0:
+            data.node_norm = self.node_norm[node_idx]
+            data.edge_norm = self.edge_norm[edge_idx]
+
+        return data, node_idx

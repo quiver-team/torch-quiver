@@ -1,4 +1,5 @@
 from torch_geometric.data import GraphSAINTSampler
+from torch_geometric.data import GraphSAINTRandomWalkSampler
 import torch
 # from torch.distributed import rpc
 import random
@@ -6,6 +7,32 @@ import torch_quiver as qv
 from torch_sparse import SparseTensor
 from typing import Optional, List, NamedTuple, Tuple
 import time
+import os.path as osp
+from torch_geometric.data import Data
+class quiverRWSampler(GraphSAINTRandomWalkSampler):
+    @property
+    def __filename__(self):
+        hardcode = "GraphSAINTRandomWalkSampler"
+        return (f'{hardcode.lower()}_{self.walk_length}_'
+                f'{self.sample_coverage}.pt')
+
+    def __collate__(self, data_list):
+        assert len(data_list) == 1
+        node_idx, adj = data_list[0]
+        # get the node_idx and adj
+
+        data = Data()
+        data.num_nodes = node_idx.size(0)
+        row, col, edge_idx = adj.coo()
+        data.edge_index = torch.stack([row, col], dim=0)
+        data.train_mask = self.data.train_mask[node_idx]
+
+        if self.sample_coverage > 0:
+            data.node_norm = self.node_norm[node_idx]
+            data.edge_norm = self.edge_norm[edge_idx]
+
+        return data, node_idx
+
 
 class CudaRWSampler(GraphSAINTSampler):
     r"""The GraphSAINT random walk sampler class (see
@@ -25,21 +52,24 @@ class CudaRWSampler(GraphSAINTSampler):
                  **kwargs):
         self.walk_length = walk_length
         self.cuda_device = torch.device('cuda:' + str(device))
+        self.deg_out = None
         super(CudaRWSampler,
               self).__init__(data, batch_size, num_steps, sample_coverage,
                              save_dir, log, **kwargs)
-        self.adj = self.adj.to(self.cuda_device)
-        self.deg_out = self.adj.storage.rowcount()
 
     @property
     def __filename__(self):
-        return (f'{self.__class__.__name__.lower()}_{self.walk_length}_'
+        hardcode = "GraphSAINTRandomWalkSampler"
+        return (f'{hardcode.lower()}_{self.walk_length}_'
                 f'{self.sample_coverage}.pt')
 
     def __sample_nodes__(self, batch_size):
         start = torch.randint(0, self.N, (batch_size, ), dtype=torch.long)
         start = start.to(self.cuda_device)
         # start_t  = time.time()
+        if not self.adj.storage.col().is_cuda:
+            print("set device")
+            self.adj = self.adj.to(self.cuda_device)
         node_idx = self.adj.random_walk(start.flatten(), self.walk_length)
         end = time.time()
         # print("rw", end - start_t)
@@ -50,10 +80,12 @@ class CudaRWSampler(GraphSAINTSampler):
         row, col, value = self.adj.coo()
         rowptr = self.adj.storage.rowptr()
         # start_t = time.time()
+        if (self.deg_out is None) :
+            print("calculating")
+            self.deg_out = self.adj.storage.rowcount()
         deg = torch.index_select(self.deg_out, 0, node_idx)
         data = qv.saint_subgraph(node_idx, rowptr, row, col, deg)
-        # end = time.time()
-        # print("subgraph: ", end - start_t)
+
         row, col, edge_index = data
 
         if value is not None:
@@ -68,20 +100,38 @@ class CudaRWSampler(GraphSAINTSampler):
         return out, edge_index
 
     def __getitem__(self, idx):
-        start = time.time()
+        # start = time.time()
         node_idx = self.__sample_nodes__(self.__batch_size__)
-        end = time.time()
-        print("TOTAL RW takes : ", end - start)
-        start = time.time()
+        # end = time.time()
+        # print("TOTAL RW takes : ", end - start)
+        # start = time.time()
         node_idx = node_idx.unique()
-        end = time.time()
-        print("unique takes : ", end - start)
-        print(node_idx)
-        start = time.time()
+        # end = time.time()
+        # print("unique takes : ", end - start)
+        # print(node_idx)
+        # start = time.time()
         adj, _ = self.__cuda_saint_subgraph__(node_idx)
-        end = time.time()
-        print("TOTAL subgraph takes : ", end - start)
+        # end = time.time()
+        # print("TOTAL subgraph takes : ", end - start)
         return node_idx, adj
+
+    def __collate__(self, data_list):
+        assert len(data_list) == 1
+        node_idx, adj = data_list[0]
+        # get the node_idx and adj
+
+        data = Data()
+        data.num_nodes = node_idx.size(0)
+        row, col, edge_idx = adj.coo()
+        data.edge_index = torch.stack([row, col], dim=0)
+        data.train_mask = self.data.train_mask[node_idx]
+
+        if self.sample_coverage > 0:
+            data.node_norm = self.node_norm[node_idx]
+            data.edge_norm = self.edge_norm[edge_idx]
+
+        return data, node_idx
+
 
 class QuiverSAINTEdgeSampler(GraphSAINTSampler):
     r"""The GraphSAINT edge sampler class (see

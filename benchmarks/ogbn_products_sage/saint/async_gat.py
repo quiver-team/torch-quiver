@@ -19,7 +19,10 @@ from quiver.models.saint_model import Net
 from torch_geometric.data import GraphSAINTRandomWalkSampler
 import torch_quiver as qv
 from quiver.schedule.policy import Policy, PolicyFilter
-
+from torch_geometric.utils import degree
+from quiver.saint_sampler import quiverRWSampler
+import copy
+from torch_geometric.nn import GATConv
 
 class ProductsDataset:
     def __init__(self, train_idx, edge_index, x, y, f, c):
@@ -29,6 +32,44 @@ class ProductsDataset:
         self.y = y
         self.num_features = f
         self.num_classes = c
+        row, col = edge_index
+        self.num_edges = row.size(0)
+        self.num_nodes = 2500000
+
+    @property
+    def keys(self):
+        r"""Returns all names of graph attributes."""
+        keys = [key for key in self.__dict__.keys() if self[key] is not None]
+        keys = [key for key in keys if key[:2] != '__' and key[-2:] != '__']
+        return keys
+
+    def __iter__(self):
+        r"""Iterates over all present attributes in the data, yielding their
+        attribute names and content."""
+        for key in sorted(self.keys):
+            yield key, self[key]
+
+    def __contains__(self, key):
+        r"""Returns :obj:`True`, if the attribute :obj:`key` is present in the
+        data."""
+        return key in self.keys
+
+    def __call__(self, *keys):
+        r"""Iterates over all attributes :obj:`*keys` in the data, yielding
+        their attribute names and content.
+        If :obj:`*keys` is not given this method will iterative over all
+        present attributes."""
+        for key in sorted(self.keys) if not keys else keys:
+            if key in self:
+                yield key, self[key]
+    def __contains__(self, key):
+        r"""Returns :obj:`True`, if the attribute :obj:`key` is present in the
+        data."""
+        return key in self.keys
+
+    def __getitem__(self, key):
+        r"""Gets the data of the attribute :obj:`key`."""
+        return getattr(self, key, None)
 
 
 class SyncConfig:
@@ -49,24 +90,30 @@ train_thread = psutil.cpu_count() // num_device
 sample_thread = psutil.cpu_count() // num_device
 local_rank = None
 loader = None
+sample_coverage = 100
+parser = argparse.ArgumentParser()
+parser.add_argument('--use_normalization', type=bool, default=True)
+args = parser.parse_args()
 
 def sample_cuda(nodes, walk_length):
     torch.cuda.set_device(local_rank)
     device = torch.device('cuda:' + str(local_rank))
     cu_nodes = loader.global2local(nodes).to(device)
     node_idx = loader.adj.random_walk(cu_nodes, walk_length)[:,1]
-    return  node_idx.to(torch.device('cpu'))
+    return node_idx.to(torch.device('cpu'))
 
 def sample_cpu(nodes, walk_length):
     node_idx = loader.adj.random_walk(nodes, walk_length)[:,1]
-local_rank = None
+    return node_idx
 
 def subgraph_cuda(nodes, i):
     torch.cuda.set_device(local_rank)
     device = torch.device('cuda:' + str(local_rank))
     adj_row, adj_col, _ = loader.adj.coo()
     adj_rowptr = loader.adj.storage.rowptr()
-    row, col, edge_index = qv.saint_subgraph(nodes.to(device), adj_rowptr, adj_row, adj_col)
+    nodes = nodes.to(device)
+    deg = torch.index_select(loader.deg_out, 0, nodes)
+    row, col, edge_index = qv.saint_subgraph(nodes, adj_rowptr, adj_row, adj_col, deg)
     cpu = torch.device('cpu')
     return row.to(cpu), col.to(cpu), edge_index.to(cpu)
 
@@ -83,6 +130,7 @@ def node_f(nodes, is_feature):
 
 
 def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
+    print(data.y)
     global loader
     global local_rank
     device, num = dev
@@ -105,24 +153,25 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
         if sync.dist:
             import quiver.dist_saint_cuda_sampler as dist
             comm = dist.Comm(sync.rank, sync.world_size)
-            local_rank = sync.rank % 4
-            torch.cuda.set_device(device)
+            local_rank = sync.rank
             loader = dist.distributeCudaRWSampler(
                 comm, (data, local2global, global2local, node2rank),
                 node_f, device,
-                batch_size = batch_size, walk_length=2,
-                num_steps=10,
-                sample_coverage=0,
-                save_dir="./cuda/")
+                batch_size = batch_size,
+                walk_length = 1,
+                num_steps = 5,
+                sample_coverage = sample_coverage,
+                save_dir= sizes)
             dist.sample_nodes = sample_cuda
             dist.subgraph_nodes = subgraph_cuda
         else:
             loader = CudaRWSampler(data,
                                    batch_size = batch_size,
-                                   walk_length=2,
-                                   num_steps=10,
-                                   sample_coverage = 100,
-                                   save_dir="./cuda/")
+                                   device = device,
+                                   walk_length = 1,
+                                   num_steps = 5,
+                                   sample_coverage = sample_coverage,
+                                   save_dir = sizes)
     else:
         if sync.dist:
             import quiver.dist_saint_cpu_sampler as dist
@@ -131,20 +180,21 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
             loader = dist.distributeRWSampler(
                 comm, (data, local2global, global2local, node2rank),
                 node_f,
-                batch_size=batch_size, walk_length=2,
-                num_steps=10,
-                sample_coverage=0,
-                save_dir="./cpu/")
+                batch_size=batch_size,
+                walk_length = 1,
+                num_steps= 5,
+                sample_coverage = sample_coverage,
+                save_dir= sizes)
             dist.sample_nodes = sample_cuda
             dist.subgraph_nodes = subgraph_cpu
         else:
-            loader = GraphSAINTRandomWalkSampler(data,
-                                                 batch_size = batch_size,
-                                                 walk_length = 2,
-                                                 num_steps = 10,
-                                                 sample_coverage= 100,
-                                                 save_dir="./cpu/",
-                                                 num_workers=num)
+            loader = quiverRWSampler(data,
+                                     batch_size = batch_size,
+                                     walk_length = 1,
+                                     num_steps = 5,
+                                     sample_coverage = sample_coverage,
+                                     save_dir = sizes,
+                                     num_workers = 0)
     if sync.dist:
         os.environ['MASTER_ADDR'] = 'localhost'
         if device == 'cpu':
@@ -178,7 +228,44 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
     time.sleep(30)
 
 
+class GAT(torch.nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels,
+                 heads = 4):
+        super(GAT, self).__init__()
 
+        self.conv1 = GATConv(in_channels, hidden_channels, heads)
+        self.lin1 = torch.nn.Linear(in_channels, heads * hidden_channels)
+        self.conv2 = GATConv(heads * hidden_channels, hidden_channels, heads)
+        self.lin2 = torch.nn.Linear(heads * hidden_channels, heads * hidden_channels)
+        self.conv3 = GATConv(heads * hidden_channels, out_channels, heads,
+                             concat=False)
+        self.lin3 = torch.nn.Linear(heads * hidden_channels, out_channels)
+    def set_aggr(self, aggr):
+        self.conv1.aggr = aggr
+        self.conv2.aggr = aggr
+        self.conv3.aggr = aggr
+
+    def reset_parameters(self):
+        self.conv1.reset_parameters()
+        self.conv2.reset_parameters()
+        self.conv3.reset_parameters()
+        self.lin1.reset_parameters()
+        self.lin2.reset_parameters()
+        self.lin3.reset_parameters()
+
+    def forward(self, x0, edge_index, edge_weight=None):
+        # `train_loader` computes the k-hop neighborhood of a batch of nodes,
+        # and returns, for each layer, a bipartite graph object, holding the
+        # bipartite edges `edge_index`, the index `e_id` of the original edges,
+        # and the size/shape `size` of the bipartite graph.
+        # Target nodes are also included in the source nodes so that one can
+        # easily apply skip-connections or add self-loops.
+        x1 = F.relu(self.conv1(x0, edge_index) + self.lin1(x0))
+        x1 = F.dropout(x1, p=0.3, training=self.training)
+        x2 = F.relu(self.conv2(x1, edge_index) + self.lin2(x1))
+        x2 = F.dropout(x2, p=0.3, training=self.training)
+        x3 = self.conv3(x2, edge_index) + self.lin3(x2)
+        return x3.log_softmax(dim=-1)
 
 
 def TrainProcess(rank, sync, data, num_batch, num_features, num_hidden,
@@ -189,13 +276,13 @@ def TrainProcess(rank, sync, data, num_batch, num_features, num_hidden,
     device = torch.device('cuda:' +
                           str(rank) if torch.cuda.is_available() else 'cpu')
     torch.cuda.set_device(rank)
-    model = Net(hidden_channels=num_hidden,
-                num_node_features=num_features,
-                num_classes=num_classes)
-    model = model.to(device)
+    model = GAT(in_channels=num_features,
+                hidden_channels=num_hidden,
+                out_channels=num_classes).to(device)
     model.reset_parameters()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     sync.rank = rank
+    x, y = data
     torch.set_num_threads(train_thread)
     if sync.reduce:
         optimizer = kf.optimizers.SynchronousSGDOptimizer(
@@ -225,13 +312,18 @@ def TrainProcess(rank, sync, data, num_batch, num_features, num_hidden,
             cpu_count += 1
         else:
             gpu_count += 1
-        one_sample = sample
-        feature = one_sample.x.to(device)
-        label = one_sample.y.to(device)
+        data, node_idx = sample
+        feature = x[node_idx].to(device)
+        label = y[node_idx].to(device)
         model.set_aggr('mean')
         optimizer.zero_grad()
-        out = model(feature, one_sample.edge_index.to(device))
-        loss = F.nll_loss(out[one_sample.train_mask], label[one_sample.train_mask].squeeze_())
+        if args.use_normalization:
+            out = model(feature, data.edge_index.to(device))
+            loss = F.nll_loss(out, label.squeeze_(), reduction='none')
+            loss = (loss * data.node_norm.to(device))[data.train_mask].sum()
+        else:
+            out = model(feature, data.edge_index.to(device))
+            loss = F.nll_loss(out[data.train_mask], label[data.train_mask].squeeze_())
         loss.backward()
         if sync.reduce:
             t0 = time.time()
@@ -260,19 +352,21 @@ class Trainer:
         self.f(rank, *self.args)
 
 
-def main(policy, num_batch=64, use_products=False):
+def main(policy, num_batch=64, use_products=True):
     train_num = policy.num_train
     device_num = policy.num_dev
     cpu_num = policy.num_cpu
-    num_layer = 4
     batch_size = policy.batch_size
     dist = True
+    print('use p roducts', use_products)
     if use_products:
         root = './products.pt'
         dataset = torch.load(root)
         train_idx = dataset.train_idx
-        edge_index = dataset.edge_index
-        x, y = dataset.x.share_memory_(), dataset.y.squeeze().share_memory_()
+        data=dataset
+        train_mask = torch.zeros(data.num_nodes, dtype=torch.bool)
+        train_mask[train_idx] = True
+        data.processed_dir = "./"
     else:
         home = os.getenv('HOME')
         data_dir = osp.join(home, '.pyg')
@@ -280,13 +374,14 @@ def main(policy, num_batch=64, use_products=False):
         dataset = PygNodePropPredDataset('ogbn-products', root)
         split_idx = dataset.get_idx_split()
         data = dataset[0]
-
-    train_idx = split_idx['train']
-    split_idx = dataset.get_idx_split()
-    train_mask = torch.zeros(data.num_nodes, dtype=torch.bool)
-    train_mask[split_idx['train']] = True
+        train_idx = split_idx['train']
+        train_mask = torch.zeros(data.num_nodes, dtype=torch.bool)
+        train_mask[train_idx] = True
     data.train_mask = train_mask
     x, y = data.x.share_memory_(), data.y.squeeze().share_memory_()
+    sample_data = copy.copy(data)
+    sample_data.x = None
+    sample_data.y = None
 
     queues = [mp.Queue(16), mp.Queue(8)]
     num = -train_num * policy.count_sub() + device_num * \
@@ -303,8 +398,8 @@ def main(policy, num_batch=64, use_products=False):
             sync = SyncConfig(group, j, device_num - train_num, queues,
                               [barrier1, barrier2], 3, train_num > 1, dist)
             gpu0 = mp.Process(target=SamplerProcess,
-                              args=(sync, dev, edge_index, (None, None),
-                                    train_idx, [], batch_size))
+                              args=(sync, dev, None, sample_data,
+                                    train_idx, dataset.processed_dir, batch_size))
             gpu0.start()
             samplers.append(gpu0)
             time.sleep(1)
@@ -315,8 +410,8 @@ def main(policy, num_batch=64, use_products=False):
             sync = SyncConfig(group, j, device_num, queues,
                               [barrier1, barrier2], 3, train_num > 1, dist)
             gpu0 = mp.Process(target=SamplerProcess,
-                              args=(sync, dev, edge_index, (None, None),
-                                    train_idx, [], batch_size))
+                              args=(sync, dev, None, sample_data,
+                                    train_idx, dataset.processed_dir, batch_size))
             gpu0.start()
             samplers.append(gpu0)
             time.sleep(1)
@@ -327,8 +422,8 @@ def main(policy, num_batch=64, use_products=False):
         sync = SyncConfig(0, 0, device_num, queues, [barrier1, barrier2], 3,
                           train_num > 1, False)
         cpu = mp.Process(target=SamplerProcess,
-                         args=(sync, dev, data.edge_index, data,
-                               train_idx, [], batch_size))
+                         args=(sync, dev, None, sample_data,
+                               train_idx, dataset.processed_dir, batch_size))
         cpu.start()
         samplers.append(cpu)
 
@@ -336,12 +431,12 @@ def main(policy, num_batch=64, use_products=False):
                       train_num > 1, dist)
     if train_num == 1:
         train = mp.Process(target=TrainProcess,
-                           args=(device_num - 1, sync, (x,y), num_batch, dataset.num_node_features,
+                           args=(device_num - 1, sync, (x,y), num_batch, dataset.num_features,
                                  256, dataset.num_classes, 3))
         train.start()
         trainers = [train]
     else:
-        train = Trainer(TrainProcess, device_num, sync, (x, y), num_batch, dataset.num_node_features,
+        train = Trainer(TrainProcess, device_num, sync, (x, y), num_batch, dataset.num_features,
                         256, dataset.num_classes, 3)
         trainers = launch_multiprocess(train, train_num)
     barrier1.wait()
@@ -361,62 +456,28 @@ def main(policy, num_batch=64, use_products=False):
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
-    batch_size = 512
+    batch_size = 20000
     cpu_num = psutil.cpu_count() // num_device
-    print(f'cpu worker {cpu_num}')
+    # print(f'cpu worker {cpu_num}')
     normal = Policy(batch_size, num_device, num_device, cpu_num)
     pyg = Policy(batch_size, num_device, num_device, cpu_num)
     pyg.remove_group()
     pf = PolicyFilter(batch_size, num_device, 0)
     for policy in pf:
         print(f'trainer {policy.num_train} group {policy.num_group}')
+        if policy.num_group >= 3:
+            break
         stats = main(policy)
         pf.set_stats(stats)
         print(f'time {stats}')
+        time.sleep(20)
     policy, stats = pf.best_group()
-    print(f'best trainer {policy.num_train} group {policy.num_group}')
-    stats = main(policy)
-    print('finish base')
-    dur, per, qs = stats
-    res_all = 999.99, 0, 0
-    res_sub = 999.99, 0, 0
-    res_cpu = 999.99, 0, 0
-    if qs <= policy.count() * num_device - policy.count_sub(
-    ) * policy.num_train:
-        if policy.count_sub() > 0:
-            policy.add_sub_group()
-            res_sub = main(policy)
-            print('finish sub')
-            policy.remove_sub_group()
-            stats = min((stats, res_sub))
-        policy.num_cpu = int((100 - per) / 100 * psutil.cpu_count())
-        #TODO
-        policy.num_cpu = min(policy.num_cpu, cpu_num)
-        print(f'cpu num {policy.num_cpu}')
-        res_cpu = main(policy)
-        print('finish cpu')
-        stats = min((stats, res_cpu))
-        if policy.count_sub() > 0:
-            policy.add_sub_group()
-            res_all = main(policy)
-            stats = min((stats, res_all))
-        if stats == res_sub:
-            policy.num_cpu = 0
-            print('sub win')
-        if stats == res_cpu:
-            policy.remove_sub_group()
-            print('cpu win')
-        if stats == res_all:
-            print('all win')
-    print(str(policy))
-    time.sleep(5)
-    cpu, _, _, = main(pyg, 192)
+    cpu, _, _, = main(pyg, 900)
     print(f'pyg finish {cpu}')
     time.sleep(5)
-    tuned, _, _ = main(policy, 192)
+    tuned, _, _ = main(policy, 900)
     print(f'tuned finish {tuned}')
     time.sleep(5)
-    norm, _, _, = main(normal, 192)
+    norm, _, _, = main(normal, 900)
     print(f'norm finish {norm}')
     print(f'cpu {cpu} vs norm {norm} vs tuned {tuned}')
-

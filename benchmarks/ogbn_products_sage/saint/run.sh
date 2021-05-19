@@ -9,11 +9,11 @@ notify() {
 
 cd $(dirname $0)
 #export PYTHONPATH=$PWD/../../srcs/python
-export PYTHONPATH=$PWD/../../srcs/python:
+export PYTHONPATH=$PWD/../../../srcs/python:
 #$PWD/../pytorch_sparse/
 #$:$HOME/.local/lib/python3.6/site-packages
 
-. ../../scripts/measure.sh
+#. ../../scripts/measure.sh
 
 kungfu_run_flags() {
     echo -q
@@ -51,4 +51,4 @@ run_graphsaint() {
 }
 # measure run_origin
 #measure run_quiver
-measure run_graphsaint
+python3 async.py

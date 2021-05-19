@@ -14,5 +14,5 @@ notify() {
 
 p=$(basename $(pwd))
 notify "Building $p from $(hostname)"
-measure pip3 install --no-index -U .
+measure python3 -m pip install --no-index -U .
 notify "Built $p from $(hostname)"

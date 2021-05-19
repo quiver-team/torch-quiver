@@ -14,13 +14,14 @@ import torch
 import torch.nn.functional as F
 from torch.distributed import rpc
 
-from quiver.cuda_sampler import CudaNeighborSampler
+from quiver.saint_sampler import CudaRWSampler
+from quiver.models.saint_model import Net
+from torch_geometric.data import GraphSAINTRandomWalkSampler
+import torch_quiver as qv
 from quiver.schedule.policy import Policy, PolicyFilter
-from torch_geometric.data import NeighborSampler
-from torch_geometric.nn import SAGEConv
-from tqdm import tqdm
-
-
+from torch_geometric.utils import degree
+from quiver.saint_sampler import quiverRWSampler
+import copy
 class ProductsDataset:
     def __init__(self, train_idx, edge_index, x, y, f, c):
         self.train_idx = train_idx
@@ -29,6 +30,44 @@ class ProductsDataset:
         self.y = y
         self.num_features = f
         self.num_classes = c
+        row, col = edge_index
+        self.num_edges = row.size(0)
+        self.num_nodes = 2500000
+
+    @property
+    def keys(self):
+        r"""Returns all names of graph attributes."""
+        keys = [key for key in self.__dict__.keys() if self[key] is not None]
+        keys = [key for key in keys if key[:2] != '__' and key[-2:] != '__']
+        return keys
+
+    def __iter__(self):
+        r"""Iterates over all present attributes in the data, yielding their
+        attribute names and content."""
+        for key in sorted(self.keys):
+            yield key, self[key]
+
+    def __contains__(self, key):
+        r"""Returns :obj:`True`, if the attribute :obj:`key` is present in the
+        data."""
+        return key in self.keys
+
+    def __call__(self, *keys):
+        r"""Iterates over all attributes :obj:`*keys` in the data, yielding
+        their attribute names and content.
+        If :obj:`*keys` is not given this method will iterative over all
+        present attributes."""
+        for key in sorted(self.keys) if not keys else keys:
+            if key in self:
+                yield key, self[key]
+    def __contains__(self, key):
+        r"""Returns :obj:`True`, if the attribute :obj:`key` is present in the
+        data."""
+        return key in self.keys
+
+    def __getitem__(self, key):
+        r"""Gets the data of the attribute :obj:`key`."""
+        return getattr(self, key, None)
 
 
 class SyncConfig:
@@ -49,24 +88,36 @@ train_thread = psutil.cpu_count() // num_device
 sample_thread = psutil.cpu_count() // num_device
 local_rank = None
 loader = None
+sample_coverage = 100
+parser = argparse.ArgumentParser()
+parser.add_argument('--use_normalization', type=bool, default=True)
+args = parser.parse_args()
 
-
-def sample_cuda(nodes, size):
+def sample_cuda(nodes, walk_length):
     torch.cuda.set_device(local_rank)
-    nodes = loader.global2local(nodes)
-    neighbors, counts = loader.quiver.sample_neighbor(0, nodes, size)
-    neighbors = loader.local2global(neighbors)
+    device = torch.device('cuda:' + str(local_rank))
+    cu_nodes = loader.global2local(nodes).to(device)
+    node_idx = loader.adj.random_walk(cu_nodes, walk_length)[:,1]
+    return node_idx.to(torch.device('cpu'))
 
-    return neighbors, counts
+def sample_cpu(nodes, walk_length):
+    node_idx = loader.adj.random_walk(nodes, walk_length)[:,1]
+    return node_idx
 
+def subgraph_cuda(nodes, i):
+    torch.cuda.set_device(local_rank)
+    device = torch.device('cuda:' + str(local_rank))
+    adj_row, adj_col, _ = loader.adj.coo()
+    adj_rowptr = loader.adj.storage.rowptr()
+    nodes = nodes.to(device)
+    deg = torch.index_select(loader.deg_out, 0, nodes)
+    row, col, edge_index = qv.saint_subgraph(nodes, adj_rowptr, adj_row, adj_col, deg)
+    cpu = torch.device('cpu')
+    return row.to(cpu), col.to(cpu), edge_index.to(cpu)
 
-def sample_cpu(nodes, size):
-    nodes = loader.global2local(nodes)
-    neighbors, counts = loader.quiver.sample_neighbor(nodes, size)
-    neighbors = loader.local2global(neighbors)
-
-    return neighbors, counts
-
+def subgraph_cpu(nodes, i):
+    adj, edge_index = loader.adj.saint_subgraph(nodes)
+    return adj, edge_index
 
 def node_f(nodes, is_feature):
     cpu = torch.device('cpu')
@@ -77,6 +128,7 @@ def node_f(nodes, is_feature):
 
 
 def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
+    print(batch_size)
     global loader
     global local_rank
     device, num = dev
@@ -97,45 +149,49 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
     if device != 'cpu':
         torch.cuda.set_device(device)
         if sync.dist:
-            import quiver.dist_cuda_sampler as dist
+            import quiver.dist_saint_cuda_sampler as dist
             comm = dist.Comm(sync.rank, sync.world_size)
             local_rank = sync.rank
-            loader = dist.SyncDistNeighborSampler(
-                comm, (int(edge_index.max() + 1), edge_index, data,
-                       local2global, global2local, node2rank),
-                train_idx, [15, 10, 5],
-                device,
-                node_f,
-                batch_size=batch_size)
-            dist.sample_neighbor = sample_cuda
+            loader = dist.distributeCudaRWSampler(
+                comm, (data, local2global, global2local, node2rank),
+                node_f, device,
+                batch_size = batch_size,
+                walk_length = 1,
+                num_steps = 5,
+                sample_coverage = sample_coverage,
+                save_dir= sizes)
+            dist.sample_nodes = sample_cuda
+            dist.subgraph_nodes = subgraph_cuda
         else:
-            loader = CudaNeighborSampler(edge_index,
-                                         device=device,
-                                         rank=num,
-                                         node_idx=train_idx,
-                                         sizes=sizes,
-                                         batch_size=batch_size,
-                                         shuffle=True)
+            loader = CudaRWSampler(data,
+                                   batch_size = batch_size,
+                                   device = device,
+                                   walk_length = 1,
+                                   num_steps = 5,
+                                   sample_coverage = sample_coverage,
+                                   save_dir = sizes)
     else:
-       # torch.set_num_threads(1)
         if sync.dist:
-            import quiver.dist_cpu_sampler as dist
+            import quiver.dist_saint_cpu_sampler as dist
             comm = dist.Comm(sync.rank, sync.world_size)
-            loader = dist.SyncDistNeighborSampler(
-                comm, (int(edge_index.max() + 1), edge_index,
-                       torch.zeros(1, dtype=torch.long), local2global,
-                       global2local, node2rank),
-                train_idx, [15, 10, 5],
-                sync.rank,
-                batch_size=batch_size)
-            dist.sample_neighbor = sample_cpu
+            local_rank = sync.rank % 4
+            loader = dist.distributeRWSampler(
+                comm, (data, local2global, global2local, node2rank),
+                node_f,
+                batch_size=batch_size, walk_length = 1,
+                num_steps= 5,
+                sample_coverage = sample_coverage,
+                save_dir= sizes)
+            dist.sample_nodes = sample_cuda
+            dist.subgraph_nodes = subgraph_cpu
         else:
-            loader = NeighborSampler(edge_index,
-                                     node_idx=train_idx,
-                                     sizes=sizes,
-                                     batch_size=batch_size,
-                                     shuffle=True,
-                                     num_workers=num)
+            loader = quiverRWSampler(data,
+                                     batch_size = batch_size,
+                                     walk_length = 1,
+                                     num_steps = 5,
+                                     sample_coverage = sample_coverage,
+                                     save_dir = sizes,
+                                     num_workers = 0)
     if sync.dist:
         os.environ['MASTER_ADDR'] = 'localhost'
         if device == 'cpu':
@@ -169,30 +225,6 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
     time.sleep(30)
 
 
-class SAGE(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
-        super(SAGE, self).__init__()
-
-        self.num_layers = num_layers
-
-        self.convs = torch.nn.ModuleList()
-        self.convs.append(SAGEConv(in_channels, hidden_channels))
-        for _ in range(num_layers - 2):
-            self.convs.append(SAGEConv(hidden_channels, hidden_channels))
-        self.convs.append(SAGEConv(hidden_channels, out_channels))
-
-    def reset_parameters(self):
-        for conv in self.convs:
-            conv.reset_parameters()
-
-    def forward(self, x, adjs):
-        for i, (edge_index, _, size) in enumerate(adjs):
-            x_target = x[:size[1]]  # Target nodes are always placed first.
-            x = self.convs[i]((x, x_target), edge_index)
-            if i != self.num_layers - 1:
-                x = F.relu(x)
-                x = F.dropout(x, p=0.5, training=self.training)
-        return x.log_softmax(dim=-1)
 
 
 def TrainProcess(rank, sync, data, num_batch, num_features, num_hidden,
@@ -203,7 +235,9 @@ def TrainProcess(rank, sync, data, num_batch, num_features, num_hidden,
     device = torch.device('cuda:' +
                           str(rank) if torch.cuda.is_available() else 'cpu')
     torch.cuda.set_device(rank)
-    model = SAGE(num_features, num_hidden, num_classes, num_layers)
+    model = Net(hidden_channels=num_hidden,
+                num_node_features=num_features,
+                num_classes=num_classes)
     model = model.to(device)
     model.reset_parameters()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
@@ -238,14 +272,18 @@ def TrainProcess(rank, sync, data, num_batch, num_features, num_hidden,
             cpu_count += 1
         else:
             gpu_count += 1
-        batch_size, n_id, adjs = sample
-        adjs = [adj.to(device) for adj in adjs]
-        feature = x[n_id].to(device)
-        label = y[n_id[:batch_size]].to(device)
-
+        data, node_idx = sample
+        feature = x[node_idx].to(device)
+        label = y[node_idx].to(device)
+        model.set_aggr('mean')
         optimizer.zero_grad()
-        out = model(feature, adjs)
-        loss = F.nll_loss(out, label)
+        if args.use_normalization:
+            out = model(feature, data.edge_index.to(device))
+            loss = F.nll_loss(out, label.squeeze_(), reduction='none')
+            loss = (loss * data.node_norm.to(device))[data.train_mask].sum()
+        else:
+            out = model(feature, data.edge_index.to(device))
+            loss = F.nll_loss(out[data.train_mask], label[data.train_mask].squeeze_())
         loss.backward()
         if sync.reduce:
             t0 = time.time()
@@ -275,6 +313,7 @@ class Trainer:
 
 
 def main(policy, num_batch=64, use_products=True):
+    print(use_products)
     train_num = policy.num_train
     device_num = policy.num_dev
     cpu_num = policy.num_cpu
@@ -284,8 +323,10 @@ def main(policy, num_batch=64, use_products=True):
         root = './products.pt'
         dataset = torch.load(root)
         train_idx = dataset.train_idx
-        edge_index = dataset.edge_index
-        x, y = dataset.x.share_memory_(), dataset.y.squeeze().share_memory_()
+        data = dataset
+        train_mask = torch.zeros(data.num_nodes, dtype=torch.bool)
+        train_mask[train_idx] = True
+        data.processed_dir = "./"
     else:
         home = os.getenv('HOME')
         data_dir = osp.join(home, '.pyg')
@@ -294,8 +335,13 @@ def main(policy, num_batch=64, use_products=True):
         split_idx = dataset.get_idx_split()
         data = dataset[0]
         train_idx = split_idx['train']
-        edge_index = data.edge_index
-        x, y = data.x.share_memory_(), data.y.squeeze().share_memory_()
+        train_mask = torch.zeros(data.num_nodes, dtype=torch.bool)
+        train_mask[train_idx] = True
+    data.train_mask = train_mask
+    x, y = data.x.share_memory_(), data.y.squeeze().share_memory_()
+    sample_data = copy.copy(data)
+    sample_data.x = None
+    sample_data.y = None
 
     queues = [mp.Queue(16), mp.Queue(8)]
     num = -train_num * policy.count_sub() + device_num * \
@@ -312,8 +358,8 @@ def main(policy, num_batch=64, use_products=True):
             sync = SyncConfig(group, j, device_num - train_num, queues,
                               [barrier1, barrier2], 3, train_num > 1, dist)
             gpu0 = mp.Process(target=SamplerProcess,
-                              args=(sync, dev, edge_index, (None, None),
-                                    train_idx, [15, 10, 5], batch_size))
+                              args=(sync, dev, None, sample_data,
+                                    train_idx, dataset.processed_dir, batch_size))
             gpu0.start()
             samplers.append(gpu0)
             time.sleep(1)
@@ -324,8 +370,8 @@ def main(policy, num_batch=64, use_products=True):
             sync = SyncConfig(group, j, device_num, queues,
                               [barrier1, barrier2], 3, train_num > 1, dist)
             gpu0 = mp.Process(target=SamplerProcess,
-                              args=(sync, dev, edge_index, (None, None),
-                                    train_idx, [15, 10, 5], batch_size))
+                              args=(sync, dev, None, sample_data,
+                                    train_idx, dataset.processed_dir, batch_size))
             gpu0.start()
             samplers.append(gpu0)
             time.sleep(1)
@@ -336,8 +382,8 @@ def main(policy, num_batch=64, use_products=True):
         sync = SyncConfig(0, 0, device_num, queues, [barrier1, barrier2], 3,
                           train_num > 1, False)
         cpu = mp.Process(target=SamplerProcess,
-                         args=(sync, dev, edge_index, (None, None), train_idx,
-                               [15, 10, 5], batch_size))
+                         args=(sync, dev, None, sample_data,
+                               train_idx, dataset.processed_dir, batch_size))
         cpu.start()
         samplers.append(cpu)
 
@@ -345,14 +391,13 @@ def main(policy, num_batch=64, use_products=True):
                       train_num > 1, dist)
     if train_num == 1:
         train = mp.Process(target=TrainProcess,
-                           args=(device_num - 1, sync, (x, y), num_batch,
-                                 dataset.num_features, 256,
-                                 dataset.num_classes, 3))
+                           args=(device_num - 1, sync, (x,y), num_batch, dataset.num_features,
+                                 256, dataset.num_classes, 3))
         train.start()
         trainers = [train]
     else:
-        train = Trainer(TrainProcess, device_num, sync, (x, y), num_batch,
-                        dataset.num_features, 256, dataset.num_classes, 3)
+        train = Trainer(TrainProcess, device_num, sync, (x, y), num_batch, dataset.num_features,
+                        256, dataset.num_classes, 3)
         trainers = launch_multiprocess(train, train_num)
     barrier1.wait()
     t0 = time.time()
@@ -371,7 +416,7 @@ def main(policy, num_batch=64, use_products=True):
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
-    batch_size = 512
+    batch_size = 20000
     cpu_num = psutil.cpu_count() // num_device
     print(f'cpu worker {cpu_num}')
     normal = Policy(batch_size, num_device, num_device, cpu_num)
@@ -380,51 +425,23 @@ if __name__ == '__main__':
     pf = PolicyFilter(batch_size, num_device, 0)
     for policy in pf:
         print(f'trainer {policy.num_train} group {policy.num_group}')
+        if policy.num_group >= 3:
+            break
         stats = main(policy)
         pf.set_stats(stats)
+        time.sleep(20)
         print(f'time {stats}')
     policy, stats = pf.best_group()
     print(f'best trainer {policy.num_train} group {policy.num_group}')
-    stats = main(policy)
-    print('finish base')
-    dur, per, qs = stats
-    res_all = 999.99, 0, 0
-    res_sub = 999.99, 0, 0
-    res_cpu = 999.99, 0, 0
-    if qs <= policy.count() * num_device - policy.count_sub(
-    ) * policy.num_train:
-        if policy.count_sub() > 0:
-            policy.add_sub_group()
-            res_sub = main(policy)
-            print('finish sub')
-            policy.remove_sub_group()
-            stats = min((stats, res_sub))
-        policy.num_cpu = int((100 - per) / 100 * psutil.cpu_count())
-        policy.num_cpu = min(policy.num_cpu, cpu_num)
-        print(f'cpu num {policy.num_cpu}')
-        res_cpu = main(policy)
-        print('finish cpu')
-        stats = min((stats, res_cpu))
-        if policy.count_sub() > 0:
-            policy.add_sub_group()
-            res_all = main(policy)
-            stats = min((stats, res_all))
-        if stats == res_sub:
-            policy.num_cpu = 0
-            print('sub win')
-        if stats == res_cpu:
-            policy.remove_sub_group()
-            print('cpu win')
-        if stats == res_all:
-            print('all win')
+
     print(str(policy))
-    time.sleep(5)
-    cpu, _, _, = main(pyg, 192)
+    time.sleep(30)
+    cpu, _, _, = main(pyg, 900)
     print(f'pyg finish {cpu}')
     time.sleep(5)
-    tuned, _, _ = main(policy, 192)
+    tuned, _, _ = main(policy, 900)
     print(f'tuned finish {tuned}')
     time.sleep(5)
-    norm, _, _, = main(normal, 192)
+    norm, _, _, = main(normal, 900)
     print(f'norm finish {norm}')
     print(f'cpu {cpu} vs norm {norm} vs tuned {tuned}')

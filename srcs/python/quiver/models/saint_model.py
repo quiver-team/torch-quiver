@@ -29,6 +29,11 @@ class Net(torch.nn.Module):
         x = self.lin(x)
         return x.log_softmax(dim=-1)
 
+    def reset_parameters(self):
+        self.conv1.reset_parameters()
+        self.conv2.reset_parameters()
+        self.conv3.reset_parameters()
+
     def train_m(self, use_norm, loader, w, optimizer, device):
         super().train()
         total_loss = total_examples = 0

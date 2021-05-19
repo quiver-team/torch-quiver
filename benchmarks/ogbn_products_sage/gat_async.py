@@ -13,12 +13,13 @@ import psutil
 import torch
 import torch.nn.functional as F
 from torch.distributed import rpc
-
+from torch_geometric.nn import GATConv
+from torch.nn import Linear as Lin
 from quiver.cuda_sampler import CudaNeighborSampler
 from quiver.schedule.policy import Policy, PolicyFilter
 from torch_geometric.data import NeighborSampler
 from torch_geometric.nn import SAGEConv
-from tqdm import tqdm
+from torch_geometric.nn import GATConv
 
 
 class ProductsDataset:
@@ -169,28 +170,49 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
     time.sleep(30)
 
 
-class SAGE(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
-        super(SAGE, self).__init__()
+class GAT(torch.nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers,
+                 heads = 4):
+        super(GAT, self).__init__()
 
         self.num_layers = num_layers
 
         self.convs = torch.nn.ModuleList()
-        self.convs.append(SAGEConv(in_channels, hidden_channels))
+        self.convs.append(GATConv(in_channels, hidden_channels,
+                                  heads))
         for _ in range(num_layers - 2):
-            self.convs.append(SAGEConv(hidden_channels, hidden_channels))
-        self.convs.append(SAGEConv(hidden_channels, out_channels))
+            self.convs.append(
+                GATConv(heads * hidden_channels, hidden_channels, heads))
+        self.convs.append(
+            GATConv(heads * hidden_channels, out_channels, heads,
+                    concat=False))
+
+        self.skips = torch.nn.ModuleList()
+        self.skips.append(Lin(in_channels, hidden_channels * heads))
+        for _ in range(num_layers - 2):
+            self.skips.append(
+                Lin(hidden_channels * heads, hidden_channels * heads))
+        self.skips.append(Lin(hidden_channels * heads, out_channels))
 
     def reset_parameters(self):
         for conv in self.convs:
             conv.reset_parameters()
+        for skip in self.skips:
+            skip.reset_parameters()
 
     def forward(self, x, adjs):
+        # `train_loader` computes the k-hop neighborhood of a batch of nodes,
+        # and returns, for each layer, a bipartite graph object, holding the
+        # bipartite edges `edge_index`, the index `e_id` of the original edges,
+        # and the size/shape `size` of the bipartite graph.
+        # Target nodes are also included in the source nodes so that one can
+        # easily apply skip-connections or add self-loops.
         for i, (edge_index, _, size) in enumerate(adjs):
             x_target = x[:size[1]]  # Target nodes are always placed first.
             x = self.convs[i]((x, x_target), edge_index)
+            x = x + self.skips[i](x_target)
             if i != self.num_layers - 1:
-                x = F.relu(x)
+                x = F.elu(x)
                 x = F.dropout(x, p=0.5, training=self.training)
         return x.log_softmax(dim=-1)
 
@@ -203,7 +225,7 @@ def TrainProcess(rank, sync, data, num_batch, num_features, num_hidden,
     device = torch.device('cuda:' +
                           str(rank) if torch.cuda.is_available() else 'cpu')
     torch.cuda.set_device(rank)
-    model = SAGE(num_features, num_hidden, num_classes, num_layers)
+    model = GAT(num_features, num_hidden, num_classes, num_layers)
     model = model.to(device)
     model.reset_parameters()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
@@ -336,8 +358,8 @@ def main(policy, num_batch=64, use_products=True):
         sync = SyncConfig(0, 0, device_num, queues, [barrier1, barrier2], 3,
                           train_num > 1, False)
         cpu = mp.Process(target=SamplerProcess,
-                         args=(sync, dev, edge_index, (None, None), train_idx,
-                               [15, 10, 5], batch_size))
+                         args=(sync, dev, edge_index, (None, None),
+                               train_idx, [15, 10, 5], batch_size))
         cpu.start()
         samplers.append(cpu)
 
@@ -400,6 +422,7 @@ if __name__ == '__main__':
             policy.remove_sub_group()
             stats = min((stats, res_sub))
         policy.num_cpu = int((100 - per) / 100 * psutil.cpu_count())
+        #TODO
         policy.num_cpu = min(policy.num_cpu, cpu_num)
         print(f'cpu num {policy.num_cpu}')
         res_cpu = main(policy)

@@ -16,6 +16,16 @@ from quiver.profile_utils import StopWatch
 from quiver.models.sage_model import SAGE
 
 
+class ProductsDataset:
+    def __init__(self, train_idx, edge_index, x, y, f, c):
+        self.train_idx = train_idx
+        self.edge_index = edge_index
+        self.x = x
+        self.y = y
+        self.num_features = f
+        self.num_classes = c
+
+
 def main():
     p = argparse.ArgumentParser(description='')
     p.add_argument('--mode',
@@ -38,31 +48,27 @@ def main():
 
     print('loading ... ')
     w = StopWatch('main')
-    home = os.getenv('HOME')
-    data_dir = osp.join(home, '.pyg')
-    root = osp.join(data_dir, 'data', 'products')
-    dataset = PygNodePropPredDataset('ogbn-products', root)
-    split_idx = dataset.get_idx_split()
+    root = './products.pt'
+    dataset = torch.load(root)
     evaluator = Evaluator(name='ogbn-products')
-    data = dataset[0]
 
-    train_idx = split_idx['train']
+    train_idx = dataset.train_idx
 
     w.tick('load data')
     train_loader = None
 
     if args.mode == 'prefetch':
         train_loader = CudaNeighborLoader(
-            (data.edge_index, [15, 10, 5], train_idx), 1024, 4)
+            (dataset.edge_index, [15, 10, 5], train_idx), 1024, 4)
     else:
-        train_loader = CudaNeighborSampler(data.edge_index,
+        train_loader = CudaNeighborSampler(dataset.edge_index,
                                            node_idx=train_idx,
                                            sizes=[15, 10, 5],
                                            batch_size=1024,
                                            mode=args.mode,
                                            shuffle=True)
     w.tick('create train_loader')
-    subgraph_loader = CudaNeighborSampler(data.edge_index,
+    subgraph_loader = CudaNeighborSampler(dataset.edge_index,
                                           node_idx=None,
                                           sizes=[-1],
                                           batch_size=4096,
@@ -73,8 +79,8 @@ def main():
     model = SAGE(dataset.num_features, 256, dataset.num_classes, num_layers=3)
     model = model.to(device)
 
-    x = data.x.to(device)  # [N, 100]
-    y = data.y.squeeze().to(device)  # [N, 1]
+    x = dataset.x.to(device)  # [N, 100]
+    y = dataset.y.squeeze().to(device)  # [N, 1]
     w.tick('build model')
 
     @torch.no_grad()

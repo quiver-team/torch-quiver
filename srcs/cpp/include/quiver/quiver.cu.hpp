@@ -289,6 +289,20 @@ class quiver<T, CUDA>
                 opt_.use_id));
     }
 
+    void new_sample(const cudaStream_t stream, int k, T *input_begin,
+                    int input_size, T *output_ptr_begin, T *output_count_begin,
+                    T *output_begin, T *output_idx) const
+    {
+        constexpr int BLOCK_ROWS = 128 / WARP_SIZE;
+        const dim3 block(WARP_SIZE, BLOCK_ROWS);
+        const dim3 grid((input_size + block.y - 1) / block.y);
+        CSRRowWiseSampleKernel<T, BLOCK_ROWS><<<grid, block, 0, stream>>>(
+            0, k, input_size, input_begin,
+            thrust::raw_pointer_cast(row_ptr_.data()),
+            thrust::raw_pointer_cast(col_idx_.data()), output_ptr_begin,
+            output_count_begin, output_begin, output_idx);
+    }
+
     template <typename Iter>
     void async_sample(const cudaStream_t stream, Iter input_begin,
                       Iter input_end, Iter output_ptr_begin,

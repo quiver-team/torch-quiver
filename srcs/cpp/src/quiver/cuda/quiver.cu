@@ -16,8 +16,12 @@
 
 #include <thrust/remove.h>
 
+#include <chrono>
+#include <ctime>
+using namespace std::chrono;
+
 #define CHECK_CUDA(x)                                                          \
-  AT_ASSERTM(x.device().is_cuda(), #x " must be CUDA tensor")
+    AT_ASSERTM(x.device().is_cuda(), #x " must be CUDA tensor")
 #define CHECK_INPUT(x) AT_ASSERTM(x, "Input mismatch")
 
 namespace quiver
@@ -85,7 +89,7 @@ class TorchQuiver
         T tot = 0;
         const auto policy = thrust::cuda::par.on(stream);
         thrust::device_vector<T> output_ptr;
-        thrust::device_vector<T> output_eid;
+        thrust::device_vector<T> output_idx;
         const T *p = vertices.data_ptr<T>();
         const size_t bs = vertices.size(0);
 
@@ -116,14 +120,23 @@ class TorchQuiver
         {
             TRACE_SCOPE("alloc_2");
             outputs.resize(tot);
-            // output_eid.resize(tot);
+            output_idx.resize(tot);
         }
         // outputs[outptr[i], outptr[i + 1]) are unique neighbors of inputs[i]
+        // {
+        //     TRACE_SCOPE("sample");
+        //     quiver_.sample(stream, inputs.begin(), inputs.end(),
+        //                    output_ptr.begin(), output_counts.begin(),
+        //                    outputs.data(), output_eid.data());
+        // }
         {
             TRACE_SCOPE("sample");
-            quiver_.sample(stream, inputs.begin(), inputs.end(),
-                           output_ptr.begin(), output_counts.begin(),
-                           outputs.data(), output_eid.data());
+            quiver_.new_sample(
+                stream, k, thrust::raw_pointer_cast(inputs.data()),
+                inputs.size(), thrust::raw_pointer_cast(output_ptr.data()),
+                thrust::raw_pointer_cast(output_counts.data()),
+                thrust::raw_pointer_cast(outputs.data()),
+                thrust::raw_pointer_cast(output_idx.data()));
         }
         torch::Tensor out_neighbor;
         torch::Tensor out_eid;
@@ -238,6 +251,9 @@ class TorchQuiver
     sample_sub_with_stream(int stream_num, const torch::Tensor &vertices,
                            int k) const
     {
+        system_clock::time_point tp0 = system_clock::now();
+        system_clock::duration d0 = tp0.time_since_epoch();
+        time_t m0 = duration_cast<microseconds>(d0).count();
         TRACE_SCOPE(__func__);
         cudaStream_t stream = 0;
         if (!pool_.empty()) { stream = (pool_)[stream_num]; }
@@ -248,8 +264,14 @@ class TorchQuiver
         thrust::device_vector<T> subset;
         sample_kernel(stream, vertices, k, inputs, outputs, output_counts);
         int tot = outputs.size();
+        system_clock::time_point tp1 = system_clock::now();
+        system_clock::duration d1 = tp1.time_since_epoch();
+        time_t m1 = duration_cast<microseconds>(d1).count();
 
         reindex_kernel(stream, inputs, outputs, subset);
+        system_clock::time_point tp2 = system_clock::now();
+        system_clock::duration d2 = tp2.time_since_epoch();
+        time_t m2 = duration_cast<microseconds>(d2).count();
 
         torch::Tensor out_vertices =
             torch::empty(subset.size(), vertices.options());
@@ -257,18 +279,35 @@ class TorchQuiver
         torch::Tensor col_idx = torch::empty(tot, vertices.options());
         {
             TRACE_SCOPE("prepare output");
-            std::vector<T> counts(output_counts.size());
-            std::vector<T> seq(output_counts.size());
-            thrust::copy(output_counts.begin(), output_counts.end(),
-                         counts.begin());
-            std::iota(seq.begin(), seq.end(), 0);
+            thrust::device_vector<T> prefix_count(output_counts.size());
+            thrust::device_vector<T> seq(output_counts.size());
+            thrust::sequence(policy, seq.begin(), seq.end());
+            thrust::exclusive_scan(policy, output_counts.begin(),
+                                   output_counts.end(), prefix_count.begin());
 
-            replicate_fill(inputs.size(), counts.data(), seq.data(),
-                           row_idx.data_ptr<T>());
+            const size_t m = inputs.size();
+            using it = thrust::counting_iterator<T>;
+            thrust::for_each(
+                policy, it(0), it(m),
+                [prefix = thrust::raw_pointer_cast(prefix_count.data()),
+                 count = thrust::raw_pointer_cast(output_counts.data()),
+                 in = thrust::raw_pointer_cast(seq.data()),
+                 out = thrust::raw_pointer_cast(
+                     row_idx.data_ptr<T>())] __device__(T i) {
+                    for (int j = 0; j < count[i]; j++) {
+                        out[prefix[i] + j] = in[i];
+                    }
+                });
             thrust::copy(subset.begin(), subset.end(),
                          out_vertices.data_ptr<T>());
             thrust::copy(outputs.begin(), outputs.end(), col_idx.data_ptr<T>());
         }
+        system_clock::time_point tp3 = system_clock::now();
+        system_clock::duration d3 = tp3.time_since_epoch();
+        time_t m3 = duration_cast<microseconds>(d3).count();
+        std::cout << "sample" << m1 - m0 << std::endl;
+        std::cout << "reindex" << m2 - m1 << std::endl;
+        std::cout << "output" << m3 - m2 << std::endl;
         return std::make_tuple(out_vertices, row_idx, col_idx);
     }
 };
@@ -356,14 +395,13 @@ new_quiver_from_edge_index_weight(size_t n, py::array_t<int64_t> &input_edges,
 }
 
 /** add sample subgraph here **/
-__global__ void  uniform_saintgraph_kernel(const int64_t *idx,
-                                           const int64_t *rowptr,
-                                           const int64_t *row,
-                                           const int64_t *col,
-                                           const int64_t *assoc,
-                                           thrust::tuple<int64_t, int64_t, int64_t> *edge_ptr,
-                                           int64_t *pre_sum,
-                                           size_t num_of_sampled_node) {
+__global__ void
+uniform_saintgraph_kernel(const int64_t *idx, const int64_t *rowptr,
+                          const int64_t *row, const int64_t *col,
+                          const int64_t *assoc,
+                          thrust::tuple<int64_t, int64_t, int64_t> *edge_ptr,
+                          int64_t *pre_sum, size_t num_of_sampled_node)
+{
     const int64_t thread_idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (thread_idx < num_of_sampled_node) {
         const int64_t output_idx = pre_sum[thread_idx];
@@ -374,16 +412,17 @@ __global__ void  uniform_saintgraph_kernel(const int64_t *idx,
         for (int64_t j = row_start; j < row_end; j++) {
             w = col[j];
             w_new = assoc[w];
-            edge_ptr[output_idx + count] = thrust::make_tuple<int64_t, int64_t, int64_t>(thread_idx, w_new, j);
+            edge_ptr[output_idx + count] =
+                thrust::make_tuple<int64_t, int64_t, int64_t>(thread_idx, w_new,
+                                                              j);
             count++;
         }
     }
 }
 
-struct is_sampled
-{
-    __host__ __device__
-    bool operator()(const thrust::tuple<int64_t, int64_t, int64_t> &t)
+struct is_sampled {
+    __host__ __device__ bool
+    operator()(const thrust::tuple<int64_t, int64_t, int64_t> &t)
     {
         return (thrust::get<1>(t)) == (int64_t)-1;
     }
@@ -391,8 +430,9 @@ struct is_sampled
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
 saint_subgraph(const torch::Tensor &idx, const torch::Tensor &rowptr,
-           const torch::Tensor &row, const torch::Tensor &col,
-           const torch::Tensor &deg) {
+               const torch::Tensor &row, const torch::Tensor &col,
+               const torch::Tensor &deg)
+{
     CHECK_CUDA(idx);
     CHECK_CUDA(rowptr);
     CHECK_CUDA(col);
@@ -410,30 +450,36 @@ saint_subgraph(const torch::Tensor &idx, const torch::Tensor &rowptr,
     // input begin is what -> device ptr
     // input end is what -> device ptr
     // cast the idx to device ptr
-    thrust::device_ptr<int64_t> idx_ptr_t = thrust::device_pointer_cast(idx.data_ptr<int64_t>());
-    thrust::device_ptr<int64_t> output_counts = thrust::device_pointer_cast(deg.data_ptr<int64_t>());
+    thrust::device_ptr<int64_t> idx_ptr_t =
+        thrust::device_pointer_cast(idx.data_ptr<int64_t>());
+    thrust::device_ptr<int64_t> output_counts =
+        thrust::device_pointer_cast(deg.data_ptr<int64_t>());
     // presum array
     thrust::device_vector<int64_t> output_ptr;
     output_ptr.resize(num_of_sampled_node);
 
     thrust::exclusive_scan(policy, output_counts,
-                           output_counts + num_of_sampled_node, output_ptr.begin());
+                           output_counts + num_of_sampled_node,
+                           output_ptr.begin());
 
-    int64_t num_sampled_edge = output_ptr[num_of_sampled_node - 1] + output_counts[num_of_sampled_node - 1];
+    int64_t num_sampled_edge = output_ptr[num_of_sampled_node - 1] +
+                               output_counts[num_of_sampled_node - 1];
     auto assoc = torch::full({rowptr.size(0) - 1}, -1, idx.options());
     assoc.index_copy_(0, idx, torch::arange(idx.size(0), idx.options()));
-    thrust::device_vector<thrust::tuple<int64_t, int64_t, int64_t>> edges(num_sampled_edge);
+    thrust::device_vector<thrust::tuple<int64_t, int64_t, int64_t>> edges(
+        num_sampled_edge);
 
     // cast raw pointer*
-    thrust::tuple<int64_t, int64_t, int64_t> *edge_ptr = thrust::raw_pointer_cast(&edges[0]);
+    thrust::tuple<int64_t, int64_t, int64_t> *edge_ptr =
+        thrust::raw_pointer_cast(&edges[0]);
     int64_t *presum_ptr = thrust::raw_pointer_cast(output_ptr.data());
 
     int threads = 1024;
-    uniform_saintgraph_kernel<<<(idx.numel() + threads - 1) / threads, threads, 0, stream>>>(
+    uniform_saintgraph_kernel<<<(idx.numel() + threads - 1) / threads, threads,
+                                0, stream>>>(
         idx.data_ptr<int64_t>(), rowptr.data_ptr<int64_t>(),
         row.data_ptr<int64_t>(), col.data_ptr<int64_t>(),
-        assoc.data_ptr<int64_t>(),
-        edge_ptr, presum_ptr, idx.numel());
+        assoc.data_ptr<int64_t>(), edge_ptr, presum_ptr, idx.numel());
 
     // remove if not sampled
     auto new_end = thrust::remove_if(edges.begin(), edges.end(), is_sampled());
@@ -444,9 +490,12 @@ saint_subgraph(const torch::Tensor &idx, const torch::Tensor &rowptr,
     torch::Tensor ret_col = torch::empty(edges.size(), idx.options());
     torch::Tensor ret_indice = torch::empty(edges.size(), idx.options());
 
-    thrust::transform(policy, edges.begin(), edges.end(), ret_row.data_ptr<int64_t>() , thrust_get<0>());
-    thrust::transform(policy, edges.begin(), edges.end(), ret_col.data_ptr<int64_t>() , thrust_get<1>());
-    thrust::transform(policy, edges.begin(), edges.end(), ret_indice.data_ptr<int64_t>() , thrust_get<2>());
+    thrust::transform(policy, edges.begin(), edges.end(),
+                      ret_row.data_ptr<int64_t>(), thrust_get<0>());
+    thrust::transform(policy, edges.begin(), edges.end(),
+                      ret_col.data_ptr<int64_t>(), thrust_get<1>());
+    thrust::transform(policy, edges.begin(), edges.end(),
+                      ret_indice.data_ptr<int64_t>(), thrust_get<2>());
 
     return std::make_tuple(ret_row, ret_col, ret_indice);
 }

@@ -120,6 +120,7 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
         self.sizes = sizes
         self.rank = rank
         self.mode = mode
+        self.device = device
         if self.mode != 'sync':
             self.pool = concurrent.futures.ThreadPoolExecutor()
             self.context = TaskContext(1, 4)
@@ -182,7 +183,7 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
 
         adjs: List[Adj] = []
 
-        n_id = batch
+        n_id = batch.to(torch.device(self.device))
         for size in self.sizes:
             result, row_idx, col_idx = self.quiver.sample_sub(
                 self.rank, n_id, size)

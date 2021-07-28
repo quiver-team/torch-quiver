@@ -2,6 +2,94 @@
 #pragma once
 #include <curand_kernel.h>
 
+constexpr int WARP_SIZE = 32;
+
+/**
+ * @brief Perform row-wise sampling on a CSR matrix, and generate a COO matrix,
+ * without replacement.
+ *
+ * @tparam T The ID type used for matrices.
+ * @tparam BLOCK_ROWS The number of rows covered by each threadblock.
+ * @param rand_seed The random seed to use.
+ * @param num_picks The number of non-zeros to pick per row.
+ * @param num_rows The number of rows to pick.
+ * @param in_rows The set of rows to pick.
+ * @param in_ptr The indptr array of the input CSR.
+ * @param in_index The indices array of the input CSR.
+ * @param data The data array of the input CSR.
+ * @param out_ptr The offset to write each row to in the output COO.
+ * @param out_rows The rows of the output COO (output).
+ * @param out_cols The columns of the output COO (output).
+ * @param out_idxs The data array of the output COO (output).
+ */
+template <typename T, int BLOCK_ROWS>
+__global__ void CSRRowWiseSampleKernel(
+    const uint64_t rand_seed, int num_picks, const int64_t num_rows,
+    const T *const in_rows, const T *const in_ptr, const T *const in_index,
+    T *const out_ptr, T *const out_count_ptr, T *const out, T *const out_idxs)
+{
+    // we assign one warp per row
+    assert(blockDim.x == WARP_SIZE);
+    assert(blockDim.y == BLOCK_ROWS);
+
+    // we need one state per 256 threads
+    constexpr int NUM_RNG = ((WARP_SIZE * BLOCK_ROWS) + 255) / 256;
+    __shared__ curandState rng_array[NUM_RNG];
+    assert(blockDim.x >= NUM_RNG);
+    if (threadIdx.y == 0 && threadIdx.x < NUM_RNG) {
+        curand_init(rand_seed, 0, threadIdx.x, rng_array + threadIdx.x);
+    }
+    __syncthreads();
+    curandState *const rng =
+        rng_array + ((threadIdx.x + WARP_SIZE * threadIdx.y) / 256);
+
+    int64_t out_row = blockIdx.x * BLOCK_ROWS + threadIdx.y;
+    while (out_row < num_rows) {
+        const int64_t row = in_rows[out_row];
+
+        const int64_t in_row_start = in_ptr[row];
+        const int64_t deg = in_ptr[row + 1] - in_row_start;
+
+        const int64_t out_row_start = out_ptr[out_row];
+
+        if (deg <= num_picks) {
+            // just copy row
+            for (int idx = threadIdx.x; idx < deg; idx += WARP_SIZE) {
+                const T in_idx = in_row_start + idx;
+                out_idxs[out_row_start + idx] = in_index[in_idx];
+            }
+        } else {
+            // generate permutation list via reservoir algorithm
+            for (int idx = threadIdx.x; idx < num_picks; idx += WARP_SIZE) {
+                out_idxs[out_row_start + idx] = idx;
+            }
+            __syncwarp();
+
+            for (int idx = num_picks + threadIdx.x; idx < deg;
+                 idx += WARP_SIZE) {
+                const int num = curand(rng) % (idx + 1);
+                if (num < num_picks) {
+                    // use max so as to achieve the replacement order the serial
+                    // algorithm would have
+                    using Type = unsigned long long int;
+                    atomicMax(reinterpret_cast<Type *>(out_idxs +
+                                                       out_row_start + num),
+                              static_cast<Type>(idx));
+                }
+            }
+            __syncwarp();
+
+            // copy permutation over
+            for (int idx = threadIdx.x; idx < num_picks; idx += WARP_SIZE) {
+                const T perm_idx = out_idxs[out_row_start + idx] + in_row_start;
+                out[out_row_start + idx] = in_index[perm_idx];
+            }
+        }
+
+        out_row += gridDim.x * BLOCK_ROWS;
+    }
+}
+
 class cuda_base_generator
 {
   protected:

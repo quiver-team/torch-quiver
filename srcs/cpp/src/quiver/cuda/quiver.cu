@@ -24,6 +24,91 @@ using namespace std::chrono;
     AT_ASSERTM(x.device().is_cuda(), #x " must be CUDA tensor")
 #define CHECK_INPUT(x) AT_ASSERTM(x, "Input mismatch")
 
+template <typename IdType>
+HostOrderedHashTable<IdType> *
+FillWithDuplicates(const IdType *const input, const size_t num_input,
+                   cudaStream_t stream,
+                   thrust::device_vector<IdType> &unique_items)
+{
+    system_clock::time_point tp0 = system_clock::now();
+    system_clock::duration d0 = tp0.time_since_epoch();
+    time_t m0 = duration_cast<microseconds>(d0).count();
+
+    const auto policy = thrust::cuda::par.on(stream);
+    const int64_t num_tiles = (num_input + TILE_SIZE - 1) / TILE_SIZE;
+
+    const dim3 grid(num_tiles);
+    const dim3 block(BLOCK_SIZE);
+
+    auto host_table = new HostOrderedHashTable<IdType>(num_input, 1);
+    DeviceOrderedHashTable<IdType> device_table = host_table->DeviceHandle();
+    system_clock::time_point tp1 = system_clock::now();
+    system_clock::duration d1 = tp1.time_since_epoch();
+    time_t m1 = duration_cast<microseconds>(d1).count();
+    // std::cout << "reindex prepare" << m1 - m0 << std::endl;
+    // std::cout << "input size" << num_input << std::endl;
+    // std::cout << "grid size" << num_tiles << std::endl;
+    // std::cout << "block size" << BLOCK_SIZE << std::endl;
+
+    generate_hashmap_duplicates<IdType, BLOCK_SIZE, TILE_SIZE>
+        <<<grid, block, 0, stream>>>(input, num_input, device_table);
+    thrust::device_vector<int> item_prefix(num_input + 1, 0);
+
+    system_clock::time_point tp2 = system_clock::now();
+    system_clock::duration d2 = tp2.time_since_epoch();
+    time_t m2 = duration_cast<microseconds>(d2).count();
+    // std::cout << "reindex hash" << m2 - m1 << std::endl;
+
+    using it = thrust::counting_iterator<IdType>;
+    using Mapping = typename DeviceOrderedHashTable<IdType>::Mapping;
+    thrust::for_each(it(0), it(num_input),
+                     [count = thrust::raw_pointer_cast(item_prefix.data()),
+                      table = device_table,
+                      in = input] __device__(IdType i) mutable {
+                         Mapping &mapping = *(table.Search(in[i]));
+                         if (mapping.index == i) { count[i] = 1; }
+                     });
+    thrust::exclusive_scan(item_prefix.begin(), item_prefix.end(),
+                           item_prefix.begin());
+    size_t tot = item_prefix[num_input];
+    // std::cout << "next size" << tot << std::endl;
+    unique_items.resize(tot);
+
+    thrust::for_each(it(0), it(num_input),
+                     [prefix = thrust::raw_pointer_cast(item_prefix.data()),
+                      table = device_table, in = input,
+                      u = thrust::raw_pointer_cast(
+                          unique_items.data())] __device__(IdType i) mutable {
+                         Mapping &mapping = *(table.Search(in[i]));
+                         if (mapping.index == i) {
+                             mapping.local = prefix[i];
+                             u[prefix[i]] = in[i];
+                         }
+                     });
+    system_clock::time_point tp3 = system_clock::now();
+    system_clock::duration d3 = tp3.time_since_epoch();
+    time_t m3 = duration_cast<microseconds>(d3).count();
+    // size_t workspace_bytes;
+    // CUDA_CALL(cub::DeviceScan::ExclusiveSum(
+    //     nullptr, workspace_bytes, static_cast<IdType *>(nullptr),
+    //     static_cast<IdType *>(nullptr), grid.x + 1));
+    // void *workspace = device->AllocWorkspace(ctx_, workspace_bytes);
+
+    // CUDA_CALL(cub::DeviceScan::ExclusiveSum(workspace, workspace_bytes,
+    //                                         item_prefix, item_prefix,
+    //                                         grid.x + 1, stream));
+    // device->FreeWorkspace(ctx_, workspace);
+
+    // compact_hashmap<IdType, BLOCK_SIZE, TILE_SIZE><<<grid, block, 0,
+    // stream>>>(
+    //     input, num_input, device_table, item_prefix, unique, num_unique);
+    // CUDA_CALL(cudaGetLastError());
+    // device->FreeWorkspace(ctx_, item_prefix);
+
+    // std::cout << "reindex search" << m3 - m2 << std::endl;
+    return host_table;
+}
+
 namespace quiver
 {
 template <typename T>
@@ -217,6 +302,7 @@ class TorchQuiver
                         thrust::device_vector<T> &subset) const
     {
         const auto policy = thrust::cuda::par.on(stream);
+        HostOrderedHashTable<T> *table;
         // reindex
         {
             {
@@ -226,24 +312,42 @@ class TorchQuiver
                              subset.begin());
                 thrust::copy(policy, outputs.begin(), outputs.end(),
                              subset.begin() + inputs.size());
-                thrust::sort(policy, subset.begin(), subset.end());
-                subset.erase(
-                    thrust::unique(policy, subset.begin(), subset.end()),
-                    subset.end());
-                _reindex_with(policy, outputs, subset, outputs);
+                thrust::device_vector<T> unique_items;
+                unique_items.clear();
+                table =
+                    FillWithDuplicates(thrust::raw_pointer_cast(subset.data()),
+                                       subset.size(), stream, unique_items);
+                subset.resize(unique_items.size());
+                thrust::copy(policy, unique_items.begin(), unique_items.end(),
+                             subset.begin());
+                // thrust::sort(policy, subset.begin(), subset.end());
+                // subset.erase(
+                //     thrust::unique(policy, subset.begin(), subset.end()),
+                //     subset.end());
+                // _reindex_with(policy, outputs, subset, outputs);
             }
             {
                 TRACE_SCOPE("permute");
-                thrust::device_vector<T> s1;
-                s1.reserve(subset.size());
-                _reindex_with(policy, inputs, subset, s1);
-                complete_permutation(s1, subset.size(), stream);
-                subset = permute(s1, subset, stream);
+                // thrust::device_vector<T> s1;
+                // s1.reserve(subset.size());
+                // _reindex_with(policy, inputs, subset, s1);
+                // complete_permutation(s1, subset.size(), stream);
+                // subset = permute(s1, subset, stream);
 
-                thrust::device_vector<T> s2;
-                inverse_permutation(s1, s2, stream);
-                permute_value(s2, outputs, stream);
+                // thrust::device_vector<T> s2;
+                // inverse_permutation(s1, s2, stream);
+                // permute_value(s2, outputs, stream);
+                DeviceOrderedHashTable<T> device_table = table->DeviceHandle();
+                thrust::for_each(
+                    policy, outputs.begin(), outputs.end(),
+                    [device_table] __device__(T & id) mutable {
+                        using Iterator =
+                            typename DeviceOrderedHashTable<T>::Iterator;
+                        Iterator iter = device_table.Search(id);
+                        id = static_cast<T>((*iter).local);
+                    });
             }
+            delete table;
         }
     }
 
@@ -267,11 +371,13 @@ class TorchQuiver
         system_clock::time_point tp1 = system_clock::now();
         system_clock::duration d1 = tp1.time_since_epoch();
         time_t m1 = duration_cast<microseconds>(d1).count();
+        // std::cout << "sample" << m1 - m0 << std::endl;
 
         reindex_kernel(stream, inputs, outputs, subset);
         system_clock::time_point tp2 = system_clock::now();
         system_clock::duration d2 = tp2.time_since_epoch();
         time_t m2 = duration_cast<microseconds>(d2).count();
+        // std::cout << "reindex" << m2 - m1 << std::endl;
 
         torch::Tensor out_vertices =
             torch::empty(subset.size(), vertices.options());
@@ -305,9 +411,7 @@ class TorchQuiver
         system_clock::time_point tp3 = system_clock::now();
         system_clock::duration d3 = tp3.time_since_epoch();
         time_t m3 = duration_cast<microseconds>(d3).count();
-        std::cout << "sample" << m1 - m0 << std::endl;
-        std::cout << "reindex" << m2 - m1 << std::endl;
-        std::cout << "output" << m3 - m2 << std::endl;
+        // std::cout << "output" << m3 - m2 << std::endl;
         return std::make_tuple(out_vertices, row_idx, col_idx);
     }
 };

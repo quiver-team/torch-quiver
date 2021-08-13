@@ -14,6 +14,7 @@ from kungfu.cmd import launch_multiprocess
 import os
 import os.path as osp
 from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
+from quiver.models.sage_model import SAGE
 import time
 
 
@@ -44,7 +45,6 @@ class SyncManager:
 
 class SampleRequest:
     def __init__(self, src, dst, nodes, size):
-        self.index = index
         self.src = src
         self.dst = dst
         self.nodes = nodes
@@ -80,7 +80,8 @@ class SingleProcess:
         self.args = args
 
     def prepare(self, rank, sample_data, train_data, feature_data, sync, comm):
-        device, edge_index, train_idx, sizes, batch_size = sample_data
+        edge_index, batch_size, sizes, train_idx = sample_data
+        device = rank
         torch.cuda.set_device(device)
         self.sync = sync
         self.comm = comm
@@ -88,11 +89,7 @@ class SingleProcess:
         self.train_idx = train_idx
         self.batch_size = batch_size
         self.loader = AsyncCudaNeighborSampler(edge_index,
-                                               device=device,
-                                               node_idx=train_idx,
-                                               sizes=sizes,
-                                               batch_size=batch_size,
-                                               shuffle=True)
+                                               device=device)
         self.sizes = sizes
         num_features, num_hidden, num_classes, num_layers, y = train_data
         self.y = y
@@ -146,7 +143,6 @@ class SingleProcess:
                 sample_results.append(result)
                 total_inputs.append(part_nodes)
             total_inputs = torch.cat(total_inputs)
-            #self.sync.peer_barrier.wait()
             for i in range(self.comm.ws - 1):
                 req = self.sync.request_queues[self.comm.rank].get()
                 src = req.src
@@ -156,7 +152,7 @@ class SingleProcess:
                 out, cnt = self.loader.sample_layer(part_nodes, size)
                 # to global
                 resp = SampleResponse(src, dst, out, cnt)
-                self.sync.response_queue[src].put(resp)
+                self.sync.response_queues[src].put(resp)
             for i in range(self.comm.ws - 1):
                 resp = self.sync.response_queues[self.comm.rank].get()
                 src = resp.src
@@ -191,13 +187,12 @@ class SingleProcess:
         feature_results = []
         for rank, part_nodes in enumerate(feature_args):
             if rank == self.comm.rank:
-                result = self.features[part_nodes]
+                result = self.feature[part_nodes]
             else:
                 result = None
                 req = FeatureRequest(self.comm.rank, rank, part_nodes)
                 self.sync.request_queues[rank].put(req)
             feature_results.append(result)
-            total_inputs.append(part_nodes)
         for i in range(self.comm.ws - 1):
             req = self.sync.request_queues[self.comm.rank].get()
             src = req.src
@@ -206,19 +201,23 @@ class SingleProcess:
             # to local
             feature = self.feature[part_nodes]
             # to global
-            resp = FeatuerResponse(src, dst, feature)
-            self.sync.response_queue[src].put(resp)
+            resp = FeatureResponse(src, dst, feature)
+            self.sync.response_queues[src].put(resp)
         for i in range(self.comm.ws - 1):
             resp = self.sync.response_queues[self.comm.rank].get()
             src = resp.src
             dst = resp.dst
-            feature = resp.feature
+            feature = resp.features
             feature_results[dst] = feature.to(self.device)
         total_features = []
         for feature in feature_results:
             total_features.append(feature)
+        feature_beg = time.time()
         total_features = torch.cat(total_features)
+        feature_end = time.time()
         total_features[feature_reorder] = total_features
+        # if self.comm.rank == 0:
+        #     print(f'feature cat {feature_end - feature_beg}')
         return total_features
 
 
@@ -226,26 +225,49 @@ class SingleProcess:
         self.prepare(rank, *self.args)
         dataloader = torch.utils.data.DataLoader(
             self.train_idx, batch_size=self.batch_size, shuffle=True, drop_last=True)
-        for i in range(epoch):
+        for i in range(self.num_epoch):
             count = 0
             cont = True
             while cont:
                 for data in dataloader:
+                    t0 = time.time()
                     count += 1
                     n_id, batch_size, adjs = self.sample(data)
-                    features = self.collect(nodes)
+                    features = self.collect(n_id)
                     self.optimizer.zero_grad()
                     out = self.model(features, adjs)
                     label_ids = n_id[:batch_size].to(self.device)
                     loss = F.nll_loss(out, self.y[label_ids].to(self.device))
                     loss.backward()
                     self.optimizer.step()
-                    if count >= num_batch:
+                    print(f'rank {self.comm.rank} took {time.time() - t0}')
+                    if count >= self.num_batch:
                         cont = False
                         break
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
-    proc = SingleProcess()
-    procs = launch_multiprocess(proc, 4)
+    ws = 4
+    num_epoch = 1
+    num_batch = 100
+    batch_size = 128
+    sizes = [15, 10, 5]
+    home = os.getenv('HOME')
+    data_dir = osp.join(home, '.pyg')
+    root = osp.join(data_dir, 'data', 'products')
+    dataset = PygNodePropPredDataset('ogbn-products', root)
+    split_idx = dataset.get_idx_split()
+    data = dataset[0]
+    train_idx = split_idx['train']
+    edge_index = data.edge_index
+    x, y = data.x.share_memory_(), data.y.squeeze().share_memory_()
+    sample_data = edge_index, batch_size, sizes, train_idx
+    train_data = dataset.num_features, 256, dataset.num_classes, 3, y
+    comm = CommConfig(0, ws)
+    sync = SyncManager(ws)
+    proc = SingleProcess(num_epoch, num_batch, sample_data, train_data, x, sync, comm)
+    procs = launch_multiprocess(proc, ws)
+    time.sleep(30)
+    for p in procs:
+        p.kill()
     

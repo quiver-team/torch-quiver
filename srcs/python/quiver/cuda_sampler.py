@@ -132,7 +132,7 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
             self.build_tasks()
 
         super(CudaNeighborSampler, self).__init__(node_idx.tolist(),
-                                                  collate_fn=self.sample_layer,
+                                                  collate_fn=self.sample,
                                                   **kwargs)
 
     def build_tasks(self):

@@ -28,7 +28,7 @@ class AsyncCudaNeighborSampler:
                  edge_index: Optional[torch.Tensor] = None,
                  device: int = 0,
                  num_nodes: Optional[int] = None):
-        if edge_index:
+        if edge_index is not None:
             N = int(edge_index.max() + 1) if num_nodes is None else num_nodes
             edge_id = torch.zeros(1, dtype=torch.long)
             self.quiver = qv.new_quiver_from_edge_index(N, edge_index, edge_id,

@@ -150,7 +150,7 @@ class NeighborSampler(torch.utils.data.DataLoader):
             node_idx = node_idx.nonzero(as_tuple=False).view(-1)
 
         super(NeighborSampler, self).__init__(
-            node_idx.view(-1).tolist(), collate_fn=self.sample, **kwargs)
+            node_idx.view(-1).tolist(), collate_fn=self.sample_layer, **kwargs)
 
     def sample(self, batch):
         if not isinstance(batch, Tensor):
@@ -179,15 +179,15 @@ class NeighborSampler(torch.utils.data.DataLoader):
         out = self.transform(*out) if self.transform is not None else out
         return out
 
-    def sample_layer(self, batch, size):
+    def sample_layer(self, batch):
         if not isinstance(batch, Tensor):
             batch = torch.tensor(batch)
 
         batch_size: int = len(batch)
-
         n_id = batch
-        output, count = self.adj_t.sample_layer(n_id, size, replace=False)
-        return output, count
+        for size in self.sizes:
+            n_id, count = self.adj_t.sample_layer(n_id, size, replace=False)
+        return n_id, count
 
     def __repr__(self):
         return '{}(sizes={})'.format(self.__class__.__name__, self.sizes)

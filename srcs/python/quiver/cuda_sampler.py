@@ -132,7 +132,7 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
             self.build_tasks()
 
         super(CudaNeighborSampler, self).__init__(node_idx.tolist(),
-                                                  collate_fn=self.sample,
+                                                  collate_fn=self.sample_layer,
                                                   **kwargs)
 
     def build_tasks(self):
@@ -144,6 +144,16 @@ class CudaNeighborSampler(torch.utils.data.DataLoader):
 
         for i in range(len(self.sizes) - 1):
             self.tasks[i].add_child(self.tasks[i + 1])
+
+    def sample_layer(self, batch):
+        if not isinstance(batch, torch.Tensor):
+            batch = torch.tensor(batch)
+
+        batch_size: int = len(batch)
+        n_id = batch.to(torch.device(self.device))
+        for size in self.sizes:
+            n_id, count = self.quiver.sample_neighbor(self.rank, n_id, size)
+        return n_id, count
 
     def sample(self, batch):
         if self.mode == 'await':

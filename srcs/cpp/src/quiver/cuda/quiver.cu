@@ -417,6 +417,61 @@ class TorchQuiver
 };
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
+reindex_single(torch::Tensor inputs, torch::Tensor outputs,
+            torch::Tensor count)
+{
+    using T = int64_t;
+    cudaStream_t stream = 0;
+    const auto policy = thrust::cuda::par.on(stream);
+    thrust::device_vector<T> total_inputs(inputs.size(0));
+    thrust::device_vector<T> total_outputs(outputs.size(0));
+    thrust::device_vector<T> input_prefix(inputs.size(0));
+    const T *ptr;
+    size_t bs;
+    ptr = count.data_ptr<T>();
+    bs = inputs.size(0);
+    thrust::copy(ptr, ptr + bs, input_prefix.begin());
+    ptr = inputs.data_ptr<T>();
+    thrust::copy(ptr, ptr + bs, total_inputs.begin());
+    thrust::exclusive_scan(policy, input_prefix.begin(), input_prefix.end(),
+                           input_prefix.begin());
+    ptr = outputs.data_ptr<T>();
+    bs = outputs.size(0);
+    thrust::copy(ptr, ptr + bs, total_outputs.begin());
+
+    const size_t m = inputs.size(0);
+    using it = thrust::counting_iterator<T>;
+
+    thrust::device_vector<T> subset;
+    TorchQuiver::reindex_kernel(stream, total_inputs, total_outputs, subset);
+
+    int tot = total_outputs.size();
+    torch::Tensor out_vertices = torch::empty(subset.size(), inputs.options());
+    torch::Tensor row_idx = torch::empty(tot, inputs.options());
+    torch::Tensor col_idx = torch::empty(tot, inputs.options());
+    {
+        thrust::device_vector<T> seq(count.size(0));
+        thrust::sequence(policy, seq.begin(), seq.end());
+
+        thrust::for_each(
+            policy, it(0), it(m),
+            [prefix = thrust::raw_pointer_cast(input_prefix.data()),
+             count = count.data_ptr<T>(),
+             in = thrust::raw_pointer_cast(seq.data()),
+             out = thrust::raw_pointer_cast(
+                 row_idx.data_ptr<T>())] __device__(T i) {
+                for (int j = 0; j < count[i]; j++) {
+                    out[prefix[i] + j] = in[i];
+                }
+            });
+        thrust::copy(subset.begin(), subset.end(), out_vertices.data_ptr<T>());
+        thrust::copy(total_outputs.begin(), total_outputs.end(),
+                     col_idx.data_ptr<T>());
+    }
+    return std::make_tuple(out_vertices, row_idx, col_idx);
+}
+
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
 reindex_all(torch::Tensor orders, torch::Tensor inputs, torch::Tensor outputs,
             torch::Tensor count)
 {
@@ -674,6 +729,7 @@ void register_cuda_quiver(pybind11::module &m)
 {
     m.def("saint_subgraph", &quiver::saint_subgraph);
     m.def("reindex_all", &quiver::reindex_all);
+    m.def("reindex_single", &quiver::reindex_single);
     m.def("new_quiver_from_edge_index", &quiver::new_quiver_from_edge_index);
     m.def("new_quiver_from_edge_index_weight",
           &quiver::new_quiver_from_edge_index_weight);

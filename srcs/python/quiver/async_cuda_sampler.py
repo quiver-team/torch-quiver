@@ -45,5 +45,5 @@ class AsyncCudaNeighborSampler:
         n_id, count = self.quiver.sample_neighbor(0, n_id, size)
         return n_id, count
 
-    def reindex(self, orders, inputs, outputs, counts):
-        return qv.reindex_all(orders, inputs, outputs, counts)
+    def reindex(self, inputs, outputs, counts):
+        return qv.reindex_single(inputs, outputs, counts)

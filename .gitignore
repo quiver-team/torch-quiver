@@ -14,3 +14,4 @@ generated
 # Pycharm Project Directory
 venvgi/
 .idea/
+build/

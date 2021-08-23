@@ -120,6 +120,7 @@ void replicate_fill(size_t n, const T *counts, const T *values, T *outputs)
         outputs += c;
     }
 }
+enum QuiverMode{DMA, ZERO_COPY, PAGE_MIGRATION};
 
 class TorchQuiver
 {
@@ -540,9 +541,14 @@ reindex_all(torch::Tensor orders, torch::Tensor inputs, torch::Tensor outputs,
 TorchQuiver new_quiver_from_edge_index(size_t n,  //
                                        py::array_t<int64_t> &input_edges,
                                        py::array_t<int64_t> &input_edge_idx,
-                                       int device = 0)
+                                       int device = 0,
+                                       // mode in {DMA, ZERO_COPY, PAGE_MIGRATION}
+                                       QuiverMode quiver_mode = DMA)
 {
-    cudaSetDevice(device);
+    // Only Set Device In DMA Mode 
+    if(quiver_mode == DMA){
+        cudaSetDevice(device);
+    }
     TRACE_SCOPE(__func__);
     using T = typename TorchQuiver::T;
     py::buffer_info edges = input_edges.request();
@@ -554,23 +560,35 @@ TorchQuiver new_quiver_from_edge_index(size_t n,  //
 
     bool use_eid = edge_idx.shape[0] == m;
 
-    thrust::device_vector<T> row_idx(m);
-    thrust::device_vector<T> col_idx(m);
-    {
-        const T *p = reinterpret_cast<const T *>(edges.ptr);
-        thrust::copy(p, p + m, row_idx.begin());
-        thrust::copy(p + m, p + m * 2, col_idx.begin());
+    // Use thrust::device_vector In DMA Mode
+    if(quiver_mode == DMA){
+        thrust::device_vector<T> row_idx(m);
+        thrust::device_vector<T> col_idx(m);
+        {
+            const T *p = reinterpret_cast<const T *>(edges.ptr);
+            thrust::copy(p, p + m, row_idx.begin());
+            thrust::copy(p + m, p + m * 2, col_idx.begin());
+        }
+        thrust::device_vector<T> edge_idx_;
+        if (use_eid) {
+            edge_idx_.resize(m);
+            const T *p = reinterpret_cast<const T *>(edge_idx.ptr);
+            thrust::copy(p, p + m, edge_idx_.begin());
+        }
+        using Q = quiver<int64_t, CUDA>;
+        Q quiver = Q::New(static_cast<T>(n), std::move(row_idx), std::move(col_idx),
+                        std::move(edge_idx_));
+        return TorchQuiver(std::move(quiver), device);
+    }else if(quiver_mode ==  ZERO_COPY){
+        /*
+        In Zero-Copy Mode, We Do These Steps:
+        1. Register Buffer As Mapped Pinned Memory
+        2. Get Device Pointer In GPU Memory Space
+        3. Intiliaze A Quiver Instance And Return
+        */
+        
+
     }
-    thrust::device_vector<T> edge_idx_;
-    if (use_eid) {
-        edge_idx_.resize(m);
-        const T *p = reinterpret_cast<const T *>(edge_idx.ptr);
-        thrust::copy(p, p + m, edge_idx_.begin());
-    }
-    using Q = quiver<int64_t, CUDA>;
-    Q quiver = Q::New(static_cast<T>(n), std::move(row_idx), std::move(col_idx),
-                      std::move(edge_idx_));
-    return TorchQuiver(std::move(quiver), device);
 }
 
 TorchQuiver

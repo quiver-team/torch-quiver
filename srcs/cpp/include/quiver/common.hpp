@@ -14,4 +14,5 @@ void check_eq(const T &x, const T &y)
     if (x == y) { return; }
     throw std::runtime_error(std::string("check_eq failed"));
 }
+enum QuiverMode{DMA, ZERO_COPY, PAGE_MIGRATION};
 }  // namespace quiver

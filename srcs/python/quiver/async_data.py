@@ -14,42 +14,33 @@ class Adj(NamedTuple):
 
 
 class SampleBuffer:
-    def __init__(self, batch_size, total_layer, reindex_device, train_device):
+    def __init__(self, batch_size, size, total_layer, sample_device, reindex_device, train_device):
         self.batch_size = batch_size
         self.total_layer = total_layer
         self.temp_layer = 0
+        self.sample_device = sample_device
         self.reindex_device = reindex_device
         self.train_device = train_device
         self.reindex_results = [None] * total_layer
-        self.sample_results = [None] * size
-        self.sample_reorder = None
         self.feature_reorder = None
-        self.inputs = []
+        self.inputs = None
         self.n_ids = None
         self.feature_results = [None] * size
         self.state = "sample"
 
 
 class DataManager:
-    def __init__(self, device, feature, sample_devices, feature_devices,
-                 sample_to_local, sample_to_global, feature_to_global, feature_to_local, node_rank, feature_rank):
+    def __init__(self, device, feature, sample_device, feature_devices, feature_to_local, feature_rank):
         self.device = device
-        self.feature = feature.to(device) if feature else None
-        self.sample_to_local = sample_to_local
+        self.feature = feature
+        self.sample_device = sample_device
         self.feature_to_local = feature_to_local
-        self.sample_to_global = sample_to_global
-        self.feature_to_global = feature_to_global
-        self.node_rank = node_rank
         self.feature_rank = feature_rank
-        self.sample_devices = sample_devices
         self.feature_devices = feature_devices
         self.buffers = dict()
 
-    def dispatch(self, nodes, ws, is_feature):
-        if is_feature:
-            ranks = self.feature_rank(nodes)
-        else:
-            ranks = self.node_rank(nodes)
+    def dispatch(self, nodes, ws):
+        ranks = self.feature_rank(nodes)
         input_orders = torch.arange(nodes.size(
             0), dtype=torch.long, device=nodes.device)
         reorder = torch.empty_like(input_orders)
@@ -57,59 +48,39 @@ class DataManager:
         res = []
         for i in range(ws):
             mask = torch.eq(ranks, i)
-            part_nodes = torch.masked_select(n_id, mask)
+            part_nodes = torch.masked_select(nodes, mask)
             part_orders = torch.masked_select(input_orders, mask)
             reorder[beg:beg + part_nodes.size(0)] = part_orders
             beg += part_nodes.size(0)
             res.append(part_nodes)
         return reorder, res
 
-    def prepare_request(self, batch_id, reorder, node_group, is_feature):
+    def init_entry(self, nodes, batch_id, size, total_layer, sample_device, reindex_device, train_device):
+        buffer = SampleBuffer(
+            len(nodes), size, total_layer, sample_device, reindex_device, train_device)
+        self.buffers[batch_id] = buffer
+        self.buffers[batch_id].inputs = nodes
+
+    def prepare_request(self, batch_id, reorder, node_group):
         size = len(node_group)
         res = []
-        if not is_feature:
-            inputs = torch.cat(node_group)
-            self.buffers[batch_id].inputs = inputs
-            self.buffers[batch_id].sample_reorder = reorder
-        else:
-            self.buffers[batch_id].feature_reorder = reorder.to(
-                self.buffers[batch_id].train_device)
+        self.buffers[batch_id].feature_reorder = reorder.to(
+            self.buffers[batch_id].train_device)
         for rank in range(size):
-            if is_feature:
-                nodes = self.feaure_to_local(node_group[i], rank, size)
-                nodes = nodes.to(self.feature_devices[rank])
-            else:
-                nodes = self.sample_to_local(node_group[i], rank, size)
-                nodes = nodes.to(self.sample_devices[rank])
+            nodes = self.feature_to_local(node_group[rank], rank, size)
+            nodes = nodes.to(self.feature_devices[rank])
             res.append(nodes)
         return res
 
-    def recv_sample(self, batch_id, rank, size, nodes, counts):
+    def recv_sample(self, batch_id, nodes, counts):
         buffer = self.buffers[batch_id]
         reindex_device = buffer.reindex_device
         nodes = nodes.to(reindex_device)
         counts = counts.to(reindex_device)
-        nodes = self.sample_to_global(nodes, rank, size)
-        buffer.sample_results[rank] = (nodes, counts)
-        cnt = 0
-        for res in buffer.sample_results:
-            if res is not None:
-                cnt += 1
-        if cnt == size:
-            outputs = []
-            counts = []
-            for out, cnt in buffer.sample_results:
-                outputs.append(out)
-                counts.append(cnt)
-            outputs = torch.cat(outputs)
-            counts = torch.cat(counts)
-            buffer.sample_results = [None] * size
-            inputs = buffer.inputs
-            reorder = buffer.sample_reorder
-            buffer.sample_reorder = None
-            buffer.inputs = None
-            buffer.state = "reindex"
-            return reorder, inputs, outputs, counts
+        inputs = buffer.inputs
+        buffer.inputs = None
+        buffer.state = "reindex"
+        return inputs, nodes, counts
 
     def recv_feature(self, batch_id, rank, size, features):
         buffer = self.buffers[batch_id]
@@ -127,7 +98,7 @@ class DataManager:
             reorder = buffer.feature_reorder
             buffer.feature_reorder = None
             buffer.state = "finished"
-            all_features[reorder] = all_features
+            all_features = all_features[reorder]
             return all_features
 
     def recv_reindex(self, batch_id, nodes, row, col):
@@ -136,9 +107,11 @@ class DataManager:
         buffer.reindex_results[temp_layer] = (
             nodes, row.to(buffer.train_device), col.to(buffer.train_device))
         buffer.temp_layer += 1
-        finished = buffer.temp_layer < buffer.total_layer
+        finished = buffer.temp_layer >= buffer.total_layer
         buffer.state = "feature" if finished else "sample"
         if not finished:
+            nodes = nodes.to(self.sample_device)
+            buffer.inputs = nodes
             return nodes, buffer.temp_layer
         else:
             buffer.n_ids = nodes

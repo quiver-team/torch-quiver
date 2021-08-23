@@ -12,3 +12,5 @@ def test_construct():
 
     # TODO: test
     print(qv.new_quiver_from_edge_index_weight)
+    # TODO: test
+    print(qv.new_quiver_from_csr_array)

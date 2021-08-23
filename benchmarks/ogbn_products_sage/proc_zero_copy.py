@@ -14,11 +14,12 @@ from kungfu.cmd import launch_multiprocess
 import os
 import os.path as osp
 from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
-from quiver.models.sage_model import SAGE
 import time
-
+import numpy as np
+from scipy.sparse import csr_matrix
 
 from typing import List, NamedTuple, Optional, Tuple
+from numa import schedule, info
 
 
 class Adj(NamedTuple):
@@ -53,15 +54,7 @@ class BatchSampleRequest:
         self.size = size
 
 
-class SampleRequest:
-    def __init__(self, src, dst, nodes, size):
-        self.src = src
-        self.dst = dst
-        self.nodes = nodes
-        self.size = size
-
-
-class BatchSampleResponse:
+class SampleResponse:
     def __init__(self, index, src, dst, outputs, counts):
         self.index = index
         self.src = src
@@ -70,23 +63,38 @@ class BatchSampleResponse:
         self.counts = counts
 
 
-class SampleResponse:
-    def __init__(self, src, dst, outputs, counts):
+class ReindexRequest:
+    def __init__(self, index, src, dst, reorder, inputs, outputs, counts):
+        self.index = index
         self.src = src
         self.dst = dst
+        self.reorder = reorder
+        self.inputs = inputs
         self.outputs = outputs
         self.counts = counts
 
 
+class ReindexResponse:
+    def __init__(self, index, src, dst, nodes, row, col):
+        self.index = index
+        self.src = src
+        self.dst = dst
+        self.nodes = nodes
+        self.row = row
+        self.col = col
+
+
 class FeatureRequest:
-    def __init__(self, src, dst, nodes):
+    def __init__(self, index, src, dst, nodes):
+        self.index = index
         self.src = src
         self.dst = dst
         self.nodes = nodes
 
 
 class FeatureResponse:
-    def __init__(self, src, dst, features):
+    def __init__(self, index, src, dst, features):
+        self.index = index
         self.src = src
         self.dst = dst
         self.features = features
@@ -99,7 +107,15 @@ class SingleProcess:
         self.args = args
 
     def prepare(self, rank, sample_data, train_data, feature_data, sync, comm):
-        edge_index, batch_size, sizes, train_idx = sample_data
+        #####################################################################################################
+        # Bind Task To NUMA Node And Sleep 1s So That Next Time This Processing Is Runing On Target NUMA Node
+        #####################################################################################################
+        total_nodes = info.get_max_node() + 1
+        schedule.bind(rank % total_nodes)
+        print(f"LOG >>> Rank {rank} Is Bind To NUMA Node {rank % total_nodes}/{total_nodes}")
+        time.sleep(1)
+        
+        csr_mat, batch_size, sizes, train_idx = sample_data
         device = rank
         torch.cuda.set_device(device)
         self.list_size = 10
@@ -119,13 +135,115 @@ class SingleProcess:
         self.comm.rank = rank
         self.train_idx = train_idx
         self.batch_size = batch_size
-        self.loader = AsyncCudaNeighborSampler(edge_index,
-                                               device=device)
+        self.indptr = torch.from_numpy(csr_mat.indptr[:-1]).type(torch.long)
+        self.indices = torch.from_numpy(csr_mat.indices).type(torch.long)
+        self.loader = AsyncCudaNeighborSampler(csr_indptr=self.indptr,
+                                               csr_indices=self.indices,
+                                               device=device,
+                                               copy=True)
         self.sizes = sizes
-        num_features, num_hidden, num_classes, num_layers, y = train_data
+
+    def run(self, *args):
+        pass
+
+    def handle_sample_response(self, sample_response):
+        batch_id = sample_response.index.batch_id
+        rank = sample_response.index.rank
+        size = sample_response.index.size
+        outputs = sample_response.outputs
+        counts = sample_response.counts
+        ret = self.manager.recv_sample(batch_id, rank, size, outputs, counts)
+        if ret is not None:
+            reorder, inputs, outputs, counts = ret
+            index = MicroBatchIndex(batch_id, rank, size)
+            reindex_peer = self.comm.other_peers.local_reindex
+            request = ReindexRequest(
+                index, self.global_rank, reindex_peer, reorder, inputs, outputs, counts)
+            self.sync.upstream_queues[reindex_peer].put(request)
+
+    def handle_reindex_response(self, reindex_response):
+        batch_id = reindex_response.index.batch_id
+        nodes = reindex_response.nodes
+        row = reindex_response.row
+        col = reindex_response.col
+        ret = self.manager.recv_reindex(batch_id, nodes, row, col)
+        nodes, temp_layer = ret
+        if temp_layer >= 0:
+            reorder, res = self.manager.dispatch(
+                nodes, self.sample_size, False)
+            res = self.manager.prepare_request(batch_id, reorder, res, False)
+            global_samplers = self.comm.other_peers.global_samplers
+            for rank, nodes in enumerate(res):
+                index = MicroBatchIndex(batch_id, rank, len(res))
+                req = SamplerRequest(
+                    index, self.comm.global_rank, global_samplers[rank], nodes, self.sizes[temp_layer])
+                self.sync.request_queues[global_samplers[rank]].put(req)
+        else:
+            reorder, res = self.manager.dispatch(
+                nodes, self.feature_size, True)
+            res = self.manager.prepare_request(batch_id, reorder, res, True)
+            group_peers = self.comm.group_peers
+            for rank, nodes in enumerate(res):
+                index = MicroBatchIndex(batch_id, rank, len(res))
+                req = FeatureRequest(
+                    index, self.comm.global_rank, group_peers[rank], nodes)
+                self.sync.request_queues[group_peers[rank]].put(req)
+
+    def handle_feature_request(self, feature_request):
+        index = feature_request.index
+        nodes = feature_request.nodes
+        src = feature_request.src
+        dst = feature_request.dst
+        features = self.manager.features[nodes]
+        response = FeatureResponse(index, src, dst, features)
+        self.sync.response_queues[dst].put(response)
+
+    def handle_feature_response(self, feature_respnse):
+        batch_id = feature_request.index.batch_id
+        features = feature_request.features
+        rank = feature_request.index.rank
+        size = feature_request.index.size
+        features = self.manager.recv_feature(batch_id, rank, size, features)
+        if features:
+            batch_size, n_ids, adjs = self.manager.prepare_train()
+            args = TrainArgs(batch_size, n_ids, adjs, features)
+            trainer = self.comm.downstream_peer
+            self.sync.upstream_queues[trainer].put(args)
+            del self.manager.buffers[batch_id]
+
+
+class SAGE(torch.nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
+        super(SAGE, self).__init__()
+
+        self.num_layers = num_layers
+
+        self.convs = torch.nn.ModuleList()
+        self.convs.append(SAGEConv(in_channels, hidden_channels))
+        for _ in range(num_layers - 2):
+            self.convs.append(SAGEConv(hidden_channels, hidden_channels))
+        self.convs.append(SAGEConv(hidden_channels, out_channels))
+
+    def reset_parameters(self):
+        for conv in self.convs:
+            conv.reset_parameters()
+
+    def forward(self, x, adjs):
+        for i, (edge_index, _, size) in enumerate(adjs):
+            x_target = x[:size[1]]  # Target nodes are always placed first.
+            x = self.convs[i]((x, x_target), edge_index)
+            if i != self.num_layers - 1:
+                x = F.relu(x)
+                x = F.dropout(x, p=0.5, training=self.training)
+        return x.log_softmax(dim=-1)
+
+
+class TrainerProcess(QuiverProcess):
+    def prepare(self, data):
+        num_features, num_hidden, num_classes, num_layers, y = data
         self.y = y
         device = torch.device('cuda:' +
-                              str(self.comm.rank) if torch.cuda.is_available() else 'cpu')
+                              str(self.comm.group_rank) if torch.cuda.is_available() else 'cpu')
         self.device = device
         self.feature = feature_data.to(device)
         model = SAGE(num_features, num_hidden, num_classes, num_layers)
@@ -279,10 +397,11 @@ class SingleProcess:
         adjs_list = [adjs[::-1] for adjs in adjs_list]
         return nodes_list, batch_size_list, adjs_list
 
-    def sample(self, nodes):
-        batch_size = len(nodes)
-        nodes = nodes.to(self.device)
+    def sample(self, input_nodes):
+        nodes = input_nodes.to(self.device)
         adjs = []
+
+        batch_size = len(nodes)
         for size in self.sizes:
             out, cnt = self.loader.sample_layer(nodes, size)
             frontier, row_idx, col_idx = self.loader.reindex(nodes, out, cnt)
@@ -404,7 +523,7 @@ class SingleProcess:
         feature_beg = time.time()
         total_features = torch.cat(total_features)
         feature_end = time.time()
-        total_features = total_features[feature_reorder]
+        total_features = total_features[feature_reorder] #= total_features
         # if self.comm.rank == 0:
         #     print(f'feature cat {feature_end - feature_beg}')
         return total_features
@@ -415,54 +534,58 @@ class SingleProcess:
             self.train_idx, batch_size=self.batch_size, shuffle=True, drop_last=True)
         for i in range(self.num_epoch):
             count = 0
-            cont = True
-            while cont:
-                nodes_list = []
-                t0 = time.time()
-                for data in dataloader:
-                    n_id, batch_size, adjs = self.sample(data)
-                    t1 = time.time()
-                    features = self.collect(n_id)
-                    t2 = time.time()
-                    self.optimizer.zero_grad()
-                    out = self.model(features, adjs)
-                    label_ids = n_id[:batch_size].to(self.device)
-                    loss = F.nll_loss(out, self.y[label_ids].to(self.device))
-                    loss.backward()
-                    self.optimizer.step()
-                    print(f'rank {self.comm.rank} sample {t1 - t0}')
-                    print(f'rank {self.comm.rank} feature {t2 - t1}')
-                    print(f'rank {self.comm.rank} took {time.time() - t0}')
-                    t0 = time.time()
-                    if count >= self.num_batch:
-                        cont = False
-                        break
-        # print(f'rank {self.comm.rank} sample avg {self.sample_time}')
-        # print(f'rank {self.comm.rank} reindex avg {self.reindex_time}')
-        # print(f'rank {self.comm.rank} request avg {self.request_time}')
-        # print(f'rank {self.comm.rank} handle avg {self.handle_time}')
-        # print(f'rank {self.comm.rank} recv avg {self.recv_time}')
-        # print(f'rank {self.comm.rank} queue avg {self.queue_time}')
+            for j in range(num_batch):
+                count += 1
+                src = self.comm.global_rank
+                sample = self.sync.upstream_queues[src].get()
+                batch_size, n_id, adjs, features = sample
 
+                self.optimizer.zero_grad()
+                out = self.model(features, adjs)
+                label_ids = n_id[:batch_size].to(self.device)
+                loss = F.nll_loss(out, self.y[label_ids].to(self.device))
+                loss.backward()
+                self.optimizer.step()
+                if count >= num_batch:
+                    break
+
+
+class TrainerWrapper:
+    def __init__(self, comm, sync):
+        self.proc = TrainerProcess(comm, sync)
+
+    def __call__(self, rank, *args):
+        self.proc(*args)
+
+
+def get_csr_from_coo(edge_index):
+    src = edge_index[0].numpy()
+    dst = edge_index[1].numpy()
+    node_count = max(np.max(src), np.max(dst))
+    data = np.zeros(dst.shape, dtype=np.int32)
+    csr_mat = csr_matrix((data, (edge_index[0].numpy(), edge_index[1].numpy())))
+    return csr_mat
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
-    ws = 2
+    ws = 1
     num_epoch = 1
     num_batch = 100
     batch_size = 128
     sizes = [15, 10, 5]
-    home = os.getenv('HOME')
-    data_dir = osp.join(home, '.pyg')
-    root = osp.join(data_dir, 'data', 'products')
-    root = "/home/dalong/data"
+    root = "/home/dalong/data/"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     split_idx = dataset.get_idx_split()
+    evaluator = Evaluator(name='ogbn-products')
     data = dataset[0]
+    
+    csr_mat = get_csr_from_coo(data.edge_index)
+    
     train_idx = split_idx['train']
     edge_index = data.edge_index
+    csr_mat = get_csr_from_coo(edge_index)
     x, y = data.x.share_memory_(), data.y.squeeze().share_memory_()
-    sample_data = edge_index, batch_size, sizes, train_idx
+    sample_data = csr_mat, batch_size, sizes, train_idx
     train_data = dataset.num_features, 256, dataset.num_classes, 3, y
     comm = CommConfig(0, ws)
     sync = SyncManager(ws)
@@ -472,3 +595,15 @@ if __name__ == '__main__':
     time.sleep(50)
     for p in procs:
         p.kill()
+
+
+'''
+
+def get_csr_from_coo(edge_index):
+    src = edge_index[0].numpy()
+    dst = edge_index[1].numpy()
+    node_count = max(np.max(src), np.max(dst))
+    data = np.zeros(dst.shape, dtype=np.int32)
+    csr_mat = csr_matrix((data, (edge_index[0].numpy(), edge_index[1].numpy())), shape=(node_count, node_count))
+    return csr_mat
+'''

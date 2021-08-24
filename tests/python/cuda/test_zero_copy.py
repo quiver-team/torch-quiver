@@ -97,8 +97,7 @@ def test_neighbor_sampler_with_real_graph():
     row = torch.from_numpy(row).type(torch.long)
     col = torch.from_numpy(col).type(torch.long)
     edge_ids = torch.LongTensor([1])
-    edge_index = torch.stack((row, col))
-    quiver = qv.new_quiver_from_edge_index(graph_size, edge_index, edge_ids, 0)
+    quiver = qv.new_quiver_from_edge_index(graph_size, data.edge_index, edge_ids, 0)
     start = time.time()
     n_id2, count2 = quiver.sample_neighbor(0, cuda_seeds, neighbor_size)
     print(f"DMA sampling method consumed {time.time() - start}")
@@ -107,7 +106,7 @@ def test_neighbor_sampler_with_real_graph():
     ##############################
     # CPU Sampling
     ##############################
-    quiver = qv.cpu_quiver_from_edge_index(graph_size, edge_index)
+    quiver = qv.cpu_quiver_from_edge_index(graph_size, data.edge_index)
     start = time.time()
     n_id3, count3 = quiver.sample_neighbor(seeds, neighbor_size)
     print(f"CPU sampling method consumed {time.time() - start}")

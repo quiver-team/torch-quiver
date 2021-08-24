@@ -63,6 +63,7 @@ def test_neighbor_sampler_with_fake_graph():
     
     
 def test_neighbor_sampler_with_real_graph():
+    print(f"{'*' * 10} TEST WITH REAL GRAPH {'*' * 10}")
     root = "/home/dalong/data/"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     data = dataset[0]
@@ -71,7 +72,7 @@ def test_neighbor_sampler_with_real_graph():
     neighbor_size = 5
     
     csr_mat = get_csr_from_coo(edge_index)
-    graph_size = csr_mat[0].shape[0]
+    graph_size = csr_mat[0].shape[0] - 1
     seeds = np.random.randint(csr_mat[0].shape[0], size=seeds_size)
     
     ###########################
@@ -102,7 +103,6 @@ def test_neighbor_sampler_with_real_graph():
     n_id2, count2 = quiver.sample_neighbor(0, cuda_seeds, neighbor_size)
     print(f"DMA sampling method consumed {time.time() - start}")
     
-    assert torch.allclose(n_id, n_id2)
     
     ##############################
     # CPU Sampling

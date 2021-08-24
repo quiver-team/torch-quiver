@@ -321,6 +321,7 @@ def get_csr_from_coo(edge_index):
     src = edge_index[0].numpy()
     dst = edge_index[1].numpy()
     node_count = max(np.max(src), np.max(dst))
+    data = np.zeros(dst.shape, dtype=np.int32)
     csr_mat = csr_matrix((data, (edge_index[0].numpy(), edge_index[1].numpy())), shape=(node_count, node_count))
     return csr_mat
     

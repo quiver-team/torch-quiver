@@ -132,10 +132,7 @@ class SingleProcess:
         device = torch.device('cuda:' +
                               str(self.comm.rank) if torch.cuda.is_available() else 'cpu')
         self.device = device
-        print("check feature data ", feature_data.shape, feature_data.device)
-        self.feature = feature_data.clone()
-        self.feature = self.feature.to(device)
-        #self.feature = feature_data.to(device)
+        self.feature = feature_data.to(device)
         model = SAGE(num_features, num_hidden, num_classes, num_layers)
         model = model.to(device)
         model.reset_parameters()
@@ -288,8 +285,7 @@ class SingleProcess:
         return nodes_list, batch_size_list, adjs_list
 
     def sample(self, input_nodes):
-        nodes = input_nodes.clone()
-        nodes = nodes.to(self.device)
+        nodes = input_nodes.to(self.device)
         adjs = []
 
         batch_size = len(nodes)

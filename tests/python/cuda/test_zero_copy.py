@@ -42,6 +42,17 @@ def test_neighbor_full_sampler_cuda():
     
     assert torch.allclose(n_id, n_id2)
     
+    ##############################
+    # CPU Sampling
+    ##############################
+    quiver = qv.cpu_quiver_from_edge_index(graph_size, edge_index)
+    start = time.time()
+    n_id3, count3 = quiver.sample_neighbor(0, cuda_seeds, neighbor_size)
+    print(f"CPU sampling method consumed {time.time() - start}")
+    n_id2_cpu = n_id2.to("cpu")
+    assert torch.allclose(n_id2_cpu, n_id3)
+    
+    
     
     
     

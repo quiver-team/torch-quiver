@@ -273,7 +273,7 @@ class quiver<T, CUDA>
         if(quiver_mode == DMA){
             return row_ptr_.size(); 
         }
-        return node_count;
+        return node_count_;
     }
 
     size_t edge_counts() const 
@@ -281,7 +281,7 @@ class quiver<T, CUDA>
         if(quiver_mode == DMA){
             return col_idx_.size(); 
         }
-        return edge_count;
+        return edge_count_;
     }
 
     sample_option get_option() const { return opt_; }
@@ -411,7 +411,7 @@ class quiver<T, CUDA>
             async_for_each(
             kernal_option(stream), begin, end,
             sample_functor<T, W>(
-                row_ptr_mapped_, node_count_),
+                row_ptr_mapped_, node_count_,
                 col_idx_mapped_,
                 edge_idx_mapped,
                 bucket_edge_weight_mapped_,

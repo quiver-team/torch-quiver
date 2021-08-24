@@ -26,13 +26,21 @@ class Adj(NamedTuple):
 class AsyncCudaNeighborSampler:
     def __init__(self,
                  edge_index: Optional[torch.Tensor] = None,
+                 csr_indptr: Optional[torch.Tensor] = None,
+                 csr_indices: Optional[torch.Tensor] = None,
                  device: int = 0,
                  num_nodes: Optional[int] = None):
+        
+        # Initilization With COO
         if edge_index is not None:
             N = int(edge_index.max() + 1) if num_nodes is None else num_nodes
             edge_id = torch.zeros(1, dtype=torch.long)
             self.quiver = qv.new_quiver_from_edge_index(N, edge_index, edge_id,
                                                         device)
+        # Initialization With CSR
+        if csr_indptr is not None and csr_indices is not None:
+             edge_id = torch.zeros(1, dtype=torch.long)
+             self.quiver = qv.new_quiver_from_csr_array(csr_indptr, csr_indices, edge_id, device)
 
         self.device = device
 

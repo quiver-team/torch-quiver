@@ -122,6 +122,7 @@ class SingleProcess:
         self.batch_size = batch_size
         indptr = torch.from_numpy(csr_mat.indptr)
         indices = torch.from_numpy(csr_mat.indices)
+        print("check load once")
         self.loader = AsyncCudaNeighborSampler(csr_indptr=indptr,
                                                csr_indices=indices,
                                                device=device)
@@ -131,7 +132,10 @@ class SingleProcess:
         device = torch.device('cuda:' +
                               str(self.comm.rank) if torch.cuda.is_available() else 'cpu')
         self.device = device
-        self.feature = feature_data.to(device)
+        print("check feature data ", feature_data.shape, feature_data.device)
+        self.feature = feature_data.clone()
+        self.feature = self.feature.to(device)
+        #self.feature = feature_data.to(device)
         model = SAGE(num_features, num_hidden, num_classes, num_layers)
         model = model.to(device)
         model.reset_parameters()
@@ -283,10 +287,12 @@ class SingleProcess:
         adjs_list = [adjs[::-1] for adjs in adjs_list]
         return nodes_list, batch_size_list, adjs_list
 
-    def sample(self, nodes):
-        batch_size = len(nodes)
+    def sample(self, input_nodes):
+        nodes = input_nodes.clone()
         nodes = nodes.to(self.device)
         adjs = []
+
+        batch_size = len(nodes)
         for size in self.sizes:
             out, cnt = self.loader.sample_layer(nodes, size)
             frontier, row_idx, col_idx = self.loader.reindex(nodes, out, cnt)

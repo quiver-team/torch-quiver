@@ -574,7 +574,7 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
         // Register Buffer As Mapped Pinned Memory
         cudaHostRegister((void*)indptr_original, sizeof(T) * node_count, cudaHostRegisterMapped);
         // Get Device Pointer In GPU Memory Space
-        cudaHostGetDevicePointer((void**)&indptr_device_pointer, indptr_original, 0);
+        cudaHostGetDevicePointer((void**)&indptr_device_pointer, (void*)indptr_original, 0);
 
     }
     {
@@ -582,14 +582,14 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
         // Register Buffer As Mapped Pinned Memory
         cudaHostRegister((void*)indices_original, sizeof(T) * edge_count, cudaHostRegisterMapped);
         // Get Device Pointer In GPU Memory Space
-        cudaHostGetDevicePointer((void**)&indices_device_pointer, indices_original, 0);
+        cudaHostGetDevicePointer((void**)&indices_device_pointer, (void*)indices_original, 0);
     }
     if(use_eid){
         const T *id_original = reinterpret_cast<const T *>(edge_idx.ptr);
         // Register Buffer As Mapped Pinned Memory
         cudaHostRegister((void*)id_original, sizeof(T) * edge_count, cudaHostRegisterMapped);
         // Get Device Pointer In GPU Memory Space
-        cudaHostGetDevicePointer((void**)&edge_id_device_pointer, id_original, 0);
+        cudaHostGetDevicePointer((void**)&edge_id_device_pointer, (void*)id_original, 0);
         
     }
     // initialize Quiver instance 

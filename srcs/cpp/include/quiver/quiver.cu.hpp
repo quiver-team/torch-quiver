@@ -152,7 +152,8 @@ class quiver<T, CUDA>
     const thrust::device_vector<W> edge_weight_;         // optional
     const thrust::device_vector<W> bucket_edge_weight_;  // optional
 
-    // For Mapped Memory Aceess
+    
+    // Zero-Map Mode Parameters Begin
     const T* row_ptr_mapped_;
     const T* col_idx_mapped_;
     const T* edge_idx_mapped;
@@ -160,6 +161,7 @@ class quiver<T, CUDA>
     const W* bucket_edge_weight_mapped_;
     int node_count_;
     int edge_count_;
+    // Zero-Map Mode Parameters End
     
     // Quiver Mode
     QuiverMode quiver_mode;

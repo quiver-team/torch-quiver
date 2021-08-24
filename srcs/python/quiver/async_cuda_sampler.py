@@ -39,8 +39,9 @@ class AsyncCudaNeighborSampler:
                                                         device)
         # Initialization With CSR
         if csr_indptr is not None and csr_indices is not None:
-             edge_id = torch.zeros(1, dtype=torch.long)
-             self.quiver = qv.new_quiver_from_csr_array(csr_indptr, csr_indices, edge_id, device)
+            print("init with csr mat")
+            edge_id = torch.zeros(1, dtype=torch.long)
+            self.quiver = qv.new_quiver_from_csr_array(csr_indptr, csr_indices, edge_id, device)
 
         self.device = device
 

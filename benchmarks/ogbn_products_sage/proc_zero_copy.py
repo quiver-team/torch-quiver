@@ -462,9 +462,7 @@ if __name__ == '__main__':
     num_batch = 100
     batch_size = 128
     sizes = [15, 10, 5]
-    home = os.getenv('HOME')
-    data_dir = osp.join(home, '.pyg')
-    root = osp.join(data_dir, 'data', 'products')
+    root = "/home/dalong/data/"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     split_idx = dataset.get_idx_split()
     data = dataset[0]

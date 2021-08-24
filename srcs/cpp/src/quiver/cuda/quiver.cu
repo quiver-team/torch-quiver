@@ -542,6 +542,9 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
                                       int device = 0
                                       )
 {
+    TRACE_SCOPE(__func__);
+    using T = typename TorchQuiver::T;
+    
     py::buffer_info indptr = input_indptr.request();
     py::buffer_info indices = input_indices.request();
     py::buffer_info edge_idx = input_edge_idx.request();
@@ -549,6 +552,7 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
     check_eq<int64_t>(indptr.ndim, 1);
     check_eq<int64_t>(indptr.shape[0], 1);
     const size_t node_count = indptr.shape[0];
+
     check_eq<int64_t>(indices.ndim, 1);
     check_eq<int64_t>(indices.shape[0], 1);
     const size_t edge_count = indices.shape[0];

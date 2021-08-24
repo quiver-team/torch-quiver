@@ -30,9 +30,10 @@ class SampleBuffer:
 
 
 class DataManager:
-    def __init__(self, device, feature, feature_devices, feature_to_local, feature_rank):
+    def __init__(self, device, feature, sample_device, feature_devices, feature_to_local, feature_rank):
         self.device = device
         self.feature = feature
+        self.sample_device = sample_device
         self.feature_to_local = feature_to_local
         self.feature_rank = feature_rank
         self.feature_devices = feature_devices
@@ -54,10 +55,11 @@ class DataManager:
             res.append(part_nodes)
         return reorder, res
 
-    def init_entry(self, batch_id, size, total_layer, sample_device, reindex_device, train_device):
+    def init_entry(self, nodes, batch_id, size, total_layer, sample_device, reindex_device, train_device):
         buffer = SampleBuffer(
-            batch_id, size, total_layer, sample_device, reindex_device, train_device)
+            len(nodes), size, total_layer, sample_device, reindex_device, train_device)
         self.buffers[batch_id] = buffer
+        self.buffers[batch_id].inputs = nodes
 
     def prepare_request(self, batch_id, reorder, node_group):
         size = len(node_group)
@@ -65,7 +67,7 @@ class DataManager:
         self.buffers[batch_id].feature_reorder = reorder.to(
             self.buffers[batch_id].train_device)
         for rank in range(size):
-            nodes = self.feaure_to_local(node_group[i], rank, size)
+            nodes = self.feature_to_local(node_group[rank], rank, size)
             nodes = nodes.to(self.feature_devices[rank])
             res.append(nodes)
         return res
@@ -105,10 +107,12 @@ class DataManager:
         buffer.reindex_results[temp_layer] = (
             nodes, row.to(buffer.train_device), col.to(buffer.train_device))
         buffer.temp_layer += 1
-        finished = buffer.temp_layer < buffer.total_layer
+        finished = buffer.temp_layer >= buffer.total_layer
         buffer.state = "feature" if finished else "sample"
         if not finished:
-            return nodes.to(self.sample_device), buffer.temp_layer
+            nodes = nodes.to(self.sample_device)
+            buffer.inputs = nodes
+            return nodes, buffer.temp_layer
         else:
             buffer.n_ids = nodes
             return nodes, -1

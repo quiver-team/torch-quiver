@@ -120,7 +120,8 @@ class SingleProcess:
         self.comm.rank = rank
         self.train_idx = train_idx
         self.batch_size = batch_size
-        indptr, indices = csr_mat
+        indptr = torch.from_numpy(csr_mat.indptr).type(torch.long)
+        indices = torch.from_numpy(csr_mat.indices).type(torch.long)
         print("check load once")
         self.loader = AsyncCudaNeighborSampler(csr_indptr=indptr,
                                                csr_indices=indices,
@@ -459,9 +460,7 @@ def get_csr_from_coo(edge_index):
     node_count = max(np.max(src), np.max(dst))
     data = np.zeros(dst.shape, dtype=np.int32)
     csr_mat = csr_matrix((data, (edge_index[0].numpy(), edge_index[1].numpy())))
-    indptr = torch.from_numpy(csr_mat.indptr)
-    indices = torch.from_numpy(csr_mat.indices)
-    return indptr, indices
+    return csr_mat
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
@@ -477,9 +476,8 @@ if __name__ == '__main__':
     train_idx = split_idx['train']
     edge_index = data.edge_index
     csr_mat = get_csr_from_coo(edge_index)
-    indptr, indices = csr_mat[0].share_memory_(), csr_mat[1].share_memory_()
     x, y = data.x.share_memory_(), data.y.squeeze().share_memory_()
-    sample_data = (indptr, indices), batch_size, sizes, train_idx
+    sample_data = csr_mat, batch_size, sizes, train_idx
     train_data = dataset.num_features, 256, dataset.num_classes, 3, y
     comm = CommConfig(0, ws)
     sync = SyncManager(ws)

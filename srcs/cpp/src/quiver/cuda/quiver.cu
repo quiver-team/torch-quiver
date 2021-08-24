@@ -542,7 +542,9 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
                                       int device = 0
                                       )
 {
+    cudaSetDevice(device);
     TRACE_SCOPE(__func__);
+
     using T = typename TorchQuiver::T;
 
     py::buffer_info indptr = input_indptr.request();
@@ -564,9 +566,9 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
     3. Intiliaze A Quiver Instance And Return
     */
 
-    T* indptr_device_pointer;
-    T* indices_device_pointer;
-    T* edge_id_device_pointer;
+    T* indptr_device_pointer = nullptr;
+    T* indices_device_pointer = nullptr;
+    T* edge_id_device_pointer = nullptr;
     {
         const T *indptr_original = reinterpret_cast<const T *>(indptr.ptr);
         // Register Buffer As Mapped Pinned Memory
@@ -575,6 +577,7 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
         cudaHostGetDevicePointer((void**)&indptr_device_pointer, (void*)indptr_original, 0);
 
     }
+    std::cout<<"mapped indptr"<<std::endl;
     {
         const T *indices_original = reinterpret_cast<const T *>(indices.ptr);
         // Register Buffer As Mapped Pinned Memory
@@ -582,6 +585,8 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
         // Get Device Pointer In GPU Memory Space
         cudaHostGetDevicePointer((void**)&indices_device_pointer, (void*)indices_original, 0);
     }
+
+    std::cout<<"mapped indices"<<std::endl;
     if(use_eid){
         const T *id_original = reinterpret_cast<const T *>(edge_idx.ptr);
         // Register Buffer As Mapped Pinned Memory
@@ -590,6 +595,8 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
         cudaHostGetDevicePointer((void**)&edge_id_device_pointer, (void*)id_original, 0);
         
     }
+
+    std::cout<<"mapped edge id "<<std::endl;
     // initialize Quiver instance 
     using Q = quiver<int64_t, CUDA>;
     Q quiver = Q::New(indptr_device_pointer, indices_device_pointer, edge_id_device_pointer, node_count, edge_count);

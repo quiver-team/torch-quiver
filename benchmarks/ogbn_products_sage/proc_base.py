@@ -404,7 +404,7 @@ class SingleProcess:
         feature_beg = time.time()
         total_features = torch.cat(total_features)
         feature_end = time.time()
-        total_features[feature_reorder] = total_features
+        total_features = total_features[feature_reorder]
         # if self.comm.rank == 0:
         #     print(f'feature cat {feature_end - feature_beg}')
         return total_features
@@ -447,7 +447,7 @@ class SingleProcess:
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
-    ws = 4
+    ws = 1
     num_epoch = 1
     num_batch = 100
     batch_size = 128
@@ -455,6 +455,7 @@ if __name__ == '__main__':
     home = os.getenv('HOME')
     data_dir = osp.join(home, '.pyg')
     root = osp.join(data_dir, 'data', 'products')
+    root = "/home/dalong/data"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     split_idx = dataset.get_idx_split()
     data = dataset[0]

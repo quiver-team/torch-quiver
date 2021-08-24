@@ -204,6 +204,7 @@ class quiver<T, CUDA>
       opt_(true, edge_idx != nullptr, true),
       quiver_mode(ZERO_COPY)
     {     
+    	std::cout<<"edge ids is nullptr" << (edge_idx != nullptr) <<std::endl;
     }
 
   public:

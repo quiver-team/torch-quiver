@@ -51,9 +51,7 @@ def test_neighbor_sampler_with_fake_graph():
     start = time.time()
     n_id2, count2 = quiver.sample_neighbor(0, cuda_seeds, neighbor_size)
     print(f"DMA sampling method consumed {time.time() - start}")
-    
-    assert torch.allclose(n_id, n_id2)
-    
+        
     ##############################
     # CPU Sampling
     ##############################

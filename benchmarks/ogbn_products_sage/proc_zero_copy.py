@@ -14,12 +14,37 @@ from kungfu.cmd import launch_multiprocess
 import os
 import os.path as osp
 from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
+from quiver.models.sage_model import SAGE
 import time
-from scipy.sparse import csr_matrix
-import numpy as np
 
 
-class SampleRequest:
+from typing import List, NamedTuple, Optional, Tuple
+
+
+class Adj(NamedTuple):
+    edge_index: torch.Tensor
+    e_id: torch.Tensor
+    size: Tuple[int, int]
+
+    def to(self, *args, **kwargs):
+        return Adj(self.edge_index.to(*args, **kwargs),
+                   self.e_id.to(*args, **kwargs), self.size)
+
+
+class CommConfig:
+    def __init__(self, rank, ws):
+        self.rank = rank
+        self.ws = ws
+
+
+class SyncManager:
+    def __init__(self, ws):
+        self.request_queues = [mp.Queue(64) for i in range(ws)]
+        self.response_queues = [mp.Queue(64) for i in range(ws)]
+        self.peer_barrier = mp.Barrier(ws)
+
+
+class BatchSampleRequest:
     def __init__(self, index, src, dst, nodes, size):
         self.index = index
         self.src = src
@@ -28,7 +53,15 @@ class SampleRequest:
         self.size = size
 
 
-class SampleResponse:
+class SampleRequest:
+    def __init__(self, src, dst, nodes, size):
+        self.src = src
+        self.dst = dst
+        self.nodes = nodes
+        self.size = size
+
+
+class BatchSampleResponse:
     def __init__(self, index, src, dst, outputs, counts):
         self.index = index
         self.src = src
@@ -37,246 +70,67 @@ class SampleResponse:
         self.counts = counts
 
 
-class ReindexRequest:
-    def __init__(self, index, src, dst, reorder, inputs, outputs, counts):
-        self.index = index
+class SampleResponse:
+    def __init__(self, src, dst, outputs, counts):
         self.src = src
         self.dst = dst
-        self.reorder = reorder
-        self.inputs = inputs
         self.outputs = outputs
         self.counts = counts
 
 
-class ReindexResponse:
-    def __init__(self, index, src, dst, nodes, row, col):
-        self.index = index
-        self.src = src
-        self.dst = dst
-        self.nodes = nodes
-        self.row = row
-        self.col = col
-
-
 class FeatureRequest:
-    def __init__(self, index, src, dst, nodes):
-        self.index = index
+    def __init__(self, src, dst, nodes):
         self.src = src
         self.dst = dst
         self.nodes = nodes
 
 
 class FeatureResponse:
-    def __init__(self, index, src, dst, features):
-        self.index = index
+    def __init__(self, src, dst, features):
         self.src = src
         self.dst = dst
         self.features = features
 
 
-class TrainArgs:
-    def __init__(self, batch_size, n_ids, adjs, features):
-        self.batch_size = batch_size
-        self.n_ids = n_ids
-        self.adjs = adjs
-        self.features = features
+class SingleProcess:
+    def __init__(self, num_epoch, num_batch, *args):
+        self.num_epoch = num_epoch
+        self.num_batch = num_batch
+        self.args = args
 
-
-class DataPeerInfo:
-    def __init__(self, local_reindex, global_samplers):
-        self.local_reindex = local_reindex
-        self.global_samplers = global_samplers
-
-
-class CommConfig:
-    def __init__(self, global_rank, group_rank, group_size, group_peers,
-                 downstream_peer, other_peers=None):
-        self.global_rank = global_rank
-        self.group_rank = group_rank
-        self.group_size = group_size
-        self.group_peers = group_peers
-        self.downstream_peer = downstream_peer
-        self.other_peers = other_peers
-
-
-class SyncManager:
-    def __init__(self, num_proc, init_size):
-        # TODO: Init properly
-        self.request_queues = [(mp.Queue(init_size))] * num_proc
-        self.response_queues = [(mp.Queue(init_size))] * num_proc
-        self.upstream_queues = [(mp.Queue(init_size))] * num_proc
-        self.downstream_queues = [(mp.Queue(init_size))] * num_proc
-        self.beg_barrier = mp.Barrier(num_proc + 1)
-        self.end_barrier = mp.Barrier(num_proc + 1)
-
-
-class QuiverProcess:
-    def __init__(self, comm, sync):
-        self.comm = comm
+    def prepare(self, rank, sample_data, train_data, feature_data, sync, comm):
+        csr_mat, batch_size, sizes, train_idx = sample_data
+        device = rank
+        torch.cuda.set_device(device)
+        self.list_size = 10
+        self.sample_count = 0
+        self.handle_time = 0
+        self.sample_time = 0
+        self.reindex_time = 0
+        self.reindex_count = 0
+        self.queue_time = [0, 0, 0, 0]
+        self.queue_count = 0
+        self.request_time = 0
+        self.response_time = 0
+        self.recv_time = 0
+        self.ready = False
         self.sync = sync
-
-    def prepare(self, data):
-        pass
-
-    def __call__(self, data, *args):
-        self.prepare(data)
-        self.sync.beg_barrier.wait()
-        self.run(*args)
-        self.sync.end_barrier.wait()
-
-    def run(self, *args):
-        pass
-
-
-class CudaSamplerProcess(QuiverProcess):
-    def prepare(self, data):
-        device, csr_mat, train_idx, sizes, batch_size = data
+        self.comm = comm
+        self.comm.rank = rank
+        self.train_idx = train_idx
+        self.batch_size = batch_size
         indptr = torch.from_numpy(csr_mat.indptr)
         indices = torch.from_numpy(csr_mat.indices)
         self.loader = AsyncCudaNeighborSampler(csr_indptr=indptr,
                                                csr_indices=indices,
-                                               device=device,
-                                               node_idx=train_idx,
-                                               sizes=sizes,
-                                               batch_size=batch_size,
-                                               shuffle=True)
-
-    def run(self, *args):
-        upstream_queue = self.sync.upstream_queues[self.comm.global_rank]
-        request_queue = self.sync.request_queues[self.comm.global_rank]
-        response_queue = self.sync.response_queues[self.comm.global_rank]
-        downstream_queue = self.sync.downstream_queues[self.comm.global_rank]
-        while True:
-            while not request_queue.empty():
-                req = request_queue.get()
-                nodes, counts = self.loader.sample_layer(req.nodes, req.size)
-                response_queue.put(SampleResponse(
-                    req.index, req.src, req.dst, nodes, counts))
-            while not upstream_queue.empty():
-                req = upstream_queue.get()
-                nodes, row, col = self.loader.reindex(
-                    req.reorder, req.inputs, req.outputs, req.counts)
-                downstream_queue.put(ReindexResponse(
-                    req.index, req.src, req.dst, nodes, row, col))
-
-
-class MicroBatchIndex:
-    def __init__(self, batch_id, rank, size):
-        self.batch_id = batch_id
-        self.rank = rank
-        self.size = size
-
-
-class DataProcess(QuiverProcess):
-    def prepare(self, data):
-        manager, sample_size, feature_size, sizes = data
-        self.manager = manager
-        self.sample_size = sample_size
-        self.feature_size = feature_size
+                                               device=device)
         self.sizes = sizes
-
-    def run(self, *args):
-        pass
-
-    def handle_sample_response(self, sample_response):
-        batch_id = sample_response.index.batch_id
-        rank = sample_response.index.rank
-        size = sample_response.index.size
-        outputs = sample_response.outputs
-        counts = sample_response.counts
-        ret = self.manager.recv_sample(batch_id, rank, size, outputs, counts)
-        if ret is not None:
-            reorder, inputs, outputs, counts = ret
-            index = MicroBatchIndex(batch_id, rank, size)
-            reindex_peer = self.comm.other_peers.local_reindex
-            request = ReindexRequest(
-                index, self.global_rank, reindex_peer, reorder, inputs, outputs, counts)
-            self.sync.upstream_queues[reindex_peer].put(request)
-
-    def handle_reindex_response(self, reindex_response):
-        batch_id = reindex_response.index.batch_id
-        nodes = reindex_response.nodes
-        row = reindex_response.row
-        col = reindex_response.col
-        ret = self.manager.recv_reindex(batch_id, nodes, row, col)
-        nodes, temp_layer = ret
-        if temp_layer >= 0:
-            reorder, res = self.manager.dispatch(
-                nodes, self.sample_size, False)
-            res = self.manager.prepare_request(batch_id, reorder, res, False)
-            global_samplers = self.comm.other_peers.global_samplers
-            for rank, nodes in enumerate(res):
-                index = MicroBatchIndex(batch_id, rank, len(res))
-                req = SamplerRequest(
-                    index, self.comm.global_rank, global_samplers[rank], nodes, self.sizes[temp_layer])
-                self.sync.request_queues[global_samplers[rank]].put(req)
-        else:
-            reorder, res = self.manager.dispatch(
-                nodes, self.feature_size, True)
-            res = self.manager.prepare_request(batch_id, reorder, res, True)
-            group_peers = self.comm.group_peers
-            for rank, nodes in enumerate(res):
-                index = MicroBatchIndex(batch_id, rank, len(res))
-                req = FeatureRequest(
-                    index, self.comm.global_rank, group_peers[rank], nodes)
-                self.sync.request_queues[group_peers[rank]].put(req)
-
-    def handle_feature_request(self, feature_request):
-        index = feature_request.index
-        nodes = feature_request.nodes
-        src = feature_request.src
-        dst = feature_request.dst
-        features = self.manager.features[nodes]
-        response = FeatureResponse(index, src, dst, features)
-        self.sync.response_queues[dst].put(response)
-
-    def handle_feature_response(self, feature_respnse):
-        batch_id = feature_request.index.batch_id
-        features = feature_request.features
-        rank = feature_request.index.rank
-        size = feature_request.index.size
-        features = self.manager.recv_feature(batch_id, rank, size, features)
-        if features:
-            batch_size, n_ids, adjs = self.manager.prepare_train()
-            args = TrainArgs(batch_size, n_ids, adjs, features)
-            trainer = self.comm.downstream_peer
-            self.sync.upstream_queues[trainer].put(args)
-            del self.manager.buffers[batch_id]
-
-
-class SAGE(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
-        super(SAGE, self).__init__()
-
-        self.num_layers = num_layers
-
-        self.convs = torch.nn.ModuleList()
-        self.convs.append(SAGEConv(in_channels, hidden_channels))
-        for _ in range(num_layers - 2):
-            self.convs.append(SAGEConv(hidden_channels, hidden_channels))
-        self.convs.append(SAGEConv(hidden_channels, out_channels))
-
-    def reset_parameters(self):
-        for conv in self.convs:
-            conv.reset_parameters()
-
-    def forward(self, x, adjs):
-        for i, (edge_index, _, size) in enumerate(adjs):
-            x_target = x[:size[1]]  # Target nodes are always placed first.
-            x = self.convs[i]((x, x_target), edge_index)
-            if i != self.num_layers - 1:
-                x = F.relu(x)
-                x = F.dropout(x, p=0.5, training=self.training)
-        return x.log_softmax(dim=-1)
-
-
-class TrainerProcess(QuiverProcess):
-    def prepare(self, data):
-        num_features, num_hidden, num_classes, num_layers, y = data
+        num_features, num_hidden, num_classes, num_layers, y = train_data
         self.y = y
         device = torch.device('cuda:' +
-                              str(self.comm.group_rank) if torch.cuda.is_available() else 'cpu')
+                              str(self.comm.rank) if torch.cuda.is_available() else 'cpu')
         self.device = device
+        self.feature = feature_data.to(device)
         model = SAGE(num_features, num_hidden, num_classes, num_layers)
         model = model.to(device)
         model.reset_parameters()
@@ -289,33 +143,309 @@ class TrainerProcess(QuiverProcess):
         kf.broadcast_parameters(model.state_dict())
         self.optimizer = optimizer
 
-    def run(self, *args):
-        epoch, num_batch = args
-        for i in range(epoch):
+    def dispatch(self, nodes, ws):
+        ranks = torch.fmod(nodes, ws)
+        input_orders = torch.arange(nodes.size(
+            0), dtype=torch.long, device=nodes.device)
+        reorder = torch.empty_like(input_orders)
+        beg = 0
+        res = []
+        for i in range(ws):
+            mask = torch.eq(ranks, i)
+            part_nodes = torch.masked_select(nodes, mask)
+            part_orders = torch.masked_select(input_orders, mask)
+            reorder[beg:beg + part_nodes.size(0)] = part_orders
+            beg += part_nodes.size(0)
+            res.append(part_nodes)
+        return reorder, res
+
+    def batch_sample(self, nodes_list):
+        batch_size_list = [len(nodes) for nodes in nodes_list]
+        nodes_list = [nodes.to(self.device) for nodes in nodes_list]
+        adjs_list = [[] for nodes in nodes_list]
+        for size in self.sizes:
+            total_inputs_list = []
+            sample_reorder_list = []
+            sample_input_list = [None] * (self.comm.ws * self.list_size)
+            sample_results_list = [
+                [None] * self.comm.ws for i in range(self.list_size)]
+            t0 = time.time()
+            for j in range(self.list_size):
+                nodes = nodes_list[j]
+                total_inputs = []
+                sample_reorder, sample_args = self.dispatch(
+                    nodes, self.comm.ws)
+                sample_reorder_list.append(sample_reorder)
+                sample_results = []
+                for rank, part_nodes in enumerate(sample_args):
+                    if rank == self.comm.rank:
+                        sample_input_list[self.comm.rank *
+                                          self.list_size + j] = part_nodes
+                    else:
+                        req = BatchSampleRequest(
+                            j, self.comm.rank, rank, part_nodes, size)
+                        self.sync.request_queues[rank].put(req)
+                    total_inputs.append(part_nodes)
+                total_inputs = torch.cat(total_inputs)
+                total_inputs_list.append(total_inputs)
+            t1 = time.time()
+            for j in range(self.list_size):
+                for i in range(self.comm.ws - 1):
+                    q_beg = time.time()
+                    req = self.sync.request_queues[self.comm.rank].get()
+                    self.queue_count += 1
+                    index = req.index
+                    src = req.src
+                    dst = req.dst
+                    if self.ready:
+                        self.queue_time[src] += time.time() - q_beg
+                    part_nodes = req.nodes.to(self.device)
+                    sample_input_list[src *
+                                      self.list_size + index] = part_nodes
+                    # s_beg = time.time()
+                    # out, cnt = self.loader.sample_layer(part_nodes, size)
+                    # self.sample_time += time.time() - s_beg
+                    # self.sample_count += 1
+                    # resp = SampleResponse(src, dst, out, cnt)
+                    # self.sync.response_queues[src].put(resp)
+            t2 = time.time()
+            batch_sample_input = torch.cat(sample_input_list)
+            batch_out, batch_cnt = self.loader.sample_layer(
+                batch_sample_input, size)
+            t3 = time.time()
+            batch_prefix = torch.cumsum(batch_cnt, dim=0)
+            # [1,2,3,4,5,6,7,8]
+            # [2,2,2,2]
+            # [2,4,6,8]
+            size_beg = 0
+            for i in range(self.comm.ws):
+                for j in range(self.list_size):
+                    single_size = len(
+                        sample_input_list[i * self.list_size + j]) #1
+                    single_cnt = batch_cnt[size_beg: size_beg + single_size] #[2]
+                    if i == 0 and j == 0:
+                        prefix_beg = 0
+                    else:
+                        prefix_beg = batch_prefix[size_beg - 1] #0 2
+                    prefix_end = batch_prefix[size_beg + single_size - 1] #2 4
+                    single_out = batch_out[prefix_beg: prefix_end] # [0:2] 
+                    size_beg += single_size
+                    if i == self.comm.rank:
+                        sample_results_list[j][i] = (single_out, single_cnt)
+                    else:
+                        resp = BatchSampleResponse(
+                            j, i, self.comm.rank, single_out, single_cnt)
+                        self.sync.response_queues[i].put(resp)
+            for i in range(self.comm.ws - 1):
+                for j in range(self.list_size):
+                    q_beg = time.time()
+                    resp = self.sync.response_queues[self.comm.rank].get()
+                    index = resp.index
+                    src = resp.src
+                    dst = resp.dst
+                    out = resp.outputs
+                    cnt = resp.counts
+                    if self.ready:
+                        self.queue_time[src] += time.time() - q_beg
+                    sample_results_list[index][dst] = out.to(
+                        self.device), cnt.to(self.device)
+            t4 = time.time()
+            for j in range(self.list_size):
+                total_outputs = []
+                total_counts = []
+                for out, cnt in sample_results_list[j]:
+                    total_outputs.append(out)
+                    total_counts.append(cnt)
+                total_outputs = torch.cat(total_outputs)
+                total_counts = torch.cat(total_counts)
+                frontier, row_idx, col_idx = self.loader.reindex(
+                    sample_reorder_list[j], total_inputs_list[j], total_outputs, total_counts)
+                self.reindex_count += 1
+                row_idx, col_idx = col_idx, row_idx
+                edge_index = torch.stack([row_idx, col_idx], dim=0)
+
+                adj_size = torch.LongTensor([
+                    frontier.size(0),
+                    nodes_list[j].size(0),
+                ])
+                e_id = torch.tensor([])
+                adjs_list[j].append(Adj(edge_index, e_id, adj_size))
+                nodes_list[j] = frontier
+            t5 = time.time()
+            if self.ready:
+                self.request_time += t1 - t0
+                self.sample_time += t3 - t2
+                self.recv_time += t2 - t1
+                self.handle_time += t4 - t3
+                self.reindex_time += t5 - t4
+            self.ready = True
+        adjs_list = [adjs[::-1] for adjs in adjs_list]
+        return nodes_list, batch_size_list, adjs_list
+
+    def sample(self, nodes):
+        batch_size = len(nodes)
+        nodes = nodes.to(self.device)
+        adjs = []
+        for size in self.sizes:
+            out, cnt = self.loader.sample_layer(nodes, size)
+            frontier, row_idx, col_idx = self.loader.reindex(nodes, out, cnt)
+            row_idx, col_idx = col_idx, row_idx
+            edge_index = torch.stack([row_idx, col_idx], dim=0)
+
+            adj_size = torch.LongTensor([
+                frontier.size(0),
+                nodes.size(0),
+            ])
+            e_id = torch.tensor([])
+            adjs.append(Adj(edge_index, e_id, adj_size))
+            nodes = frontier
+            # t0 = time.time()
+            # total_inputs = []
+            # sample_reorder, sample_args = self.dispatch(nodes, self.comm.ws)
+            # sample_results = []
+            # for rank, part_nodes in enumerate(sample_args):
+            #     if rank == self.comm.rank:
+            #         s_beg = time.time()
+            #         result = self.loader.sample_layer(part_nodes, size)
+            #         self.sample_count += 1
+            #         if self.sample_count > 1:
+            #             self.sample_time += time.time() - s_beg
+            #     else:
+            #         result = None
+            #         req = SampleRequest(self.comm.rank, rank, part_nodes, size)
+            #         self.sync.request_queues[rank].put(req)
+            #     sample_results.append(result)
+            #     total_inputs.append(part_nodes)
+            # total_inputs = torch.cat(total_inputs)
+            # t1 = time.time()
+            # for i in range(self.comm.ws - 1):
+            #     q_beg = time.time()
+            #     req = self.sync.request_queues[self.comm.rank].get()
+            #     self.queue_count += 1
+            #     src = req.src
+            #     dst = req.dst
+            #     if self.queue_count > 4:
+            #         self.queue_time[src] += time.time() - q_beg
+            #     part_nodes = req.nodes.to(self.device)
+            #     # to local
+            #     s_beg = time.time()
+            #     out, cnt = self.loader.sample_layer(part_nodes, size)
+            #     self.sample_time += time.time() - s_beg
+            #     self.sample_count += 1
+            #     # to global
+            #     resp = SampleResponse(src, dst, out, cnt)
+            #     self.sync.response_queues[src].put(resp)
+            # t2 = time.time()
+            # for i in range(self.comm.ws - 1):
+            #     resp = self.sync.response_queues[self.comm.rank].get()
+            #     src = resp.src
+            #     dst = resp.dst
+            #     out = resp.outputs
+            #     cnt = resp.counts
+            #     sample_results[dst] = out.to(self.device), cnt.to(self.device)
+            # total_outputs = []
+            # total_counts = []
+            # t3 = time.time()
+            # for out, cnt in sample_results:
+            #     total_outputs.append(out)
+            #     total_counts.append(cnt)
+            # total_outputs = torch.cat(total_outputs)
+            # total_counts = torch.cat(total_counts)
+            # r_beg = time.time()
+            # frontier, row_idx, col_idx = self.loader.reindex(
+            #     sample_reorder, total_inputs, total_outputs, total_counts)
+            # self.reindex_count += 1
+            # if self.reindex_count > 1:
+            #     self.reindex_time += time.time() - r_beg
+            # row_idx, col_idx = col_idx, row_idx
+            # edge_index = torch.stack([row_idx, col_idx], dim=0)
+
+            # adj_size = torch.LongTensor([
+            #     frontier.size(0),
+            #     nodes.size(0),
+            # ])
+            # e_id = torch.tensor([])
+            # adjs.append(Adj(edge_index, e_id, adj_size))
+            # nodes = frontier
+            # if self.reindex_count > 1:
+            #     self.request_time += t1 - t0
+            #     self.response_time += t2 - t1
+            #     self.recv_time += t3 - t2
+        return nodes, batch_size, adjs[::-1]
+
+    def collect(self, nodes):
+        nodes = nodes.to(self.device)
+        feature_reorder, feature_args = self.dispatch(nodes, self.comm.ws)
+        feature_results = []
+        for rank, part_nodes in enumerate(feature_args):
+            if rank == self.comm.rank:
+                result = self.feature[part_nodes]
+            else:
+                result = None
+                req = FeatureRequest(self.comm.rank, rank, part_nodes)
+                self.sync.request_queues[rank].put(req)
+            feature_results.append(result)
+        for i in range(self.comm.ws - 1):
+            req = self.sync.request_queues[self.comm.rank].get()
+            src = req.src
+            dst = req.dst
+            part_nodes = req.nodes.to(self.device)
+            # to local
+            feature = self.feature[part_nodes]
+            # to global
+            resp = FeatureResponse(src, dst, feature)
+            self.sync.response_queues[src].put(resp)
+        for i in range(self.comm.ws - 1):
+            resp = self.sync.response_queues[self.comm.rank].get()
+            src = resp.src
+            dst = resp.dst
+            feature = resp.features
+            feature_results[dst] = feature.to(self.device)
+        total_features = []
+        for feature in feature_results:
+            total_features.append(feature)
+        feature_beg = time.time()
+        total_features = torch.cat(total_features)
+        feature_end = time.time()
+        total_features[feature_reorder] = total_features
+        # if self.comm.rank == 0:
+        #     print(f'feature cat {feature_end - feature_beg}')
+        return total_features
+
+    def __call__(self, rank):
+        self.prepare(rank, *self.args)
+        dataloader = torch.utils.data.DataLoader(
+            self.train_idx, batch_size=self.batch_size, shuffle=True, drop_last=True)
+        for i in range(self.num_epoch):
             count = 0
-            for j in range(num_batch):
-                count += 1
-                src = self.comm.global_rank
-                sample = self.sync.upstream_queues[src].get()
-                batch_size, n_id, adjs, features = sample
-
-                self.optimizer.zero_grad()
-                out = self.model(features, adjs)
-                label_ids = n_id[:batch_size].to(self.device)
-                loss = F.nll_loss(out, self.y[label_ids].to(self.device))
-                loss.backward()
-                self.optimizer.step()
-                if count >= num_batch:
-                    break
-
-
-class TrainerWrapper:
-    def __init__(self, comm, sync):
-        self.proc = TrainerProcess(comm, sync)
-
-    def __call__(self, rank, *args):
-        self.proc(*args)
-
+            cont = True
+            while cont:
+                nodes_list = []
+                t0 = time.time()
+                for data in dataloader:
+                    n_id, batch_size, adjs = self.sample(data)
+                    t1 = time.time()
+                    features = self.collect(n_id)
+                    t2 = time.time()
+                    self.optimizer.zero_grad()
+                    out = self.model(features, adjs)
+                    label_ids = n_id[:batch_size].to(self.device)
+                    loss = F.nll_loss(out, self.y[label_ids].to(self.device))
+                    loss.backward()
+                    self.optimizer.step()
+                    print(f'rank {self.comm.rank} sample {t1 - t0}')
+                    print(f'rank {self.comm.rank} feature {t2 - t1}')
+                    print(f'rank {self.comm.rank} took {time.time() - t0}')
+                    t0 = time.time()
+                    if count >= self.num_batch:
+                        cont = False
+                        break
+        # print(f'rank {self.comm.rank} sample avg {self.sample_time}')
+        # print(f'rank {self.comm.rank} reindex avg {self.reindex_time}')
+        # print(f'rank {self.comm.rank} request avg {self.request_time}')
+        # print(f'rank {self.comm.rank} handle avg {self.handle_time}')
+        # print(f'rank {self.comm.rank} recv avg {self.recv_time}')
+        # print(f'rank {self.comm.rank} queue avg {self.queue_time}')
 
 def get_csr_from_coo(edge_index):
     src = edge_index[0].numpy()
@@ -324,32 +454,43 @@ def get_csr_from_coo(edge_index):
     data = np.zeros(dst.shape, dtype=np.int32)
     csr_mat = csr_matrix((data, (edge_index[0].numpy(), edge_index[1].numpy())), shape=(node_count, node_count))
     return csr_mat
-    
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
-    sample_comm = CommConfig(0, 0, 1, [], 1)
-    train_comm = CommConfig(1, 0, 1, [], [])
-    sync = SyncManager(2, 32)
-    sample = CudaSamplerProcess(sample_comm, sync)
-    train = TrainerProcess(train_comm, sync)
-    root = "/home/dalong/data"
+    ws = 4
+    num_epoch = 1
+    num_batch = 100
+    batch_size = 128
+    sizes = [15, 10, 5]
+    home = os.getenv('HOME')
+    data_dir = osp.join(home, '.pyg')
+    root = osp.join(data_dir, 'data', 'products')
     dataset = PygNodePropPredDataset('ogbn-products', root)
     split_idx = dataset.get_idx_split()
-    evaluator = Evaluator(name='ogbn-products')
     data = dataset[0]
-    
-    csr_mat = get_csr_from_coo(data.edge_index)
-    
     train_idx = split_idx['train']
-    sampler_proc = mp.Process(target=sample, args=(
-        (0, csr_mat, train_idx, [15, 10, 5], 512), 1, 385))
-    trainer_proc = mp.Process(target=train, args=(
-        (dataset.num_features, 256, dataset.num_classes, 3, data.x, data.y), 1, 385))
-    sampler_proc.start()
-    trainer_proc.start()
-    sync.beg_barrier.wait()
-    print('begin')
-    t0 = time.time()
-    sync.end_barrier.wait()
-    print(f'total took {time.time() - t0}')
+    edge_index = data.edge_index
+    csr_mat = get_csr_from_coo(edge_index)
+    x, y = data.x.share_memory_(), data.y.squeeze().share_memory_()
+    sample_data = csr_mat, batch_size, sizes, train_idx
+    train_data = dataset.num_features, 256, dataset.num_classes, 3, y
+    comm = CommConfig(0, ws)
+    sync = SyncManager(ws)
+    proc = SingleProcess(num_epoch, num_batch, sample_data,
+                         train_data, x, sync, comm)
+    procs = launch_multiprocess(proc, ws)
+    time.sleep(50)
+    for p in procs:
+        p.kill()
+
+
+'''
+
+def get_csr_from_coo(edge_index):
+    src = edge_index[0].numpy()
+    dst = edge_index[1].numpy()
+    node_count = max(np.max(src), np.max(dst))
+    data = np.zeros(dst.shape, dtype=np.int32)
+    csr_mat = csr_matrix((data, (edge_index[0].numpy(), edge_index[1].numpy())), shape=(node_count, node_count))
+    return csr_mat
+'''

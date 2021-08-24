@@ -330,7 +330,7 @@ if __name__ == '__main__':
     sample_comm = CommConfig(0, 0, 1, [], 1)
     train_comm = CommConfig(1, 0, 1, [], [])
     sync = SyncManager(2, 32)
-    sample = SamplerProcess(sample_comm, sync)
+    sample = CudaSamplerProcess(sample_comm, sync)
     train = TrainerProcess(train_comm, sync)
     root = "/home/dalong/data"
     dataset = PygNodePropPredDataset('ogbn-products', root)

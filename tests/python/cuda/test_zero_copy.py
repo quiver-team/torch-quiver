@@ -71,6 +71,7 @@ def test_neighbor_sampler_with_real_graph():
     neighbor_size = 5
     
     csr_mat = get_csr_from_coo(edge_index)
+    print(f"mean degree of graph = {np.mean(csr_mat.indptr[1:] - csr_mat.indptr[:-1])}")
     graph_size = csr_mat.indptr.shape[0] - 1
     seeds = np.arange(graph_size)
     np.random.shuffle(seeds)

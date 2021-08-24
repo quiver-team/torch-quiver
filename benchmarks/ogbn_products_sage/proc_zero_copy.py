@@ -17,7 +17,7 @@ from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
 from quiver.models.sage_model import SAGE
 import time
 import numpy as np
-from scipy.sparse import csr_matrix¶
+from scipy.sparse import csr_matrix
 
 from typing import List, NamedTuple, Optional, Tuple
 

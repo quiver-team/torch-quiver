@@ -47,7 +47,7 @@ def test_neighbor_full_sampler_cuda():
     ##############################
     quiver = qv.cpu_quiver_from_edge_index(graph_size, edge_index)
     start = time.time()
-    n_id3, count3 = quiver.sample_neighbor(0, seeds, neighbor_size)
+    n_id3, count3 = quiver.sample_neighbor(seeds, neighbor_size)
     print(f"CPU sampling method consumed {time.time() - start}")
     
     

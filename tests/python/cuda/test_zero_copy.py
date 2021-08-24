@@ -23,7 +23,6 @@ def test_neighbor_full_sampler_cuda():
     cuda_seeds = seeds.cuda()
     start = time.time()
     n_id, count = quiver.sample_neighbor(0, cuda_seeds, neighbor_size)
-    print(f"check res shape = {n_id.shape}, res device = {n_id.device}")
     print(f"Zero-Copy sampling method consumed {time.time() - start}")
     
     ##########################
@@ -39,8 +38,9 @@ def test_neighbor_full_sampler_cuda():
     quiver = qv.new_quiver_from_edge_index(graph_size, edge_index, edge_ids, 0)
     start = time.time()
     n_id2, count2 = quiver.sample_neighbor(0, cuda_seeds, neighbor_size)
-    print(f"check res shape = {n_id2.shape}, res device = {n_id2.device}")
     print(f"DMA sampling method consumed {time.time() - start}")
+    
+    assert torch.allclose(n_id, n_id2)
     
     
     

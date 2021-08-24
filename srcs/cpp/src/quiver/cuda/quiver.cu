@@ -120,7 +120,6 @@ void replicate_fill(size_t n, const T *counts, const T *values, T *outputs)
         outputs += c;
     }
 }
-enum QuiverMode{DMA, ZERO_COPY, PAGE_MIGRATION};
 
 class TorchQuiver
 {
@@ -540,9 +539,7 @@ reindex_all(torch::Tensor orders, torch::Tensor inputs, torch::Tensor outputs,
 TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
                                       py::array_t<int64_t> &input_indices,
                                       py::array_t<int64_t> &input_edge_idx,
-                                      int device = 0,
-                                      // mode in {DMA, ZERO_COPY, PAGE_MIGRATION}
-                                      QuiverMode quiver_mode = ZERO_COPY
+                                      int device = 0
                                       )
 {
     py::buffer_info indptr = input_indptr.request();
@@ -558,48 +555,44 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
 
     bool use_eid = input_edge_idx.shape[0] == edge_count;
 
+    /*
+    In Zero-Copy Mode, We Do These Steps:
+    1. Register Buffer As Mapped Pinned Memory
+    2. Get Device Pointer In GPU Memory Space
+    3. Intiliaze A Quiver Instance And Return
+    */
 
-    if(quiver_mode == ZERO_COPY){
+    T* indptr_device_pointer;
+    T* indices_device_pointer;
+    T* edge_id_device_pointer;
+    {
+        const T *indptr_original = reinterpret_cast<const T *>(indptr.ptr);
+        // Register Buffer As Mapped Pinned Memory
+        cudaHostRegister(indptr_original, sizeof(T) * node_count, cudaHostRegisterMapped);
+        // Get Device Pointer In GPU Memory Space
+        cudaHostGetDevicePointer((void**)&indptr_device_pointer, indptr_original, 0);
 
-        /*
-        In Zero-Copy Mode, We Do These Steps:
-        1. Register Buffer As Mapped Pinned Memory
-        2. Get Device Pointer In GPU Memory Space
-        3. Intiliaze A Quiver Instance And Return
-        */
-
-        T* indptr_device_pointer;
-        T* indices_device_pointer;
-        T* edge_id_device_pointer;
-        {
-            const T *indptr_original = reinterpret_cast<const T *>(indptr.ptr);
-            // Register Buffer As Mapped Pinned Memory
-            cudaHostRegister(indptr_original, sizeof(T) * node_count, cudaHostRegisterMapped);
-            // Get Device Pointer In GPU Memory Space
-            cudaHostGetDevicePointer((void**)&indptr_device_pointer, indptr_original, 0);
-
-        }
-        {
-            const T *indices_original = reinterpret_cast<const T *>(indices.ptr);
-            // Register Buffer As Mapped Pinned Memory
-            cudaHostRegister(indices_original, sizeof(T) * edge_count, cudaHostRegisterMapped);
-            // Get Device Pointer In GPU Memory Space
-            cudaHostGetDevicePointer((void**)&indptr_device_pointer, indices_original, 0);
-        }
-        if(use_eid){
-            const T *id_original = reinterpret_cast<const T *>(edge_idx.ptr);
-            // Register Buffer As Mapped Pinned Memory
-            cudaHostRegister(id_original, sizeof(T) * edge_count, cudaHostRegisterMapped);
-            // Get Device Pointer In GPU Memory Space
-            cudaHostGetDevicePointer((void**)&edge_id_device_pointer, id_original, 0);
-           
-        }
-        // initialize Quiver instance 
-        using Q = quiver<int64_t, CUDA>;
-        Q quiver = Q::New(static_cast<T>(n), std::move(row_idx), std::move(col_idx), std::move(edge_idx_));
-
+    }
+    {
+        const T *indices_original = reinterpret_cast<const T *>(indices.ptr);
+        // Register Buffer As Mapped Pinned Memory
+        cudaHostRegister(indices_original, sizeof(T) * edge_count, cudaHostRegisterMapped);
+        // Get Device Pointer In GPU Memory Space
+        cudaHostGetDevicePointer((void**)&indptr_device_pointer, indices_original, 0);
+    }
+    if(use_eid){
+        const T *id_original = reinterpret_cast<const T *>(edge_idx.ptr);
+        // Register Buffer As Mapped Pinned Memory
+        cudaHostRegister(id_original, sizeof(T) * edge_count, cudaHostRegisterMapped);
+        // Get Device Pointer In GPU Memory Space
+        cudaHostGetDevicePointer((void**)&edge_id_device_pointer, id_original, 0);
         
     }
+    // initialize Quiver instance 
+    using Q = quiver<int64_t, CUDA>;
+    Q quiver = Q::New(indptr_device_pointer, indices_device_pointer, edge_id_device_pointer, node_count, edge_count);
+    return TorchQuiver(std::move(quiver), device);
+
 
 }
 // TODO: remove `n` and reuse code
@@ -798,6 +791,7 @@ void register_cuda_quiver(pybind11::module &m)
     m.def("reindex_all", &quiver::reindex_all);
     m.def("reindex_single", &quiver::reindex_single);
     m.def("new_quiver_from_edge_index", &quiver::new_quiver_from_edge_index);
+    m.def("new_quiver_from_csr_array", &quiver::new_quiver_from_csr_array);
     m.def("new_quiver_from_edge_index_weight",
           &quiver::new_quiver_from_edge_index_weight);
     py::class_<quiver::TorchQuiver>(m, "Quiver")

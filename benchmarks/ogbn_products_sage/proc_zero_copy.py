@@ -332,9 +332,7 @@ if __name__ == '__main__':
     sync = SyncManager(2, 32)
     sample = SamplerProcess(sample_comm, sync)
     train = TrainerProcess(train_comm, sync)
-    home = os.getenv('HOME')
-    data_dir = osp.join(home, '.pyg')
-    root = osp.join(data_dir, 'data', 'products')
+    root = "/home/dalong/data"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     split_idx = dataset.get_idx_split()
     evaluator = Evaluator(name='ogbn-products')

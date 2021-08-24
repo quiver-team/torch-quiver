@@ -550,11 +550,9 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
     py::buffer_info edge_idx = input_edge_idx.request();
 
     check_eq<int64_t>(indptr.ndim, 1);
-    check_eq<int64_t>(indptr.shape[0], 1);
     const size_t node_count = indptr.shape[0];
 
     check_eq<int64_t>(indices.ndim, 1);
-    check_eq<int64_t>(indices.shape[0], 1);
     const size_t edge_count = indices.shape[0];
 
     bool use_eid = edge_idx.shape[0] == edge_count;

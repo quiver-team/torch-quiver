@@ -15,6 +15,7 @@ def get_csr_from_coo(edge_index):
     return csr_mat
 
 def test_neighbor_sampler_with_fake_graph():
+    print(f"{'*' * 10} TEST WITH FAKE GRAPH {'*' * 10}")
     graph_size = 10000
     seed_size = 2048   
     neighbor_size = 20
@@ -114,7 +115,7 @@ def test_neighbor_sampler_with_real_graph():
     
     
     
-#test_neighbor_sampler_with_fake_graph()
+test_neighbor_sampler_with_fake_graph()
 test_neighbor_sampler_with_real_graph()
     
     

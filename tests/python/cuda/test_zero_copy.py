@@ -72,8 +72,8 @@ def test_neighbor_sampler_with_real_graph():
     neighbor_size = 5
     
     csr_mat = get_csr_from_coo(edge_index)
-    graph_size = csr_mat[0].shape[0] - 1
-    seeds = np.random.randint(csr_mat[0].shape[0], size=seeds_size)
+    graph_size = csr_mat.indptr.shape[0] - 1
+    seeds = np.random.randint(graph_size, size=seeds_size)
     
     ###########################
     # Zero-Copy Sampling
@@ -114,7 +114,7 @@ def test_neighbor_sampler_with_real_graph():
     
     
     
-test_neighbor_sampler_with_fake_graph()
+#test_neighbor_sampler_with_fake_graph()
 test_neighbor_sampler_with_real_graph()
     
     

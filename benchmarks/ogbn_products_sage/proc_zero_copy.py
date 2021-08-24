@@ -120,7 +120,7 @@ class SingleProcess:
         self.comm.rank = rank
         self.train_idx = train_idx
         self.batch_size = batch_size
-        indptr = torch.from_numpy(csr_mat.indptr).type(torch.long)
+        indptr = torch.from_numpy(csr_mat.indptr[:-1]).type(torch.long)
         indices = torch.from_numpy(csr_mat.indices).type(torch.long)
         print("check load once")
         self.loader = AsyncCudaNeighborSampler(csr_indptr=indptr,
@@ -481,6 +481,7 @@ if __name__ == '__main__':
                          train_data, x, sync, comm)
     procs = launch_multiprocess(proc, ws)
     time.sleep(50)
+    print(clean)
     for p in procs:
         p.kill()
 

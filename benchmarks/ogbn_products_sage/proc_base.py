@@ -447,7 +447,7 @@ class SingleProcess:
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
-    ws = 1
+    ws = 2
     num_epoch = 1
     num_batch = 100
     batch_size = 128

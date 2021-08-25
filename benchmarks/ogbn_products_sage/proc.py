@@ -388,9 +388,9 @@ if __name__ == '__main__':
     num_epoch = 1
     num_batch = 100
     batch_size = 128
-    sampler_size = 2
-    trainer_size = 2
-    data_size = 2
+    sampler_size = 1
+    trainer_size = 1
+    data_size = 1
     global_size = sampler_size + data_size + trainer_size
     global_rank = 0
     sample_comms = []
@@ -399,7 +399,7 @@ if __name__ == '__main__':
     home = os.getenv('HOME')
     data_dir = osp.join(home, '.pyg')
     root = osp.join(data_dir, 'data', 'products')
-    root = "/home/dalong/data"
+    root = "/home/dalong/data/"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     split_idx = dataset.get_idx_split()
     evaluator = Evaluator(name='ogbn-products')

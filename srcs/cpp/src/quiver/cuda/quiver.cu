@@ -5,6 +5,8 @@
 
 #include <pybind11/numpy.h>
 #include <torch/extension.h>
+#include <numa.h>
+#include <sys/mman.h>
 
 #include <quiver/common.hpp>
 #include <quiver/functor.cu.hpp>
@@ -543,6 +545,15 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
                                       bool copy=true
                                       )
 {
+    // Bind Process To NUMA Node
+    int total_numa_nodes = numa_num_configured_nodes();
+    char nodeString[10];
+    int numa_node = device % total_numa_nodes;
+    sprintf(nodeString, "%d", numa_node);
+    struct bitmask *nodemask = numa_parse_nodestring(nodeString);
+    numa_bind(nodemask);
+
+
     cudaSetDevice(device);
     TRACE_SCOPE(__func__);
 
@@ -581,7 +592,7 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
             cudaHostGetDevicePointer((void**)&indptr_device_pointer, (void*)indptr_original, 0);
         }else{
             const T *indptr_original = reinterpret_cast<const T *>(indptr.ptr);
-            const T *indptr_copy = (const T *) malloc(sizeof(T) * node_count);
+            const T *indptr_copy = (const T *) numa_alloc_local(sizeof(T) * node_count);
             memcpy((void*)indptr_copy, (void *)indptr_original, sizeof(T) * node_count);
 
             // Register Buffer As Mapped Pinned Memory
@@ -601,7 +612,7 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
             cudaHostGetDevicePointer((void**)&indices_device_pointer, (void*)indices_original, 0);
         }else{
             const T *indices_original = reinterpret_cast<const T *>(indices.ptr);
-            const T *indices_copy = (const T *) malloc(sizeof(T) * edge_count);
+            const T *indices_copy = (const T *) numa_alloc_local(sizeof(T) * edge_count);
             memcpy((void*)indices_copy, (void *)indices_original, sizeof(T) * edge_count);
 
              // Register Buffer As Mapped Pinned Memory
@@ -621,7 +632,7 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
             cudaHostGetDevicePointer((void**)&edge_id_device_pointer, (void*)id_original, 0);
         }else{
             const T *id_original = reinterpret_cast<const T *>(edge_idx.ptr);
-            const T *id_copy = (const T *) malloc(sizeof(T) * edge_count);
+            const T *id_copy = (const T *) numa_alloc_local(sizeof(T) * edge_count);
             memcpy((void*)id_copy, (void *)id_original, sizeof(T) * edge_count);
 
             // Register Buffer As Mapped Pinned Memory

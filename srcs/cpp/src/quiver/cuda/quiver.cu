@@ -539,7 +539,8 @@ reindex_all(torch::Tensor orders, torch::Tensor inputs, torch::Tensor outputs,
 TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
                                       py::array_t<int64_t> &input_indices,
                                       py::array_t<int64_t> &input_edge_idx,
-                                      int device = 0
+                                      int device = 0,
+                                      bool copy=true
                                       )
 {
     cudaSetDevice(device);
@@ -561,38 +562,73 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
 
     /*
     In Zero-Copy Mode, We Do These Steps:
+    0. Copy The Data If Needed 
     1. Register Buffer As Mapped Pinned Memory
     2. Get Device Pointer In GPU Memory Space
     3. Intiliaze A Quiver Instance And Return
     */
 
+
     T* indptr_device_pointer = nullptr;
     T* indices_device_pointer = nullptr;
     T* edge_id_device_pointer = nullptr;
     {
-        const T *indptr_original = reinterpret_cast<const T *>(indptr.ptr);
-        // Register Buffer As Mapped Pinned Memory
-        cudaHostRegister((void*)indptr_original, sizeof(T) * node_count, cudaHostRegisterMapped);
-        // Get Device Pointer In GPU Memory Space
-        cudaHostGetDevicePointer((void**)&indptr_device_pointer, (void*)indptr_original, 0);
+        if(!copy){
+            const T *indptr_original = reinterpret_cast<const T *>(indptr.ptr);
+            // Register Buffer As Mapped Pinned Memory
+            cudaHostRegister((void*)indptr_original, sizeof(T) * node_count, cudaHostRegisterMapped);
+            // Get Device Pointer In GPU Memory Space
+            cudaHostGetDevicePointer((void**)&indptr_device_pointer, (void*)indptr_original, 0);
+        }else{
+            const T *indptr_original = reinterpret_cast<const T *>(indptr.ptr);
+            const T *indptr_copy = (const T *) malloc(sizeof(T) * node_count);
+            memcpy((const void*)indptr_copy, (const void *)indptr_original, sizeof(T) * node_count);
+
+            // Register Buffer As Mapped Pinned Memory
+            cudaHostRegister((void*)indptr_copy, sizeof(T) * node_count, cudaHostRegisterMapped);
+            // Get Device Pointer In GPU Memory Space
+            cudaHostGetDevicePointer((void**)&indptr_device_pointer, (void*)indptr_copy, 0);
+        }
 
     }
     //std::cout<<"mapped indptr"<<std::endl;
     {
-        const T *indices_original = reinterpret_cast<const T *>(indices.ptr);
-        // Register Buffer As Mapped Pinned Memory
-        cudaHostRegister((void*)indices_original, sizeof(T) * edge_count, cudaHostRegisterMapped);
-        // Get Device Pointer In GPU Memory Space
-        cudaHostGetDevicePointer((void**)&indices_device_pointer, (void*)indices_original, 0);
+        if(!copy){
+            const T *indices_original = reinterpret_cast<const T *>(indices.ptr);
+            // Register Buffer As Mapped Pinned Memory
+            cudaHostRegister((void*)indices_original, sizeof(T) * edge_count, cudaHostRegisterMapped);
+            // Get Device Pointer In GPU Memory Space
+            cudaHostGetDevicePointer((void**)&indices_device_pointer, (void*)indices_original, 0);
+        }else{
+            const T *indices_original = reinterpret_cast<const T *>(indices.ptr);
+            const T *indices_copy = (const T *) malloc(sizeof(T) * edge_count);
+            memcpy((const void*)indices_copy, (const void *)indices_original, sizeof(T) * edge_count);
+
+             // Register Buffer As Mapped Pinned Memory
+             cudaHostRegister((void*)indices_copy, sizeof(T) * edge_count, cudaHostRegisterMapped);
+             // Get Device Pointer In GPU Memory Space
+             cudaHostGetDevicePointer((void**)&indices_device_pointer, (void*)indices_copy, 0);
+        }
     }
 
     //std::cout<<"mapped indices"<<std::endl;
     if(use_eid){
-        const T *id_original = reinterpret_cast<const T *>(edge_idx.ptr);
-        // Register Buffer As Mapped Pinned Memory
-        cudaHostRegister((void*)id_original, sizeof(T) * edge_count, cudaHostRegisterMapped);
-        // Get Device Pointer In GPU Memory Space
-        cudaHostGetDevicePointer((void**)&edge_id_device_pointer, (void*)id_original, 0);
+        if(!copy){
+            const T *id_original = reinterpret_cast<const T *>(edge_idx.ptr);
+            // Register Buffer As Mapped Pinned Memory
+            cudaHostRegister((void*)id_original, sizeof(T) * edge_count, cudaHostRegisterMapped);
+            // Get Device Pointer In GPU Memory Space
+            cudaHostGetDevicePointer((void**)&edge_id_device_pointer, (void*)id_original, 0);
+        }else{
+            const T *id_original = reinterpret_cast<const T *>(edge_idx.ptr);
+            const T *id_copy = (const T *) malloc(sizeof(T) * edge_count);
+            memcpy((const void*)id_copy, (const void *)id_original, sizeof(T) * edge_count);
+
+            // Register Buffer As Mapped Pinned Memory
+            cudaHostRegister((void*)id_copy, sizeof(T) * edge_count, cudaHostRegisterMapped);
+            // Get Device Pointer In GPU Memory Space
+            cudaHostGetDevicePointer((void**)&edge_id_device_pointer, (void*)id_copy, 0);
+        }
         
     }
 

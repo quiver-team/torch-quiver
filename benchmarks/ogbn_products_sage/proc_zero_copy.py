@@ -101,8 +101,13 @@ class SingleProcess:
         self.args = args
 
     def prepare(self, rank, sample_data, train_data, feature_data, sync, comm):
+        #####################################################################################################
+        # Bind Task To NUMA Node And Sleep 1s So That Next Time This Processing Is Runing On Target NUMA Node
+        #####################################################################################################
         total_nodes = info.get_max_node() + 1
         schedule.run_on_nodes(rank % total_nodes)
+        time.sleep(1)
+        
         csr_mat, batch_size, sizes, train_idx = sample_data
         device = rank
         torch.cuda.set_device(device)
@@ -128,7 +133,7 @@ class SingleProcess:
         self.loader = AsyncCudaNeighborSampler(csr_indptr=self.indptr,
                                                csr_indices=self.indices,
                                                device=device,
-                                               copy=False)
+                                               copy=True)
         self.sizes = sizes
         num_features, num_hidden, num_classes, num_layers, y = train_data
         self.y = y

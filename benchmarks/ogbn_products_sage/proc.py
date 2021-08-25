@@ -18,6 +18,8 @@ from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
 import time
 
 
+DEVICE_NUM = 4
+
 class InputRequest:
     def __init__(self, index, nodes, size, total_layer, sample_device, reindex_device, train_device):
         self.index = index
@@ -378,7 +380,7 @@ def identity(x, y, z):
 
 
 def rank_func(x):
-    return torch.fmod(x, 4)
+    return torch.fmod(x, DEVICE_NUM)
 
 
 if __name__ == '__main__':
@@ -388,9 +390,10 @@ if __name__ == '__main__':
     num_epoch = 1
     num_batch = 100
     batch_size = 128
-    sampler_size = 4
-    trainer_size = 4
-    data_size = 4
+    
+    sampler_size = DEVICE_NUM
+    trainer_size = DEVICE_NUM
+    data_size = DEVICE_NUM
     global_size = sampler_size + data_size + trainer_size
     global_rank = 0
     sample_comms = []
@@ -454,7 +457,6 @@ if __name__ == '__main__':
     dst_data = 0
     count = 0
     sync.beg_barrier.wait()
-    del feature
     print('procs beg')
     for nodes in dataloader:
         index = MicroBatchIndex(count, 0, 1)

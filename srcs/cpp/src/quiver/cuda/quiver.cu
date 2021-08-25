@@ -582,7 +582,7 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
         }else{
             const T *indptr_original = reinterpret_cast<const T *>(indptr.ptr);
             const T *indptr_copy = (const T *) malloc(sizeof(T) * node_count);
-            memcpy((const void*)indptr_copy, (const void *)indptr_original, sizeof(T) * node_count);
+            memcpy((void*)indptr_copy, (void *)indptr_original, sizeof(T) * node_count);
 
             // Register Buffer As Mapped Pinned Memory
             cudaHostRegister((void*)indptr_copy, sizeof(T) * node_count, cudaHostRegisterMapped);
@@ -602,7 +602,7 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
         }else{
             const T *indices_original = reinterpret_cast<const T *>(indices.ptr);
             const T *indices_copy = (const T *) malloc(sizeof(T) * edge_count);
-            memcpy((const void*)indices_copy, (const void *)indices_original, sizeof(T) * edge_count);
+            memcpy((void*)indices_copy, (void *)indices_original, sizeof(T) * edge_count);
 
              // Register Buffer As Mapped Pinned Memory
              cudaHostRegister((void*)indices_copy, sizeof(T) * edge_count, cudaHostRegisterMapped);
@@ -622,7 +622,7 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
         }else{
             const T *id_original = reinterpret_cast<const T *>(edge_idx.ptr);
             const T *id_copy = (const T *) malloc(sizeof(T) * edge_count);
-            memcpy((const void*)id_copy, (const void *)id_original, sizeof(T) * edge_count);
+            memcpy((void*)id_copy, (void *)id_original, sizeof(T) * edge_count);
 
             // Register Buffer As Mapped Pinned Memory
             cudaHostRegister((void*)id_copy, sizeof(T) * edge_count, cudaHostRegisterMapped);

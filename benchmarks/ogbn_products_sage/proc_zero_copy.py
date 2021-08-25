@@ -122,10 +122,10 @@ class SingleProcess:
         self.batch_size = batch_size
         self.indptr = torch.from_numpy(csr_mat.indptr[:-1]).type(torch.long)
         self.indices = torch.from_numpy(csr_mat.indices).type(torch.long)
-        print("check load once")
         self.loader = AsyncCudaNeighborSampler(csr_indptr=self.indptr,
                                                csr_indices=self.indices,
-                                               device=device)
+                                               device=device,
+                                               copy=False)
         self.sizes = sizes
         num_features, num_hidden, num_classes, num_layers, y = train_data
         self.y = y

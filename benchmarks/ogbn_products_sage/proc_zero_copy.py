@@ -106,6 +106,7 @@ class SingleProcess:
         #####################################################################################################
         total_nodes = info.get_max_node() + 1
         schedule.run_on_nodes(rank % total_nodes)
+        print("LOG >>> Rank {rank} Is Bind To NUMA Node {rank % total_nodes}/{total_nodes}")
         time.sleep(1)
         
         csr_mat, batch_size, sizes, train_idx = sample_data

@@ -57,6 +57,7 @@ def create_extension(with_cuda=False):
             'nvcc': [
                 '-O3',
                 '--expt-extended-lambda',
+                '-lnuma'
             ],
         },
     )

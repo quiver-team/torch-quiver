@@ -105,7 +105,7 @@ class SingleProcess:
         # Bind Task To NUMA Node And Sleep 1s So That Next Time This Processing Is Runing On Target NUMA Node
         #####################################################################################################
         total_nodes = info.get_max_node() + 1
-        schedule.run_on_nodes(rank % total_nodes)
+        schedule.bind(rank % total_nodes)
         print(f"LOG >>> Rank {rank} Is Bind To NUMA Node {rank % total_nodes}/{total_nodes}")
         time.sleep(1)
         

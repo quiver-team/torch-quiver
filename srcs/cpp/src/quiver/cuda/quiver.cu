@@ -542,7 +542,8 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
                                       py::array_t<int64_t> &input_indices,
                                       py::array_t<int64_t> &input_edge_idx,
                                       int device = 0,
-                                      bool copy=true
+                                      bool copy=true,
+                                      bool numa_alloc=false
                                       )
 {
 
@@ -562,6 +563,13 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
     const size_t edge_count = indices.shape[0];
 
     bool use_eid = edge_idx.shape[0] == edge_count;
+
+    void* (*malloc_func)(size_t size);
+    if(numa_alloc){
+        malloc_func = numa_alloc_local;
+    }else{
+        malloc_func = malloc;
+    }
 
     /*
     In Zero-Copy Mode, We Do These Steps:
@@ -584,7 +592,7 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
             cudaHostGetDevicePointer((void**)&indptr_device_pointer, (void*)indptr_original, 0);
         }else{
             const T *indptr_original = reinterpret_cast<const T *>(indptr.ptr);
-            const T *indptr_copy = (const T *) malloc(sizeof(T) * node_count);
+            const T *indptr_copy = (const T *) malloc_func(sizeof(T) * node_count);
             memcpy((void*)indptr_copy, (void *)indptr_original, sizeof(T) * node_count);
 
             // Register Buffer As Mapped Pinned Memory
@@ -604,7 +612,7 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
             cudaHostGetDevicePointer((void**)&indices_device_pointer, (void*)indices_original, 0);
         }else{
             const T *indices_original = reinterpret_cast<const T *>(indices.ptr);
-            const T *indices_copy = (const T *) malloc(sizeof(T) * edge_count);
+            const T *indices_copy = (const T *) malloc_func(sizeof(T) * edge_count);
             memcpy((void*)indices_copy, (void *)indices_original, sizeof(T) * edge_count);
 
              // Register Buffer As Mapped Pinned Memory
@@ -624,7 +632,7 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
             cudaHostGetDevicePointer((void**)&edge_id_device_pointer, (void*)id_original, 0);
         }else{
             const T *id_original = reinterpret_cast<const T *>(edge_idx.ptr);
-            const T *id_copy = (const T *) malloc(sizeof(T) * edge_count);
+            const T *id_copy = (const T *) malloc_func(sizeof(T) * edge_count);
             memcpy((void*)id_copy, (void *)id_original, sizeof(T) * edge_count);
 
             // Register Buffer As Mapped Pinned Memory

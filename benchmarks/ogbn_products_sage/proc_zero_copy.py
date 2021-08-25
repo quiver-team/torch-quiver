@@ -20,6 +20,7 @@ import numpy as np
 from scipy.sparse import csr_matrix
 
 from typing import List, NamedTuple, Optional, Tuple
+from numa import schedule, info
 
 
 class Adj(NamedTuple):
@@ -100,6 +101,8 @@ class SingleProcess:
         self.args = args
 
     def prepare(self, rank, sample_data, train_data, feature_data, sync, comm):
+        total_nodes = info.get_max_node() + 1
+        schedule.run_on_nodes(rank % total_nodes)
         csr_mat, batch_size, sizes, train_idx = sample_data
         device = rank
         torch.cuda.set_device(device)

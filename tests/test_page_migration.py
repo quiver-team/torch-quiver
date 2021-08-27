@@ -7,10 +7,11 @@ import time
 from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
 from scipy.sparse import csr_matrix
 from torch.profiler import profile, record_function, ProfilerActivity
-
+from memory_profiler import profile
 pool = cp.cuda.MemoryPool(cp.cuda.malloc_managed)
 cp.cuda.set_allocator(pool.malloc)
 
+@profile 
 def test_neighbor_sampler_with_real_graph():
     print(f"{'*' * 10} TEST WITH REAL GRAPH {'*' * 10}")
     root = "/home/dalong/data/"
@@ -20,9 +21,8 @@ def test_neighbor_sampler_with_real_graph():
     shape = x.shape
     array = x.numpy()
     with profile(activities=[ProfilerActivity.CUDA, ProfilerActivity.CPU], profile_memory=True, record_shapes=True) as prof:
-        def fn():
-            x_numa = cp.random.random(shape, dtype=np.float32)
-            x = torch.as_tensor(x_numa)
-        fn()
+        x_numa = cp.random.random(shape, dtype=np.float32)
+        x = torch.as_tensor(x_numa)
+    print(prof.key_averages().table(row_limit=10))
     
 test_neighbor_sampler_with_real_graph

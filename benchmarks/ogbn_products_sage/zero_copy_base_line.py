@@ -31,9 +31,10 @@ from scipy.sparse import csr_matrix
 
 from typing import List, NamedTuple, Optional, Tuple
 from numa import schedule, info
-
+import time
 
 root = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'products')
+root = "/home/dalong/data/"
 dataset = PygNodePropPredDataset('ogbn-products', root)
 split_idx = dataset.get_idx_split()
 evaluator = Evaluator(name='ogbn-products')
@@ -127,10 +128,11 @@ def get_csr_from_coo(edge_index):
     return csr_mat
 
 csr_mat = get_csr_from_coo(data.edge_index)
-sampler = AsyncCudaNeighborSampler(csr_indptr= csr_mat.ndptr, csr_indices=csr_mat.indices, device=device, copy=True)
+sampler = AsyncCudaNeighborSampler(csr_indptr= csr_mat.indptr, csr_indices=csr_mat.indices, device=0, copy=True)
 
-
-train_loader = torch.utils.data.DataLoader( data.train_idx, batch_size= 1024, shuffle=True, drop_last=True)
+split_idx = dataset.get_idx_split()
+train_idx = split_idx['train']
+train_loader = torch.utils.data.DataLoader(train_idx, batch_size= 4096, shuffle=True, drop_last=True)
 
 model = SAGE(dataset.num_features, 256, dataset.num_classes, num_layers=3)
 model = model.to(device)
@@ -167,16 +169,16 @@ def train(epoch):
 
     total_loss = total_correct = 0
     for seeds in train_loader:
+        start_time = time.time()
         n_id, batch_size, adjs = sample(seeds, [15, 10, 5])
-        # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
-        adjs = [adj.to(device) for adj in adjs]
-
+        
+        print(f"sample consumed = {time.time() - start_time}")
         optimizer.zero_grad()
         out = model(x[n_id], adjs)
         loss = F.nll_loss(out, y[n_id[:batch_size]])
         loss.backward()
         optimizer.step()
-
+        print(f"iteration_time = {time.time() - start_time}")
         total_loss += float(loss)
         total_correct += int(out.argmax(dim=-1).eq(y[n_id[:batch_size]]).sum())
         pbar.update(batch_size)

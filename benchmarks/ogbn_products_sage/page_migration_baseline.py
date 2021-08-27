@@ -139,10 +139,8 @@ train_loader = torch.utils.data.DataLoader(train_idx, batch_size= 4096, shuffle=
 model = SAGE(dataset.num_features, 256, dataset.num_classes, num_layers=3)
 model = model.to(device)
 
-x = data.x.to(device)
-x_uma = cp.empty(x.shape, dtype=np.float)
-x_uma[:] = (data.x.numpy())[:]
-
+x_uma = cp.array(data.x.numpy())
+x = torch.astensor(x_uma, device=device)
 
 y = data.y.squeeze().to(device)
 
@@ -180,6 +178,7 @@ def train(epoch):
         
         print(f"sample consumed = {time.time() - start_time}")
         optimizer.zero_grad()
+        
         out = model(x[n_id], adjs)
         loss = F.nll_loss(out, y[n_id[:batch_size]])
         loss.backward()

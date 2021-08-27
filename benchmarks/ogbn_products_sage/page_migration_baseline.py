@@ -140,7 +140,7 @@ model = SAGE(dataset.num_features, 256, dataset.num_classes, num_layers=3)
 model = model.to(device)
 
 x_uma = cp.array(data.x.numpy())
-x = torch.astensor(x_uma, device=device)
+x = torch.as_tensor(x_uma, device=device)
 
 y = data.y.squeeze().to(device)
 

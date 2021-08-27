@@ -4,6 +4,7 @@ import copy
 import os
 import time
 from typing import List, NamedTuple, Optional, Tuple
+import numpy as np
 
 from quiver.coro.task import TaskNode
 from quiver.coro.task_context import TaskContext
@@ -11,6 +12,7 @@ from quiver.coro.task_context import TaskContext
 import torch
 from torch_sparse import SparseTensor
 import torch_quiver as qv
+
 
 
 class Adj(NamedTuple):
@@ -42,7 +44,7 @@ class AsyncCudaNeighborSampler:
         # Initialization With CSR
         if csr_indptr is not None and csr_indices is not None:
              print("LOG>>> Create Quiver From CSR")
-             edge_id = torch.zeros(1, dtype=torch.long)
+             edge_id = np.zeros(1, dtype= np.int64)
              self.quiver = qv.new_quiver_from_csr_array(csr_indptr, csr_indices, edge_id,
                                                         device, copy, numa_alloc)
 

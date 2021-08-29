@@ -997,6 +997,6 @@ void register_cuda_quiver(pybind11::module &m)
         .def("stride", &quiver::ShardTensor::stride, py::call_guard<py::gil_scoped_release>())
         .def("size", &quiver::ShardTensor::size, py::call_guard<py::gil_scoped_release>())
         .def("device_count", &quiver::ShardTensor::device_count, py::call_guard<py::gil_scoped_release>())
-        .def("append", &quiver::ShardTensor::add, py::call_guard<py::gil_scoped_release>());
+        .def("append", &quiver::ShardTensor::append, py::call_guard<py::gil_scoped_release>());
     
 }

@@ -165,7 +165,6 @@ class ShardTensor{
                     shape_[index] = tensor[0].size(index);
                 }
                 inited_ = true;
-                dev
             }
             tensor_list_.push_back(tensor);
             offset_list_.push_back(offset);
@@ -242,7 +241,7 @@ class ShardTensor{
     private:
         std::vector<torch::Tensor> tensor_list_;
         std::vector<int64_t> offset_list_;
-        std::vector<int64_t*> dev_ptrs_;
+        std::vector<float*> dev_ptrs_;
 
         int device_;
         int device_count_; 
@@ -990,7 +989,7 @@ void register_cuda_quiver(pybind11::module &m)
     
     py::class_<quiver::ShardTensor>(m, "ShardTensor")
         //.def(py::init<std::vector<torch::Tensor>, py::array_t<int64_t> ,int>()),
-        .def(py::init<int>())
+        .def(py::init<int>()),
         //.def("__get_item__", &quiver::ShardTensor::operator[], py::call_guard<py::gil_scoped_release>()),
         .def("shape", &quiver::ShardTensor::shape, py::call_guard<py::gil_scoped_release>()),
         .def("numel", &quiver::ShardTensor::numel, py::call_guard<py::gil_scoped_release>()),

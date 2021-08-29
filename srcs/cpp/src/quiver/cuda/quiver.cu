@@ -125,21 +125,18 @@ void replicate_fill(size_t n, const T *counts, const T *values, T *outputs)
 }
 class ShardTensor{
     public: 
-        ShardTensor(std::vector<torch::Tensor>& input_tensor_list, py::array_t<int64_t> &input_offset_list, int device):tensor_list_(input_tensor_list), 
-                                                                                                                        device_(device),
-                                                                                                                        inited_(true)
-                                                                                                                        {
+        ShardTensor(std::vector<torch::Tensor> input_tensor_list, int device):tensor_list_(input_tensor_list), device_(device), inited_(true){
             // init dev_ptrs
             dev_ptrs_.resize(input_tensor_list.size());
             for(int index = 0; index < input_tensor_list.size(); index++){
                 dev_ptrs_[index] = input_tensor_list[index].data_ptr<float>();
             }
             // init offset_list_
-            py::buffer_info input_offset_buffer = input_offset_list.request();
-            const int64_t * input_offset_ptr = reinterpret_cast<const int64_t *>(input_offset_buffer.ptr);
-            device_count_ = input_offset_buffer.shape[0];
-            for(int index = 0; index < device_count_; index++){
-                offset_list_[index] = input_offset_ptr[index];
+            device_count_ = dev_ptrs_.size();
+            offset_list_.resize(device_count_);
+            offset_list_[0] = 0;
+            for(int index = 1; index < device_count_; index++){
+                offset_list_[index] = offset_list_[index - 1] + tensor_list_[index - 1].sizes()[0];
             }
 
 
@@ -156,7 +153,7 @@ class ShardTensor{
 
         }
         ShardTensor(int device): device_(device), inited_(false), device_count_(0){}
-        void add(torch::Tensor tensor, int64_t offset){
+        void append(torch::Tensor tensor){
             // for now, we assume tensor is added ordered
             if(!inited_){
                 shape_.resize(tensor.dim());
@@ -167,9 +164,10 @@ class ShardTensor{
                     shape_[index] = tensor_sizes[index];
                 }
                 inited_ = true;
+                offset_list_.push_back(0);
             }
             tensor_list_.push_back(tensor);
-            offset_list_.push_back(offset);
+            offset_list_.push_back(offset_list_[device_count_ - 1] + tensor.sizes()[0]);
             dev_ptrs_.push_back(tensor.data_ptr<float>());
             shape_[0] += tensor.size(0);
             device_count_ += 1;
@@ -186,7 +184,7 @@ class ShardTensor{
                     return std::make_tuple(tensor_list_[i - 1], index - offset_list_[i - 1]);
                 }
             }
-            return std::make_tuple(tensor_list_[tensor_list_.size() - 1], index - offset_list_[offset_list_.size() - 1]);
+            return std::make_tuple(tensor_list_[device_count_ - 1], index - offset_list_[device_count_ - 1]);
         }
         torch::Tensor operator[](torch::Tensor indices){
             /*
@@ -990,7 +988,7 @@ void register_cuda_quiver(pybind11::module &m)
     py::class_<quiver::stream_pool>(m, "StreamPool").def(py::init<int>());
     
     py::class_<quiver::ShardTensor>(m, "ShardTensor")
-        //.def(py::init<std::vector<torch::Tensor>, py::array_t<int64_t> ,int>()),
+        #.def(py::init<std::vector<torch::Tensor>, int>())
         .def(py::init<int>())
         .def("__getitem__", &quiver::ShardTensor::operator[], py::call_guard<py::gil_scoped_release>())
         .def("shape", &quiver::ShardTensor::shape, py::call_guard<py::gil_scoped_release>())
@@ -999,6 +997,6 @@ void register_cuda_quiver(pybind11::module &m)
         .def("stride", &quiver::ShardTensor::stride, py::call_guard<py::gil_scoped_release>())
         .def("size", &quiver::ShardTensor::size, py::call_guard<py::gil_scoped_release>())
         .def("device_count", &quiver::ShardTensor::device_count, py::call_guard<py::gil_scoped_release>())
-        .def("add", &quiver::ShardTensor::add, py::call_guard<py::gil_scoped_release>());
+        .def("append", &quiver::ShardTensor::add, py::call_guard<py::gil_scoped_release>());
     
 }

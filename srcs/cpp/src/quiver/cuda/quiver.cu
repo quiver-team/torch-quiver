@@ -989,13 +989,13 @@ void register_cuda_quiver(pybind11::module &m)
     
     py::class_<quiver::ShardTensor>(m, "ShardTensor")
         //.def(py::init<std::vector<torch::Tensor>, py::array_t<int64_t> ,int>()),
-        .def(py::init<int>()),
+        .def(py::init<int>())
         //.def("__get_item__", &quiver::ShardTensor::operator[], py::call_guard<py::gil_scoped_release>()),
-        .def("shape", &quiver::ShardTensor::shape, py::call_guard<py::gil_scoped_release>()),
-        .def("numel", &quiver::ShardTensor::numel, py::call_guard<py::gil_scoped_release>()),
-        .def("device", &quiver::ShardTensor::device, py::call_guard<py::gil_scoped_release>()),
-        .def("stride", &quiver::ShardTensor::stride, py::call_guard<py::gil_scoped_release>()),
-        .def("size", &quiver::ShardTensor::size, py::call_guard<py::gil_scoped_release>()),
+        .def("shape", &quiver::ShardTensor::shape, py::call_guard<py::gil_scoped_release>())
+        .def("numel", &quiver::ShardTensor::numel, py::call_guard<py::gil_scoped_release>())
+        .def("device", &quiver::ShardTensor::device, py::call_guard<py::gil_scoped_release>())
+        .def("stride", &quiver::ShardTensor::stride, py::call_guard<py::gil_scoped_release>())
+        .def("size", &quiver::ShardTensor::size, py::call_guard<py::gil_scoped_release>())
         .def("device_count", &quiver::ShardTensor::device_count, py::call_guard<py::gil_scoped_release>())
         .def("add", &quiver::ShardTensor::add, py::call_guard<py::gil_scoped_release>());
     

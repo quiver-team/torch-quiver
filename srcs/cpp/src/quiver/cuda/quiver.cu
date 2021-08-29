@@ -160,6 +160,7 @@ class ShardTensor{
             // for now, we assume tensor is added ordered
             if(!inited_){
                 shape_.resize(tensor.dim());
+                std::cout<<"check shape_ size "<<shape_.size()<<std::endl;
                 shape_[0] = 0;
                 auto tensor_sizes = tensor.sizes();
                 for(int index = 1; index < shape_.size(); index++){

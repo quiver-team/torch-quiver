@@ -23,11 +23,11 @@ __global__ void quiver_tensor_gather(const int64_t** dev_ptrs, const int64_t* of
     // decide step
     unsigned int step = gridDim.x * blockDim.x;
     unsigned int start = tid;
-    unsigned int64_t dev_index = 0;
-    unsigned int64_t dev_offset = 0; 
+    int64_t dev_index = 0;
+    int64_t dev_offset = 0; 
     int64_t* dev_ptr = nullptr;
-    unsigned int64_t src_copy_start = 0;
-    unsigned int64_t dst_copy_start = 0;
+    int64_t src_copy_start = 0;
+    int64_t dst_copy_start = 0;
     unsigned int copy_count = 0;
 
     while(start < indice_length){

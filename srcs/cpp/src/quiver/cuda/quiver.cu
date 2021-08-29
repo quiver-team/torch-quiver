@@ -133,8 +133,8 @@ class ShardTensor{
             }
             // init offset_list_
             py::buffer_info input_offset_buffer = input_offset_list.request();
-            const T * input_offset_ptr = reinterpret_cast<const T *>(input_offset_buffer.ptr);
-            device_count_ = indptr.shape[0];
+            const int64_t * input_offset_ptr = reinterpret_cast<const int64_t *>(input_offset_buffer.ptr);
+            device_count_ = input_offset_buffer.shape[0];
             for(int index = 0; index < device_count_; index++){
                 offset_list_[index] = input_offset_ptr[index];
             }
@@ -142,7 +142,7 @@ class ShardTensor{
 
             // init shape
             shape_.resize(input_tensor_list[0].dim());
-            shape[0] = 0;
+            shape_[0] = 0;
             for(int index = 1; index < shape.size(); index++){
                 shape_[index] = tensor_list_[0].size(index);
             }
@@ -152,7 +152,7 @@ class ShardTensor{
             //
 
         }
-        std::tuple<torch::Tensor&, int64_t> map(int64_t index){
+        std::tuple<torch::Tensor&, long> map(int64_t index){
             for(int i = 0; i < offset_list_.size(); i++){
                 if(index < offset_list_[i]){
                     if(i == 0){
@@ -162,6 +162,7 @@ class ShardTensor{
                     return std::make_tuple(tensor_list_[i - 1], index - offset_list_[i - 1]);
                 }
             }
+            return std::make_tuple(tensor_list_[tensor_list_.size() - 1], index - offset_list_[offset_list_.size() - 1]);
         }
         torch::Tensor operator[](torch::Tensor indices){
             /*
@@ -178,7 +179,7 @@ class ShardTensor{
             auto options = torch::TensorOptions().dtype(tensor_list_[0].dtype()).device(torch::kCUDA, device_);
             auto res = torch::empty(res_shape, options);
             quiver_tensor_gather(&dev_ptrs_[0], &offset_list_[0], offset_list_.size(), indices.data_ptr<int64_t>(), indices.numel(), res.data_ptr<float>(), stride(0));
-
+            return res;
         }
 
         std::vector<int64_t> shape() const{
@@ -195,7 +196,7 @@ class ShardTensor{
         }
         int64_t stride(int dim) const{
             int64_t res = 1;
-            for(index = dim + 1; index < shape_.size(); index++){
+            for(int index = dim + 1; index < shape_.size(); index++){
                 res *= shape_[index];
             }
             return res;
@@ -203,7 +204,7 @@ class ShardTensor{
 
         int64_t numel() const{
             int64_t res = 1;
-            for(index = 0; index < shape_.size(); index++){
+            for(int index = 0; index < shape_.size(); index++){
                 res *= shape_[index];
             }
             return res;
@@ -223,7 +224,7 @@ class ShardTensor{
         std::vector<int64_t> shape_;
         
 
-}
+};
 
 class TorchQuiver
 {
@@ -268,7 +269,6 @@ class TorchQuiver
                      counts.data_ptr<T>());
         return std::make_tuple(neighbors, counts);
     }
-    torch::Tensor feature_collection(QuiverTensor quiver_tensor, torch::Tensor indices){
 
     }
 

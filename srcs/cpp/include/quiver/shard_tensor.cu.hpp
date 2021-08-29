@@ -1,10 +1,8 @@
 #pragma once
 #include <torch/extension.h>
+#include <stdio.h>
 
 __device__ int find(const int64_t* offsets, const int device_count, const int64_t index){
-    if(index < offsets[0]){
-        return 0;
-    }
     int i = 1;
     for(i = 1; i < device_count; i++){
         if(index < offsets[i]){
@@ -20,8 +18,8 @@ __global__ void quiver_tensor_gather(float** dev_ptrs, const int64_t* offsets, c
 
     // 
     unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    // decide step
     unsigned int step = gridDim.x * blockDim.x;
+
     unsigned int start = tid;
     int64_t dev_index = 0;
     int64_t dev_offset = 0; 
@@ -36,6 +34,10 @@ __global__ void quiver_tensor_gather(float** dev_ptrs, const int64_t* offsets, c
         dev_offset = indices[start] - offsets[dev_index];
         src_copy_start = dev_offset * stride;
         dst_copy_start = start * stride;
+        if(start == 0){
+            printf("index = %lld, dev_index = %lld, dev_offset = %lld", indices[start], dev_index, dev_offset);
+
+        }
         for(copy_count = 0; copy_count < stride; copy_count ++){
             res[dst_copy_start + copy_count] = dev_ptr[src_copy_start + copy_count];
         }

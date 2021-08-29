@@ -13,7 +13,7 @@ __device__ int find(const int64_t* offsets, const int device_count, const int64_
     }
     return device_count - 1;
 }
-__global__ void quiver_tensor_gather(int64_t** dev_ptrs, const int64_t* offsets, const int device_count,
+__global__ void quiver_tensor_gather(float** dev_ptrs, const int64_t* offsets, const int device_count,
                                      const int64_t* indices, int indice_length, 
                                      float* res,
                                      const int stride){
@@ -25,7 +25,7 @@ __global__ void quiver_tensor_gather(int64_t** dev_ptrs, const int64_t* offsets,
     unsigned int start = tid;
     int64_t dev_index = 0;
     int64_t dev_offset = 0; 
-    int64_t* dev_ptr = nullptr;
+    float* dev_ptr = nullptr;
     int64_t src_copy_start = 0;
     int64_t dst_copy_start = 0;
     unsigned int copy_count = 0;

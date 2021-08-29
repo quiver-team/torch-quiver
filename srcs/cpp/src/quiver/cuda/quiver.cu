@@ -15,7 +15,7 @@
 #include <quiver/stream_pool.hpp>
 #include <quiver/trace.hpp>
 #include <quiver/zip.hpp>
-
+#include <quiver/shard_tensor.cu.hpp>
 #include <thrust/remove.h>
 
 #include <chrono>
@@ -122,9 +122,28 @@ void replicate_fill(size_t n, const T *counts, const T *values, T *outputs)
         outputs += c;
     }
 }
-class QuiverTensor{
+class ShardTensor{
     public: 
-        QuiverTensor(std::vector<torch::Tensor> input_tensor_list, std::vector<int64_t> input_offset_list):tensor_list_(input_tensor_list), offset_list_(input_offset_list){}
+        ShardTensor(std::vector<torch::Tensor> input_tensor_list, std::vector<int64_t> input_offset_list, int device):tensor_list_(input_tensor_list), 
+                                                                                                                       offset_list_(input_offset_list),
+                                                                                                                       device_(device){
+            //
+            dev_ptrs.resize(input_tensor_list.size());
+            for(int index = 0; index < input_tensor_list.size(); index++){
+                dev_ptrs[index] = input_tensor_list[index].data_ptr<int64_t>();
+            }
+            // init shape
+            shape_.resize(input_tensor_list[0].dim());
+            shape[0] = 0;
+            for(int index = 1; index < shape.size(); index++){
+                shape_[index] = tensor_list_[0].size(index);
+            }
+            for(int index = 0; index < tensor_list_.size(); index++){
+                shape_[0] += tensor_list_[index].size(0);
+            }
+            //
+
+        }
         std::tuple<torch::Tensor&, int64_t> map(int64_t index){
             for(int i = 0; i < offset_list_.size(); i++){
                 if(index < offset_list_[i]){
@@ -137,13 +156,61 @@ class QuiverTensor{
             }
         }
         torch::Tensor operator[](torch::Tensor indices){
-            
+            /*
+            __global__ void quiver_tensor_gather(const int64_t** dev_ptrs, const int64_t* offsets, const int device_count,
+                                     const int64_t* indices, int indice_length, 
+                                     const float* res,
+                                     const int item_byte_size){
+            torch::zeros((100,100),torch::KF32);
+            */
+           
+            std::vector<int64_t> res_shape(shape_);
+            res_shape[0] = indices.numel();
+            // decide Tensor
+            auto options = torch::TensorOptions().dtype(tensor_list_[0].dtype()).device(torch::kCUDA, device_);
+            auto res = torch::empty(res_shape, options);
+            quiver_tensor_gather(dev_ptrs, &offset_list_[0], offset_list_.size(), indices.data_ptr<int64_t>(), indices.numel(), res.data_ptr<float>(), stride(0));
 
         }
+
+        std::vector<int64_t> shape() const{
+            return shape_;
+        }
+
+        int device() const {
+            return device_;
+
+        }
+
+        int size(int dim) const{
+            return shape_[dim];
+        }
+        int64_t stride(int dim) const{
+            int64_t res = 1;
+            for(index = dim + 1; index < shape_.size(); index++){
+                res *= shape_[index];
+            }
+            return res;
+        }
+
+        int64_t numel() const{
+            int64_t res = 1;
+            for(index = 0; index < shape_.size(); index++){
+                res *= shape_[index];
+            }
+            return res;
+        }
+
+
     private:
         std::vector<torch::Tensor> tensor_list_;
         std::vector<int64_t> offset_list_;
-    
+        std::vector<int64_t*> dev_ptrs;
+
+        int64_t device_;
+        std::vector<int64_t> shape_;
+        
+
 }
 
 class TorchQuiver
@@ -884,4 +951,12 @@ void register_cuda_quiver(pybind11::module &m)
         .def("reindex_group", &quiver::TorchQuiver::reindex_group,
              py::call_guard<py::gil_scoped_release>());
     py::class_<quiver::stream_pool>(m, "StreamPool").def(py::init<int>());
+    py::class<quiver::ShardTensor>(m, "ShardTensor")
+        .def(py::init<int>()),
+        .def("__get_item", &quiver::ShardTensor::operator[], py::call_guard<py::gil_scoped_release>()),
+        .def("shape", &quiver::ShardTensor::shape, py::call_guard<py::gil_scoped_release>()),
+        .def("numel", &quiver::ShardTensor::numel, py::call_guard<py::gil_scoped_release>()),
+        .def("device", &quiver::ShardTensor::device, py::call_guard<py::gil_scoped_release>()),
+        .def("stride", &quiver::ShardTensor::stride, py::call_guard<py::gil_scoped_release>()),
+        .def("size", &quiver::ShardTensor::size, py::call_guard<py::gil_scoped_release>());
 }

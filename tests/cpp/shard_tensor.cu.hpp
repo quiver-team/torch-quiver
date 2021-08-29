@@ -1,8 +1,7 @@
 #pragma once
-#include <torch/extension.h>
 #include <stdio.h>
 
-__device__ int find(const int64_t* offsets, const int device_count, const int64_t index){
+__global__ int find(const int64_t* offsets, const int device_count, const int64_t index){
     int i = 1;
     for(i = 1; i < device_count; i++){
         if(index < offsets[i]){

@@ -125,7 +125,7 @@ void replicate_fill(size_t n, const T *counts, const T *values, T *outputs)
 }
 class ShardTensor{
     public: 
-        ShardTensor(std::vector<torch::Tensor> input_tensor_list, int device):tensor_list_(input_tensor_list), device_(device), inited_(true){
+        ShardTensor(std::vector<torch::Tensor>& input_tensor_list, int device):tensor_list_(input_tensor_list), device_(device), inited_(true){
             // init dev_ptrs
             dev_ptrs_.resize(input_tensor_list.size());
             for(int index = 0; index < input_tensor_list.size(); index++){
@@ -153,7 +153,7 @@ class ShardTensor{
 
         }
         ShardTensor(int device): device_(device), inited_(false), device_count_(0){}
-        void append(torch::Tensor tensor){
+        void append(torch::Tensor& tensor){
             // for now, we assume tensor is added ordered
             if(!inited_){
                 shape_.resize(tensor.dim());
@@ -186,7 +186,7 @@ class ShardTensor{
             }
             return std::make_tuple(tensor_list_[device_count_ - 1], index - offset_list_[device_count_ - 1]);
         }
-        torch::Tensor operator[](torch::Tensor indices){
+        torch::Tensor operator[](torch::Tensor& indices){
             /*
             __global__ void quiver_tensor_gather(const int64_t** dev_ptrs, const int64_t* offsets, const int device_count,
                                      const int64_t* indices, int indice_length, 
@@ -201,7 +201,7 @@ class ShardTensor{
             // decide Tensor
             auto options = torch::TensorOptions().dtype(tensor_list_[0].dtype()).device(torch::kCUDA, device_);
             auto res = torch::empty(res_shape, options);
-            quiver_tensor_gather<<<(indices.numel() + 1023) / 1024 , 1024, 0, stream>>>(&dev_ptrs_[0], &offset_list_[0], offset_list_.size(), indices.data_ptr<int64_t>(), indices.numel(), res.data_ptr<float>(), stride(0));
+            quiver_tensor_gather<<<(indices.numel() + 1023) / 1024 , 1024, 0, stream>>>(&dev_ptrs_[0], thrust::raw_pointer_cast(offset_list_.data()), offset_list_.size(), indices.data_ptr<int64_t>(), indices.numel(), res.data_ptr<float>(), stride(0));
             return res;
         }
 
@@ -241,7 +241,7 @@ class ShardTensor{
 
     private:
         std::vector<torch::Tensor> tensor_list_;
-        std::vector<int64_t> offset_list_;
+        thrust::device_vector<int64_t> offset_list_;
         std::vector<float*> dev_ptrs_;
 
         int device_;

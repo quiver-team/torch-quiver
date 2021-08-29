@@ -161,8 +161,9 @@ class ShardTensor{
             if(!inited_){
                 shape_.resize(tensor.dim());
                 shape_[0] = 0;
+                auto tensor_sizes = tensor.sizes();
                 for(int index = 1; index < shape_.size(); index++){
-                    shape_[index] = tensor[0].size(index);
+                    shape_[index] = tensor_sizes[index];
                 }
                 inited_ = true;
             }

@@ -15,7 +15,7 @@ __device__ int find(const int64_t* offsets, const int device_count, const int64_
 }
 __global__ void quiver_tensor_gather(int64_t** dev_ptrs, const int64_t* offsets, const int device_count,
                                      const int64_t* indices, int indice_length, 
-                                     const float* res,
+                                     float* res,
                                      const int stride){
 
     // 

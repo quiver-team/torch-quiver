@@ -143,7 +143,7 @@ class ShardTensor{
             // init shape
             shape_.resize(input_tensor_list[0].dim());
             shape_[0] = 0;
-            for(int index = 1; index < shape.size(); index++){
+            for(int index = 1; index < shape_.size(); index++){
                 shape_[index] = tensor_list_[0].size(index);
             }
             for(int index = 0; index < tensor_list_.size(); index++){
@@ -156,13 +156,13 @@ class ShardTensor{
             for(int i = 0; i < offset_list_.size(); i++){
                 if(index < offset_list_[i]){
                     if(i == 0){
-                        return std::make_tuple(tensor_list_[0], index);
+                        return std::make_tuple(&tensor_list_[0], index);
                     }
                 }else{
-                    return std::make_tuple(tensor_list_[i - 1], index - offset_list_[i - 1]);
+                    return std::make_tuple(&tensor_list_[i - 1], index - offset_list_[i - 1]);
                 }
             }
-            return std::make_tuple(tensor_list_[tensor_list_.size() - 1], index - offset_list_[offset_list_.size() - 1]);
+            return std::make_tuple(&tensor_list_[tensor_list_.size() - 1], index - offset_list_[offset_list_.size() - 1]);
         }
         torch::Tensor operator[](torch::Tensor indices){
             /*
@@ -194,6 +194,7 @@ class ShardTensor{
         int size(int dim) const{
             return shape_[dim];
         }
+
         int64_t stride(int dim) const{
             int64_t res = 1;
             for(int index = dim + 1; index < shape_.size(); index++){
@@ -209,6 +210,7 @@ class ShardTensor{
             }
             return res;
         }
+
         int device_count() const{
             return device_count_;
         }
@@ -268,8 +270,6 @@ class TorchQuiver
         thrust::copy(output_counts.begin(), output_counts.end(),
                      counts.data_ptr<T>());
         return std::make_tuple(neighbors, counts);
-    }
-
     }
 
     std::tuple<torch::Tensor, torch::Tensor>
@@ -963,6 +963,7 @@ void register_cuda_quiver(pybind11::module &m)
         .def("reindex_group", &quiver::TorchQuiver::reindex_group,
              py::call_guard<py::gil_scoped_release>());
     py::class_<quiver::stream_pool>(m, "StreamPool").def(py::init<int>());
+    /*
     py::class_<quiver::ShardTensor>(m, "ShardTensor")
         .def(py::init<std::vector<torch::Tensor>&, py::array_t<int64_t> ,int>()),
         .def("__get_item__", &quiver::ShardTensor::operator[], py::call_guard<py::gil_scoped_release>()),
@@ -972,4 +973,5 @@ void register_cuda_quiver(pybind11::module &m)
         .def("stride", &quiver::ShardTensor::stride, py::call_guard<py::gil_scoped_release>()),
         .def("size", &quiver::ShardTensor::size, py::call_guard<py::gil_scoped_release>()),
         .def("device_count", &quiver::ShardTensor::device_count, py::call_guard<py::gil_scoped_release>());
+    */
 }

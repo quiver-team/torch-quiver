@@ -18,14 +18,11 @@ __global__ void quiver_tensor_gather(const int64_t** dev_ptrs, const int64_t* of
                                      const float* res,
                                      const int item_byte_size){
 
-    int blockId = blockIdx.x + blockIdx.y * gridDim.x
-		+ gridDim.x * gridDim.y * blockIdx.z;
-	int tid = blockId * (blockDim.x * blockDim.y * blockDim.z)
-		+ (threadIdx.z * (blockDim.x * blockDim.y))
-		+ (threadIdx.y * blockDim.x) + threadIdx.x;
+    // 
+    unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
     // decide step
-    int step = 0;
-    int start = tid;
+    unsigned int step = gridDim.x * blockDim.x;
+    unsigned int start = tid;
     int dev_index = 0;
     int dev_offset = 0; 
     int64_t* dev_ptr = nullptr;
@@ -36,5 +33,4 @@ __global__ void quiver_tensor_gather(const int64_t** dev_ptrs, const int64_t* of
         res[start] = dev_ptr[dev_offset];
         start += step;
     }
-
 }

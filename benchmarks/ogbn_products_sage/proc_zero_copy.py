@@ -16,9 +16,11 @@ import os.path as osp
 from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
 from quiver.models.sage_model import SAGE
 import time
-
+import numpy as np
+from scipy.sparse import csr_matrix
 
 from typing import List, NamedTuple, Optional, Tuple
+from numa import schedule, info
 
 
 class Adj(NamedTuple):
@@ -99,7 +101,15 @@ class SingleProcess:
         self.args = args
 
     def prepare(self, rank, sample_data, train_data, feature_data, sync, comm):
-        edge_index, batch_size, sizes, train_idx = sample_data
+        #####################################################################################################
+        # Bind Task To NUMA Node And Sleep 1s So That Next Time This Processing Is Runing On Target NUMA Node
+        #####################################################################################################
+        total_nodes = info.get_max_node() + 1
+        schedule.bind(rank % total_nodes)
+        print(f"LOG >>> Rank {rank} Is Bind To NUMA Node {rank % total_nodes}/{total_nodes}")
+        time.sleep(1)
+        
+        csr_mat, batch_size, sizes, train_idx = sample_data
         device = rank
         torch.cuda.set_device(device)
         self.list_size = 10
@@ -119,8 +129,12 @@ class SingleProcess:
         self.comm.rank = rank
         self.train_idx = train_idx
         self.batch_size = batch_size
-        self.loader = AsyncCudaNeighborSampler(edge_index,
-                                               device=device)
+        self.indptr = torch.from_numpy(csr_mat.indptr[:-1]).type(torch.long)
+        self.indices = torch.from_numpy(csr_mat.indices).type(torch.long)
+        self.loader = AsyncCudaNeighborSampler(csr_indptr=self.indptr,
+                                               csr_indices=self.indices,
+                                               device=device,
+                                               copy=True)
         self.sizes = sizes
         num_features, num_hidden, num_classes, num_layers, y = train_data
         self.y = y
@@ -279,10 +293,11 @@ class SingleProcess:
         adjs_list = [adjs[::-1] for adjs in adjs_list]
         return nodes_list, batch_size_list, adjs_list
 
-    def sample(self, nodes):
-        batch_size = len(nodes)
-        nodes = nodes.to(self.device)
+    def sample(self, input_nodes):
+        nodes = input_nodes.to(self.device)
         adjs = []
+
+        batch_size = len(nodes)
         for size in self.sizes:
             out, cnt = self.loader.sample_layer(nodes, size)
             frontier, row_idx, col_idx = self.loader.reindex(nodes, out, cnt)
@@ -404,7 +419,7 @@ class SingleProcess:
         feature_beg = time.time()
         total_features = torch.cat(total_features)
         feature_end = time.time()
-        total_features = total_features[feature_reorder]
+        total_features = total_features[feature_reorder] #= total_features
         # if self.comm.rank == 0:
         #     print(f'feature cat {feature_end - feature_beg}')
         return total_features
@@ -444,25 +459,30 @@ class SingleProcess:
         # print(f'rank {self.comm.rank} recv avg {self.recv_time}')
         # print(f'rank {self.comm.rank} queue avg {self.queue_time}')
 
+def get_csr_from_coo(edge_index):
+    src = edge_index[0].numpy()
+    dst = edge_index[1].numpy()
+    node_count = max(np.max(src), np.max(dst))
+    data = np.zeros(dst.shape, dtype=np.int32)
+    csr_mat = csr_matrix((data, (edge_index[0].numpy(), edge_index[1].numpy())))
+    return csr_mat
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
-    ws = 2
+    ws = 1
     num_epoch = 1
     num_batch = 100
     batch_size = 128
     sizes = [15, 10, 5]
-    home = os.getenv('HOME')
-    data_dir = osp.join(home, '.pyg')
-    root = osp.join(data_dir, 'data', 'products')
-    root = "/home/dalong/data"
+    root = "/home/dalong/data/"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     split_idx = dataset.get_idx_split()
     data = dataset[0]
     train_idx = split_idx['train']
     edge_index = data.edge_index
+    csr_mat = get_csr_from_coo(edge_index)
     x, y = data.x.share_memory_(), data.y.squeeze().share_memory_()
-    sample_data = edge_index, batch_size, sizes, train_idx
+    sample_data = csr_mat, batch_size, sizes, train_idx
     train_data = dataset.num_features, 256, dataset.num_classes, 3, y
     comm = CommConfig(0, ws)
     sync = SyncManager(ws)
@@ -472,3 +492,15 @@ if __name__ == '__main__':
     time.sleep(50)
     for p in procs:
         p.kill()
+
+
+'''
+
+def get_csr_from_coo(edge_index):
+    src = edge_index[0].numpy()
+    dst = edge_index[1].numpy()
+    node_count = max(np.max(src), np.max(dst))
+    data = np.zeros(dst.shape, dtype=np.int32)
+    csr_mat = csr_matrix((data, (edge_index[0].numpy(), edge_index[1].numpy())), shape=(node_count, node_count))
+    return csr_mat
+'''

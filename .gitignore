@@ -10,3 +10,8 @@ CTestTestfile.cmake
 Testing/
 _deps
 generated
+
+# Pycharm Project Directory
+venvgi/
+.idea/
+build/

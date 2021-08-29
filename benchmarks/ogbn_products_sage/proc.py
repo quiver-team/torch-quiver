@@ -18,7 +18,7 @@ from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
 import time
 
 
-DEVICE_NUM = 4
+DEVICE_NUM = 2
 
 class InputRequest:
     def __init__(self, index, nodes, size, total_layer, sample_device, reindex_device, train_device):
@@ -390,7 +390,7 @@ if __name__ == '__main__':
     num_epoch = 1
     num_batch = 100
     batch_size = 128
-    
+
     sampler_size = DEVICE_NUM
     trainer_size = DEVICE_NUM
     data_size = DEVICE_NUM
@@ -402,6 +402,7 @@ if __name__ == '__main__':
     home = os.getenv('HOME')
     data_dir = osp.join(home, '.pyg')
     root = osp.join(data_dir, 'data', 'products')
+    root = "/home/dalong/data/"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     split_idx = dataset.get_idx_split()
     evaluator = Evaluator(name='ogbn-products')

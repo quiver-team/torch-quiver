@@ -132,7 +132,7 @@ class ShardTensor{
             // init dev_ptrs
             dev_ptrs_.resize(input_tensor_list.size());
             for(int index = 0; index < input_tensor_list.size(); index++){
-                dev_ptrs_[index] = input_tensor_list[index].data_ptr<int64_t>();
+                dev_ptrs_[index] = input_tensor_list[index].data_ptr<float>();
             }
             // init offset_list_
             py::buffer_info input_offset_buffer = input_offset_list.request();

@@ -122,6 +122,29 @@ void replicate_fill(size_t n, const T *counts, const T *values, T *outputs)
         outputs += c;
     }
 }
+class QuiverTensor{
+    public: 
+        QuiverTensor(std::vector<torch::Tensor> input_tensor_list, std::vector<int64_t> input_offset_list):tensor_list_(input_tensor_list), offset_list_(input_offset_list){}
+        std::tuple<torch::Tensor&, int64_t> map(int64_t index){
+            for(int i = 0; i < offset_list_.size(); i++){
+                if(index < offset_list_[i]){
+                    if(i == 0){
+                        return std::make_tuple(tensor_list_[0], index);
+                    }
+                }else{
+                    return std::make_tuple(tensor_list_[i - 1], index - offset_list_[i - 1]);
+                }
+            }
+        }
+        torch::Tensor operator[](torch::Tensor indices){
+            
+
+        }
+    private:
+        std::vector<torch::Tensor> tensor_list_;
+        std::vector<int64_t> offset_list_;
+    
+}
 
 class TorchQuiver
 {
@@ -165,6 +188,9 @@ class TorchQuiver
         thrust::copy(output_counts.begin(), output_counts.end(),
                      counts.data_ptr<T>());
         return std::make_tuple(neighbors, counts);
+    }
+    torch::Tensor feature_collection(QuiverTensor quiver_tensor, torch::Tensor indices){
+
     }
 
     std::tuple<torch::Tensor, torch::Tensor>

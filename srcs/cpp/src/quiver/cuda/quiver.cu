@@ -5,6 +5,7 @@
 
 #include <pybind11/numpy.h>
 #include <torch/extension.h>
+#include <ATen/cuda/CUDAContext.h>
 #include <numa.h>
 #include <sys/mman.h>
 

@@ -127,9 +127,9 @@ class ShardTensor{
         ShardTensor(std::vector<torch::Tensor> input_tensor_list, py::array_t<int64_t> &input_offset_list, int device):tensor_list_(input_tensor_list), 
                                                                                                                        device_(device){
             // init dev_ptrs
-            dev_ptrs.resize(input_tensor_list.size());
+            dev_ptrs_.resize(input_tensor_list.size());
             for(int index = 0; index < input_tensor_list.size(); index++){
-                dev_ptrs[index] = input_tensor_list[index].data_ptr<int64_t>();
+                dev_ptrs_[index] = input_tensor_list[index].data_ptr<int64_t>();
             }
             // init offset_list_
             py::buffer_info input_offset_buffer = input_offset_list.request();
@@ -177,7 +177,7 @@ class ShardTensor{
             // decide Tensor
             auto options = torch::TensorOptions().dtype(tensor_list_[0].dtype()).device(torch::kCUDA, device_);
             auto res = torch::empty(res_shape, options);
-            quiver_tensor_gather(dev_ptrs, &offset_list_[0], offset_list_.size(), indices.data_ptr<int64_t>(), indices.numel(), res.data_ptr<float>(), stride(0));
+            quiver_tensor_gather(dev_ptrs_, &offset_list_[0], offset_list_.size(), indices.data_ptr<int64_t>(), indices.numel(), res.data_ptr<float>(), stride(0));
 
         }
 
@@ -216,7 +216,7 @@ class ShardTensor{
     private:
         std::vector<torch::Tensor> tensor_list_;
         std::vector<int64_t> offset_list_;
-        std::vector<int64_t*> dev_ptrs;
+        std::vector<int64_t*> dev_ptrs_;
 
         int device_;
         int device_count_; 

@@ -9,6 +9,10 @@ def test_shard_tensor_intra_process():
     shard_tensor.add(device_0_tensor, 0)
     shard_tensor.add(device_1_tensor, 100)
     print("shard_tensor shape = ", shard_tensor.shape())
+    indices = torch.arange(0, 100).type(torch.long)
+    feature = shard_tensor[indices]
+    print(f"gathered data shape = {feature.shape}")
+    
 
 test_shard_tensor_intra_process()
     

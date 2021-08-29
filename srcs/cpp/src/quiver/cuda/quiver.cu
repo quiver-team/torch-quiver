@@ -124,7 +124,7 @@ void replicate_fill(size_t n, const T *counts, const T *values, T *outputs)
 }
 class ShardTensor{
     public: 
-        ShardTensor(std::vector<torch::Tensor> input_tensor_list, py::array_t<int64_t> &input_offset_list, int device):tensor_list_(input_tensor_list), 
+        ShardTensor(std::vector<torch::Tensor>& input_tensor_list, py::array_t<int64_t> &input_offset_list, int device):tensor_list_(input_tensor_list), 
                                                                                                                        device_(device){
             // init dev_ptrs
             dev_ptrs_.resize(input_tensor_list.size());
@@ -964,7 +964,7 @@ void register_cuda_quiver(pybind11::module &m)
              py::call_guard<py::gil_scoped_release>());
     py::class_<quiver::stream_pool>(m, "StreamPool").def(py::init<int>());
     py::class_<quiver::ShardTensor>(m, "ShardTensor")
-        .def(py::init<int>()),
+        .def(py::init<std::vector<torch::Tensor>&, py::array_t<int64_t> ,int>()),
         .def("__get_item__", &quiver::ShardTensor::operator[], py::call_guard<py::gil_scoped_release>()),
         .def("shape", &quiver::ShardTensor::shape, py::call_guard<py::gil_scoped_release>()),
         .def("numel", &quiver::ShardTensor::numel, py::call_guard<py::gil_scoped_release>()),

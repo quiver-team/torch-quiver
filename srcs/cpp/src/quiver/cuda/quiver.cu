@@ -126,7 +126,9 @@ void replicate_fill(size_t n, const T *counts, const T *values, T *outputs)
 class ShardTensor{
     public: 
         ShardTensor(std::vector<torch::Tensor>& input_tensor_list, py::array_t<int64_t> &input_offset_list, int device):tensor_list_(input_tensor_list), 
-                                                                                                                       device_(device){
+                                                                                                                        device_(device),
+                                                                                                                        inited_(true)
+                                                                                                                        {
             // init dev_ptrs
             dev_ptrs_.resize(input_tensor_list.size());
             for(int index = 0; index < input_tensor_list.size(); index++){
@@ -151,6 +153,26 @@ class ShardTensor{
                 shape_[0] += tensor_list_[index].size(0);
             }
             //
+
+        }
+        ShardTensor(int device): device_(device), inited_(false), device_count_(0){}
+        void add(torch::Tensor tensor, int64_t offset){
+            // for now, we assume tensor is added ordered
+            if(!inited_){
+                shape_.resize(tensor.dim());
+                shape_[0] = 0;
+                for(int index = 1; index < shape_.size(); index++){
+                    shape_[index] = tensor[0].size(index);
+                }
+                inited_ = true;
+                dev
+            }
+            tensor_list_.push_back(tensor);
+            offset_list_.push_back(offset);
+            dev_ptrs_.push_back(tensor.data_ptr<float>());
+            shape_[0] += tensor.size(0);
+            device_count_ += 1;
+            
 
         }
         std::tuple<torch::Tensor, long> map(int64_t index){
@@ -225,6 +247,7 @@ class ShardTensor{
         int device_;
         int device_count_; 
         std::vector<int64_t> shape_;
+        bool inited_;
         
 
 };
@@ -966,13 +989,15 @@ void register_cuda_quiver(pybind11::module &m)
     py::class_<quiver::stream_pool>(m, "StreamPool").def(py::init<int>());
     
     py::class_<quiver::ShardTensor>(m, "ShardTensor")
-        .def(py::init<std::vector<torch::Tensor>&, py::array_t<int64_t> ,int>()),
+        //.def(py::init<std::vector<torch::Tensor>, py::array_t<int64_t> ,int>()),
+        .def(py::init<int>())
         //.def("__get_item__", &quiver::ShardTensor::operator[], py::call_guard<py::gil_scoped_release>()),
         .def("shape", &quiver::ShardTensor::shape, py::call_guard<py::gil_scoped_release>()),
         .def("numel", &quiver::ShardTensor::numel, py::call_guard<py::gil_scoped_release>()),
         .def("device", &quiver::ShardTensor::device, py::call_guard<py::gil_scoped_release>()),
         .def("stride", &quiver::ShardTensor::stride, py::call_guard<py::gil_scoped_release>()),
         .def("size", &quiver::ShardTensor::size, py::call_guard<py::gil_scoped_release>()),
-        .def("device_count", &quiver::ShardTensor::device_count, py::call_guard<py::gil_scoped_release>());
+        .def("device_count", &quiver::ShardTensor::device_count, py::call_guard<py::gil_scoped_release>())
+        .def("add", &quiver::ShardTensor::add, py::call_guard<py::gil_scoped_release>());
     
 }

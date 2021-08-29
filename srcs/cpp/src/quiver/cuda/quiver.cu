@@ -152,17 +152,17 @@ class ShardTensor{
             //
 
         }
-        std::tuple<torch::Tensor&, long> map(int64_t index){
+        std::tuple<torch::Tensor, long> map(int64_t index){
             for(int i = 0; i < offset_list_.size(); i++){
                 if(index < offset_list_[i]){
                     if(i == 0){
-                        return std::make_tuple(&tensor_list_[0], index);
+                        return std::make_tuple(tensor_list_[0], index);
                     }
                 }else{
-                    return std::make_tuple(&tensor_list_[i - 1], index - offset_list_[i - 1]);
+                    return std::make_tuple(tensor_list_[i - 1], index - offset_list_[i - 1]);
                 }
             }
-            return std::make_tuple(&tensor_list_[tensor_list_.size() - 1], index - offset_list_[offset_list_.size() - 1]);
+            return std::make_tuple(tensor_list_[tensor_list_.size() - 1], index - offset_list_[offset_list_.size() - 1]);
         }
         torch::Tensor operator[](torch::Tensor indices){
             /*
@@ -172,13 +172,13 @@ class ShardTensor{
                                      const int item_byte_size){
             torch::zeros((100,100),torch::KF32);
             */
-           
+            auto stream = at::cuda::getCurrentCUDAStream();
             std::vector<int64_t> res_shape(shape_);
             res_shape[0] = indices.numel();
             // decide Tensor
             auto options = torch::TensorOptions().dtype(tensor_list_[0].dtype()).device(torch::kCUDA, device_);
             auto res = torch::empty(res_shape, options);
-            quiver_tensor_gather(&dev_ptrs_[0], &offset_list_[0], offset_list_.size(), indices.data_ptr<int64_t>(), indices.numel(), res.data_ptr<float>(), stride(0));
+            quiver_tensor_gather<<<512 , 512, device_, stream>>>(&dev_ptrs_[0], &offset_list_[0], offset_list_.size(), indices.data_ptr<int64_t>(), indices.numel(), res.data_ptr<float>(), stride(0));
             return res;
         }
 

@@ -963,7 +963,7 @@ void register_cuda_quiver(pybind11::module &m)
         .def("reindex_group", &quiver::TorchQuiver::reindex_group,
              py::call_guard<py::gil_scoped_release>());
     py::class_<quiver::stream_pool>(m, "StreamPool").def(py::init<int>());
-    py::class<quiver::ShardTensor>(m, "ShardTensor")
+    py::class_<quiver::ShardTensor>(m, "ShardTensor")
         .def(py::init<int>()),
         .def("__get_item__", &quiver::ShardTensor::operator[], py::call_guard<py::gil_scoped_release>()),
         .def("shape", &quiver::ShardTensor::shape, py::call_guard<py::gil_scoped_release>()),

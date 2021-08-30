@@ -37,6 +37,8 @@ __global__ void delay(volatile int *flag,
         }
     }
 }
+#define WARP_SIZE 32
+
 __device__ int find(const int64_t* offsets, const int device_count, const int64_t index){
     int i = 1;
     for(i = 1; i < device_count; i++){
@@ -55,36 +57,33 @@ __global__ void quiver_tensor_gather(float** dev_ptrs, const int64_t* offsets, c
     unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
     unsigned int step = gridDim.x * blockDim.x;
 
-    unsigned int start = tid;
+    // each warp take charge of one-feature copy
+    unsigned int warp_id = tid / WARP_SIZE;
+    unsigned int warp_step = step / WARP_SIZE;
+
+    unsigned int warp_start = warp_id;
+    unsigned int thread_start = tid % WARP_SIZE;
+    
     int64_t dev_index = 0;
     int64_t dev_offset = 0; 
     float* dev_ptr;
     int64_t src_copy_start = 0;
     int64_t dst_copy_start = 0;
-    unsigned int copy_count = 0;
-    if(tid == 0){
-    	printf("check tid = %d, start = %d, indices_length = %d \n", tid, start, indice_length);
-	    printf("check offset[1] = %d, indices[10] = %d, dev_ptrs[0][1] = %d \n", offsets[1], indices[10], dev_ptrs[0][1]);
 
-        dev_index = find(offsets, device_count, 49000);
-
-        dev_offset = 90000 - offsets[dev_index];
-        printf("index = %lld, dev_index = %lld, dev_offset = %lld \n", indices[start], dev_index, dev_offset);
-    }
-    __syncthreads();
-    while(start < indice_length){
-        dev_index = find(offsets, device_count, indices[start]);
+    while(warp_start < indice_length){
+        dev_index = find(offsets, device_count, indices[warp_start]);
         dev_ptr = dev_ptrs[dev_index];
-        dev_offset = indices[start] - offsets[dev_index];
-        
-	    src_copy_start = dev_offset * stride;
-        dst_copy_start = start * stride;
-        for(copy_count = 0; copy_count < stride; copy_count ++){
-            res[dst_copy_start + copy_count] = dev_ptr[src_copy_start + copy_count];
+        dev_offset = indices[warp_start] - offsets[dev_index];
+
+        src_copy_start = dev_offset * stride;
+        dst_copy_start = warp_start * stride;
+        for(; thread_start < stride; thread_start += WARP_SIZE){
+            res[dst_copy_start + thread_start] = dev_ptr[src_copy_start + thread_start];
         }
-        start += step;
+        warp_start += warp_step;
     }
 }
+
 int main(){
     int numGPUs, numElems =  40000;
     cudaGetDeviceCount(&numGPUs);

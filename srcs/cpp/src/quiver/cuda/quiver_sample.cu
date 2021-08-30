@@ -3,7 +3,6 @@
 
 #include <thrust/device_vector.h>
 
-#include <ATen/cuda/CUDAContext.h>
 #include <numa.h>
 #include <pybind11/numpy.h>
 #include <sys/mman.h>
@@ -13,7 +12,6 @@
 #include <quiver/functor.cu.hpp>
 #include <quiver/quiver.cu.hpp>
 #include <quiver/reindex.cu.hpp>
-#include <quiver/shard_tensor.cu.hpp>
 #include <quiver/stream_pool.hpp>
 #include <quiver/trace.hpp>
 #include <quiver/zip.hpp>

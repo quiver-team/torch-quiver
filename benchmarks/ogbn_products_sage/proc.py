@@ -18,55 +18,53 @@ from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
 import time
 
 
-DEVICE_NUM = 4
+DEVICE_NUM = 2
+BUFFER_SIZE = 2
+
 
 class InputRequest:
-    def __init__(self, index, nodes, size, total_layer, sample_device, reindex_device, train_device):
+    def __init__(self, index, nodes, size, train_device):
         self.index = index
         self.nodes = nodes
         self.size = size
-        self.total_layer = total_layer
-        self.sample_device = sample_device
-        self.reindex_device = reindex_device
         self.train_device = train_device
 
 
 class SampleRequest:
-    def __init__(self, index, src, dst, nodes, size):
+    def __init__(self, index, src, dst, nodes):
         self.index = index
         self.src = src
         self.dst = dst
         self.nodes = nodes
-        self.size = size
 
 
 class SampleResponse:
-    def __init__(self, index, src, dst, outputs, counts):
-        self.index = index
-        self.src = src
-        self.dst = dst
-        self.outputs = outputs
-        self.counts = counts
-
-
-class ReindexRequest:
-    def __init__(self, index, src, dst, inputs, outputs, counts):
-        self.index = index
-        self.src = src
-        self.dst = dst
-        self.inputs = inputs
-        self.outputs = outputs
-        self.counts = counts
-
-
-class ReindexResponse:
-    def __init__(self, index, src, dst, nodes, row, col):
+    def __init__(self, index, src, dst, nodes, reindex_results):
         self.index = index
         self.src = src
         self.dst = dst
         self.nodes = nodes
-        self.row = row
-        self.col = col
+        self.reindex_results = reindex_results
+
+
+# class ReindexRequest:
+#     def __init__(self, index, src, dst, inputs, outputs, counts):
+#         self.index = index
+#         self.src = src
+#         self.dst = dst
+#         self.inputs = inputs
+#         self.outputs = outputs
+#         self.counts = counts
+
+
+# class ReindexResponse:
+#     def __init__(self, index, src, dst, nodes, row, col):
+#         self.index = index
+#         self.src = src
+#         self.dst = dst
+#         self.nodes = nodes
+#         self.row = row
+#         self.col = col
 
 
 class FeatureRequest:
@@ -140,30 +138,29 @@ class QuiverProcess:
 
 class CudaSamplerProcess(QuiverProcess):
     def prepare(self, data):
-        device, edge_index = data
+        device, edge_index, sizes = data
+        self.sizes = sizes
         self.loader = AsyncCudaNeighborSampler(edge_index,
                                                device=device)
 
     def run(self, *args):
         upstream_queue = self.sync.upstream_queues[self.comm.global_rank]
-        request_queue = self.sync.request_queues[self.comm.global_rank]
         response_queue = self.sync.response_queues[self.comm.upstream_peer]
         while True:
-            while not request_queue.empty():
-                req = request_queue.get()
-                # if req.size == 15:
-                #     print(f'sampler {self.comm.group_rank} a batch')
-                # print(f'sampler {self.comm.group_rank} sample')
-                nodes, counts = self.loader.sample_layer(req.nodes, req.size)
-                response_queue.put(SampleResponse(
-                    req.index, req.src, req.dst, nodes, counts))
             while not upstream_queue.empty():
                 req = upstream_queue.get()
                 # print(f'sampler {self.comm.group_rank} reindex')
-                nodes, row, col = self.loader.reindex(
-                    req.inputs, req.outputs, req.counts)
-                response_queue.put(ReindexResponse(
-                    req.index, req.src, req.dst, nodes, row, col))
+                nodes = req.nodes
+                batch_size = len(nodes)
+                reindex_results = []
+                for size in self.sizes:
+                    out, cnt = self.loader.sample_layer(nodes, size)
+                    frontier, row_idx, col_idx = self.loader.reindex(
+                        nodes, out, cnt)
+                    reindex_results.append((len(frontier), col_idx, row_idx))
+                    nodes = frontier
+                response_queue.put(SampleResponse(
+                    req.index, req.src, req.dst, nodes, reindex_results))
 
 
 class MicroBatchIndex:
@@ -175,11 +172,10 @@ class MicroBatchIndex:
 
 class DataProcess(QuiverProcess):
     def prepare(self, data):
-        manager, feature_size, sizes, buffer_size = data
+        manager, feature_size, buffer_size = data
         self.manager = manager
-        self.manager.feature = self.manager.feature.to(self.manager.device)
+        self.manager.prepare()
         self.feature_size = feature_size
-        self.sizes = sizes
         self.buffer_size = buffer_size
 
     def run(self, *args):
@@ -196,9 +192,9 @@ class DataProcess(QuiverProcess):
                 if isinstance(res, SampleResponse):
                     # print(f'data {self.comm.group_rank} sample response')
                     self.handle_sample_response(res)
-                elif isinstance(res, ReindexResponse):
+                # elif isinstance(res, ReindexResponse):
                     # print(f'data {self.comm.group_rank} reindex response')
-                    self.handle_reindex_response(res)
+                    # self.handle_reindex_response(res)
                 else:
                     # print(f'data {self.comm.group_rank} feature response')
                     self.handle_feature_response(res)
@@ -208,61 +204,66 @@ class DataProcess(QuiverProcess):
 
     def handle_input_request(self, input_request):
         # print(f'data {self.comm.group_rank} a batch')
-        sample_device = input_request.sample_device
-        reindex_device = input_request.reindex_device
         train_device = input_request.train_device
-        nodes = input_request.nodes.to(sample_device)
+        nodes = input_request.nodes.to(self.manager.sample_device)
         batch_id = input_request.index.batch_id
         size = input_request.size
-        total_layer = input_request.total_layer
         sampler = self.comm.other_peers.sampler
         self.manager.init_entry(
-            nodes, batch_id, size, total_layer, sample_device, reindex_device, train_device)
+            nodes, batch_id, size, train_device)
         index = MicroBatchIndex(batch_id, 0, 1)
         req = SampleRequest(index, self.comm.global_rank,
-                            sampler, nodes, self.sizes[0])
-        self.sync.request_queues[sampler].put(req)
+                            sampler, nodes)
+        self.sync.upstream_queues[sampler].put(req)
 
     def handle_sample_response(self, sample_response):
         batch_id = sample_response.index.batch_id
-        outputs = sample_response.outputs.clone()
-        counts = sample_response.counts.clone()
-        ret = self.manager.recv_sample(batch_id, outputs, counts)
-        inputs, outputs, counts = ret
-        index = MicroBatchIndex(batch_id, 0, 1)
-        reindex_peer = self.comm.other_peers.local_reindex
-        request = ReindexRequest(
-            index, self.comm.global_rank, reindex_peer, inputs, outputs, counts)
-        self.sync.upstream_queues[reindex_peer].put(request)
+        nodes = sample_response.nodes.clone().to(self.manager.device)
+        ret = self.manager.recv_sample(
+            batch_id, nodes, sample_response.reindex_results)
+        reorder, res = self.manager.dispatch(
+            nodes, self.feature_size)
+        res = self.manager.prepare_request(batch_id, reorder, res)
+        group_peers = self.comm.group_peers
+        for rank, nodes in enumerate(res):
+            if rank == self.comm.group_rank:
+                features = self.manager.feature[nodes]
+                self.manager.recv_feature(
+                    batch_id, rank, len(res), features)
+                continue
+            index = MicroBatchIndex(batch_id, rank, len(res))
+            req = FeatureRequest(
+                index, self.comm.global_rank, group_peers[rank], nodes)
+            self.sync.request_queues[group_peers[rank]].put(req)
 
-    def handle_reindex_response(self, reindex_response):
-        batch_id = reindex_response.index.batch_id
-        nodes = reindex_response.nodes.clone()
-        row = reindex_response.row.clone()
-        col = reindex_response.col.clone()
-        ret = self.manager.recv_reindex(batch_id, nodes, row, col)
-        nodes, temp_layer = ret
-        if temp_layer >= 0:
-            sampler = self.comm.other_peers.sampler
-            index = MicroBatchIndex(batch_id, 0, 1)
-            req = SampleRequest(
-                index, self.comm.global_rank, sampler, nodes, self.sizes[temp_layer])
-            self.sync.request_queues[sampler].put(req)
-        else:
-            reorder, res = self.manager.dispatch(
-                nodes, self.feature_size)
-            res = self.manager.prepare_request(batch_id, reorder, res)
-            group_peers = self.comm.group_peers
-            for rank, nodes in enumerate(res):
-                if rank == self.comm.group_rank:
-                    features = self.manager.feature[nodes]
-                    self.manager.recv_feature(
-                        batch_id, rank, len(res), features)
-                    continue
-                index = MicroBatchIndex(batch_id, rank, len(res))
-                req = FeatureRequest(
-                    index, self.comm.global_rank, group_peers[rank], nodes)
-                self.sync.request_queues[group_peers[rank]].put(req)
+    # def handle_reindex_response(self, reindex_response):
+    #     batch_id = reindex_response.index.batch_id
+    #     nodes = reindex_response.nodes.clone()
+    #     row = reindex_response.row.clone()
+    #     col = reindex_response.col.clone()
+    #     ret = self.manager.recv_reindex(batch_id, nodes, row, col)
+    #     nodes, temp_layer = ret
+    #     if temp_layer >= 0:
+    #         sampler = self.comm.other_peers.sampler
+    #         index = MicroBatchIndex(batch_id, 0, 1)
+    #         req = SampleRequest(
+    #             index, self.comm.global_rank, sampler, nodes, self.sizes[temp_layer])
+    #         self.sync.request_queues[sampler].put(req)
+    #     else:
+    #         reorder, res = self.manager.dispatch(
+    #             nodes, self.feature_size)
+    #         res = self.manager.prepare_request(batch_id, reorder, res)
+    #         group_peers = self.comm.group_peers
+    #         for rank, nodes in enumerate(res):
+    #             if rank == self.comm.group_rank:
+    #                 features = self.manager.feature[nodes]
+    #                 self.manager.recv_feature(
+    #                     batch_id, rank, len(res), features)
+    #                 continue
+    #             index = MicroBatchIndex(batch_id, rank, len(res))
+    #             req = FeatureRequest(
+    #                 index, self.comm.global_rank, group_peers[rank], nodes)
+    #             self.sync.request_queues[group_peers[rank]].put(req)
 
     def handle_feature_request(self, feature_request):
         index = feature_request.index
@@ -286,7 +287,7 @@ class DataProcess(QuiverProcess):
             # while True:
             #     if self.sync.upstream_queues[trainer].empty():
             self.sync.upstream_queues[trainer].put(args)
-                    # break
+            # break
             del self.manager.buffers[batch_id]
 
 
@@ -344,8 +345,9 @@ class TrainerProcess(QuiverProcess):
             for j in range(num_batch):
                 count += 1
                 src = self.comm.global_rank
+                queue_beg = time.time()
                 sample = self.sync.upstream_queues[src].get()
-                # print(f'trainer {self.comm.group_rank} a batch')
+                queue_end = time.time()
                 batch_size, n_id, adjs, features = sample
 
                 self.optimizer.zero_grad()
@@ -357,8 +359,11 @@ class TrainerProcess(QuiverProcess):
                 dur = time.time() - t0
                 if count > 10:
                     total_time += dur
-                    if count % 10 == 0:
-                        print(f'rank {self.comm.group_rank} avg {total_time / (count - 10)}')
+                    if count % 10 == 0 and self.comm.global_rank == 2 * DEVICE_NUM:
+                        print(
+                            f'rank {self.comm.group_rank} total {count} avg {total_time / (count - 10)}')
+                        print(
+                            f'trainer {self.comm.global_rank} wait {queue_end - queue_beg} a batch')
                 t0 = time.time()
                 if count >= num_batch:
                     break
@@ -388,9 +393,9 @@ if __name__ == '__main__':
     # global_rank, group_rank, group_size, group_peers,
     #              downstream_peer, other_peers
     num_epoch = 1
-    num_batch = 100
+    num_batch = 4000
     batch_size = 128
-    
+
     sampler_size = DEVICE_NUM
     trainer_size = DEVICE_NUM
     data_size = DEVICE_NUM
@@ -402,6 +407,7 @@ if __name__ == '__main__':
     home = os.getenv('HOME')
     data_dir = osp.join(home, '.pyg')
     root = osp.join(data_dir, 'data', 'products')
+    root = "/home/dalong/data/"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     split_idx = dataset.get_idx_split()
     evaluator = Evaluator(name='ogbn-products')
@@ -430,7 +436,7 @@ if __name__ == '__main__':
     for sample_comm in sample_comms:
         sample = CudaSamplerProcess(sample_comm, sync)
         sample_proc = mp.Process(target=sample, args=(
-            (sample_comm.group_rank, graph_data.edge_index), num_epoch, num_batch))
+            (sample_comm.group_rank, graph_data.edge_index, [15, 10, 5]), num_epoch, num_batch))
         sample_proc.start()
         sample_procs.append(sample_proc)
     for data_comm in data_comms:
@@ -442,7 +448,7 @@ if __name__ == '__main__':
         manager = DataManager(device, feature, device, feature_devices,
                               feature_to_local, feature_rank)
         data_proc = mp.Process(target=data, args=(
-            (manager, data_size, [15, 10, 5], 4), num_epoch, num_batch))
+            (manager, data_size, BUFFER_SIZE), num_epoch, num_batch))
         data_proc.start()
         data_procs.append(data_proc)
 
@@ -450,7 +456,7 @@ if __name__ == '__main__':
                                               256, dataset.num_classes, 3, graph_data.y.squeeze()),
                            num_epoch, num_batch)
     train_procs = launch_multiprocess(train, trainer_size)
-
+    train_idx = train_idx.repeat(20)
     dataloader = torch.utils.data.DataLoader(
         train_idx, batch_size=batch_size, shuffle=True, drop_last=True)
 
@@ -460,12 +466,11 @@ if __name__ == '__main__':
     print('procs beg')
     for nodes in dataloader:
         index = MicroBatchIndex(count, 0, 1)
-        req = InputRequest(index, nodes, data_size, 3,
-                           dst_data, dst_data, dst_data)
+        req = InputRequest(index, nodes, data_size, dst_data)
         sync.upstream_queues[dst_data + sampler_size].put(req)
         dst_data = (dst_data + 1) % data_size
         count += 1
-        if count >= 800:
+        if count >= 16000:
             break
     time.sleep(50)
 

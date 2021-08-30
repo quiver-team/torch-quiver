@@ -1,5 +1,6 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <pybind11/numpy.h>
+#include <quiver/quiver.cu.hpp>
 #include <quiver/shard_tensor.cu.hpp>
 #include <torch/extension.h>
 
@@ -181,7 +182,7 @@ class ShardTensor
     std::vector<int64_t> shape_;
     bool inited_;
 };
-
+}  // namespace quiver
 void register_cuda_quiver_feature(pybind11::module &m)
 {
     py::class_<quiver::ShardTensor>(m, "ShardTensor")
@@ -204,4 +205,3 @@ void register_cuda_quiver_feature(pybind11::module &m)
         .def("append", &quiver::ShardTensor::append,
              py::call_guard<py::gil_scoped_release>());
 }
-}  // namespace quiver

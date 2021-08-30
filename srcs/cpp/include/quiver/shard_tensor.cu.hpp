@@ -23,7 +23,7 @@ __global__ void quiver_tensor_gather(float** dev_ptrs, const int64_t* offsets, c
     unsigned int start = tid;
     int64_t dev_index = 0;
     int64_t dev_offset = 0; 
-    float* dev_ptr = nullptr;
+    float* dev_ptr;
     int64_t src_copy_start = 0;
     int64_t dst_copy_start = 0;
     unsigned int copy_count = 0;
@@ -37,17 +37,13 @@ __global__ void quiver_tensor_gather(float** dev_ptrs, const int64_t* offsets, c
         printf("index = %lld, dev_index = %lld, dev_offset = %lld \n", indices[start], dev_index, dev_offset);
     }
     __syncthreads();
-
     while(start < indice_length){
         dev_index = find(offsets, device_count, indices[start]);
         dev_ptr = dev_ptrs[dev_index];
         dev_offset = indices[start] - offsets[dev_index];
-        src_copy_start = dev_offset * stride;
+        
+	    src_copy_start = dev_offset * stride;
         dst_copy_start = start * stride;
-        if(start == 0){
-            printf("index = %lld, dev_index = %lld, dev_offset = %lld", indices[start], dev_index, dev_offset);
-
-        }
         for(copy_count = 0; copy_count < stride; copy_count ++){
             res[dst_copy_start + copy_count] = dev_ptr[src_copy_start + copy_count];
         }

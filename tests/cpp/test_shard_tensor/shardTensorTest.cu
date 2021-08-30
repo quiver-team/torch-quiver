@@ -76,28 +76,27 @@ int main(){
     offset_host.push_back(0);
     offset_host.push_back(numElems);
     std::cout<<"offset_host initialization finished " <<offset_host.size() <<std::endl;
+
     std::vector<int64_t> indices_host;
     for(int index = 0; index < numElems; index++){
         indices_host.push_back(rand() % (numElems * 2));
     }
-
     std::cout<<"indices_host initialization finished " <<indices_host.size() <<std::endl;
     
     int64_t* offset_device;
     cudaMalloc((void**) &offset_device, sizeof(int64_t) * offset_host.size());
     cudaCheckError();
 
-    cudaDeviceSynchronize();
     int64_t* indices_device;
     cudaMalloc((void**) &indices_device, sizeof(int64_t) * indices_host.size());
-
-
-    cudaDeviceSynchronize();
+    cudaCheckError();
     cudaMemcpy(offset_device, &offset_host[0], sizeof(int64_t) * offset_host.size(), cudaMemcpyHostToDevice);
     cudaMemcpy(indices_device, &indices_host[0], sizeof(int64_t) * indices_host.size(), cudaMemcpyHostToDevice);
+    cudaCheckError();
 
     float* res_device;
     cudaMalloc((void**) &res_device, sizeof(float) * numElems);
+    cudaCheckError();
 
     for (int d = 0; d < numGPUs; d++) {
          cudaSetDevice(d);
@@ -105,23 +104,13 @@ int main(){
          cudaCheckError();
     }
 
-    cudaCheckError();
-
-    cudaDeviceSynchronize();
     float ** buffers_device;
     cudaMalloc((void ***) &buffers_device, sizeof(float*) * 2);
-    
     cudaMemcpy(buffers_device, &buffers[0], sizeof(float*) * buffers.size(), cudaMemcpyHostToDevice);
     cudaCheckError();
     
-    cudaDeviceSynchronize();
     std::cout<<"all data initialization finished " <<std::endl;
-    /*
-    __global__ void quiver_tensor_gather(float** dev_ptrs, const int64_t* offsets, const int device_count,
-                                     const int64_t* indices, int indice_length, 
-                                     float* res,
-                                     const int stride){
-    */
+
 
     quiver_tensor_gather<<<1024, 512>>>(buffers_device, offset_device, 2, indices_device, numElems, res_device, 1);
     cudaDeviceSynchronize();

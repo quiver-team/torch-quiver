@@ -135,8 +135,10 @@ int main(){
     cudaCheckError();
 
     float* res_device;
+    float* res_host = (float*) malloc(sizeof(float) * numElems);
     cudaMalloc((void**) &res_device, sizeof(float) * numElems);
     cudaCheckError();
+
 
     for (int d = 0; d < numGPUs; d++) {
          cudaSetDevice(d);
@@ -146,6 +148,7 @@ int main(){
     }
 
 
+    cudaSetDevice(0);
     float ** buffers_device;
     cudaMalloc((void ***) &buffers_device, sizeof(float*) * numGPUs);
     cudaMemcpy(buffers_device, &buffers[0], sizeof(float*) * buffers.size(), cudaMemcpyHostToDevice);

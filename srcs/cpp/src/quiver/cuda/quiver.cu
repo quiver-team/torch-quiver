@@ -191,7 +191,9 @@ class ShardTensor{
                 offset_list_.push_back(0);
             }
             tensor_list_.push_back(tensor);
-            offset_list_.push_back(offset_list_[device_count_ - 1] + tensor.sizes()[0]);
+            if(device_count_ > 0){
+                offset_list_.push_back(offset_list_[device_count_ - 1] + tensor.sizes()[0]);
+            }
             dev_ptrs_.push_back(tensor.data_ptr<float>());
             shape_[0] += tensor.size(0);
             device_count_ += 1;
@@ -236,7 +238,7 @@ class ShardTensor{
             cudaMalloc((void**) &offset_device, sizeof(int64_t) * offset_list_.size());
             cudaMemcpy(offset_device, &offset_list_[0], sizeof(int64_t) * offset_list_.size(), cudaMemcpyHostToDevice);
             cudaCheckError();
-            std::cout<<"LOG >>> "<<" offset_size "<<offset_list_.size()<<std::endl;               
+            std::cout<<"LOG >>> "<<" offset_size "<<offset_list_.size() <<" Offset Values "<<offset_list_[0] <<", "<<offset_list_[1]<<std::endl;               
             quiver_tensor_gather<<<(indices.numel() + 1023) / 1024 , 1024, 0, stream>>>(buffers_device, offset_device, offset_list_.size(), indices.data_ptr<int64_t>(), indices.numel(), res.data_ptr<float>(), stride(0));
             cudaCheckError();
             return res;

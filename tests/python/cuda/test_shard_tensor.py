@@ -13,6 +13,10 @@ def test_shard_tensor_intra_process():
     print("shard_tensor shape = ", shard_tensor.shape())
     indices = torch.randint(0, 2000000, (800000, )).type(torch.long)
     indices = indices.to("cuda:0")
+    # warm up
+    feature = shard_tensor[indices]
+    torch.cuda.synchronize()
+    
     start = time.time()
     feature = shard_tensor[indices]
     torch.cuda.synchronize()

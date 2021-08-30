@@ -21,7 +21,6 @@ def test_shard_tensor_intra_process():
     feature = shard_tensor[indices]
     torch.cuda.synchronize()
     print(f"gathered data shape = {feature.shape}, consumed {time.time() - start}")
-    
 
 test_shard_tensor_intra_process()
     

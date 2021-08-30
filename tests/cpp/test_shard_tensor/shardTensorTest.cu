@@ -109,7 +109,7 @@ int main(){
     // P2P Initilization
     for (int i = 0; i < numGPUs; i++) {
         cudaSetDevice(i);
-        for (int j = 0; j < numGPUs; j++) {
+        for (int j = i + 1; j < numGPUs; j++) {
           int access = 0;
           cudaDeviceCanAccessPeer(&access, i, j);
           if (access) {

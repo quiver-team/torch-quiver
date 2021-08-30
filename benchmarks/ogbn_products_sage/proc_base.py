@@ -372,41 +372,49 @@ class SingleProcess:
 
     def collect(self, nodes):
         nodes = nodes.to(self.device)
+        dispatch_beg = time.time()
         feature_reorder, feature_args = self.dispatch(nodes, self.comm.ws)
+        send_beg = time.time()
         feature_results = []
         for rank, part_nodes in enumerate(feature_args):
             if rank == self.comm.rank:
                 result = self.feature[part_nodes]
             else:
                 result = None
+                part_nodes = part_nodes.to(rank)
                 req = FeatureRequest(self.comm.rank, rank, part_nodes)
                 self.sync.request_queues[rank].put(req)
             feature_results.append(result)
+        recv_beg = time.time()
         for i in range(self.comm.ws - 1):
             req = self.sync.request_queues[self.comm.rank].get()
             src = req.src
             dst = req.dst
-            part_nodes = req.nodes.to(self.device)
+            part_nodes = req.nodes
             # to local
             feature = self.feature[part_nodes]
             # to global
             resp = FeatureResponse(src, dst, feature)
             self.sync.response_queues[src].put(resp)
+        resp_beg = time.time()
         for i in range(self.comm.ws - 1):
             resp = self.sync.response_queues[self.comm.rank].get()
             src = resp.src
             dst = resp.dst
             feature = resp.features
             feature_results[dst] = feature.to(self.device)
+        cat_beg = time.time()
         total_features = []
         for feature in feature_results:
             total_features.append(feature)
-        feature_beg = time.time()
         total_features = torch.cat(total_features)
-        feature_end = time.time()
         total_features[feature_reorder] = total_features
-        # if self.comm.rank == 0:
-        #     print(f'feature cat {feature_end - feature_beg}')
+        if self.comm.rank == 0:
+            print(f'feature dispatch {send_beg - dispatch_beg}')
+            print(f'feature send {recv_beg - send_beg}')
+            print(f'feature recv {resp_beg - recv_beg}')
+            print(f'feature resp {cat_beg - resp_beg}')
+            print(f'feature cat {time.time() - cat_beg}')
         return total_features
 
     def __call__(self, rank):
@@ -430,10 +438,11 @@ class SingleProcess:
                     loss = F.nll_loss(out, self.y[label_ids].to(self.device))
                     loss.backward()
                     self.optimizer.step()
-                    print(f'rank {self.comm.rank} sample {t1 - t0}')
-                    print(f'rank {self.comm.rank} feature {t2 - t1}')
-                    print(f'rank {self.comm.rank} took {time.time() - t0}')
+                    # print(f'rank {self.comm.rank} sample {t1 - t0}')
+                    # print(f'rank {self.comm.rank} feature {t2 - t1}')
+                    # print(f'rank {self.comm.rank} took {time.time() - t0}')
                     t0 = time.time()
+                    count += 1
                     if count >= self.num_batch:
                         cont = False
                         break
@@ -449,7 +458,7 @@ if __name__ == '__main__':
     mp.set_start_method('spawn')
     ws = 4
     num_epoch = 1
-    num_batch = 100
+    num_batch = 1000
     batch_size = 128
     sizes = [15, 10, 5]
     home = os.getenv('HOME')

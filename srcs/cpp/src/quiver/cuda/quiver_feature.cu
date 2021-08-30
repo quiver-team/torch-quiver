@@ -2,7 +2,7 @@
 #include <pybind11/numpy.h>
 #include <quiver/shard_tensor.cu.hpp>
 #include <torch/extension.h>
-
+#include <quiver/common.hpp>
 namespace quiver
 {
 class ShardTensor

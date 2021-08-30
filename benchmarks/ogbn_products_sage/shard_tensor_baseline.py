@@ -11,7 +11,7 @@ from torch_geometric.nn import SAGEConv
 import torch
 import torch.nn.functional as F
 import torch.multiprocessing as mp
-import quiver
+import torch_quiver as qv
 from quiver.async_cuda_sampler import AsyncCudaNeighborSampler
 from torch_geometric.data import NeighborSampler
 from torch_geometric.nn import SAGEConv
@@ -137,7 +137,7 @@ train_loader = torch.utils.data.DataLoader(train_idx, batch_size= 4096, shuffle=
 model = SAGE(dataset.num_features, 256, dataset.num_classes, num_layers=3)
 model = model.to(device)
 
-shard_tensor = quiver.ShardTensor(0)
+shard_tensor = qv.ShardTensor(0)
 half_count = data.shape[0] // 2
 shard_tensor.append(data.x[:half_count].to("cuda:0"))
 shard_tensor.append(data.x[half_count:].to("cuda:1"))
@@ -197,30 +197,6 @@ def train(epoch):
     return loss, approx_acc
 
 
-@torch.no_grad()
-def test():
-    model.eval()
-
-    out = model.inference(x)
-
-    y_true = y.cpu().unsqueeze(-1)
-    y_pred = out.argmax(dim=-1, keepdim=True)
-
-    train_acc = evaluator.eval({
-        'y_true': y_true[split_idx['train']],
-        'y_pred': y_pred[split_idx['train']],
-    })['acc']
-    val_acc = evaluator.eval({
-        'y_true': y_true[split_idx['valid']],
-        'y_pred': y_pred[split_idx['valid']],
-    })['acc']
-    test_acc = evaluator.eval({
-        'y_true': y_true[split_idx['test']],
-        'y_pred': y_pred[split_idx['test']],
-    })['acc']
-
-    return train_acc, val_acc, test_acc
-
 
 test_accs = []
 for run in range(1, 11):
@@ -235,15 +211,6 @@ for run in range(1, 11):
     for epoch in range(1, 21):
         loss, acc = train(epoch)
         print(f'Epoch {epoch:02d}, Loss: {loss:.4f}, Approx. Train: {acc:.4f}')
-
-        if epoch > 5:
-            train_acc, val_acc, test_acc = test()
-            print(f'Train: {train_acc:.4f}, Val: {val_acc:.4f}, '
-                  f'Test: {test_acc:.4f}')
-
-            if val_acc > best_val_acc:
-                best_val_acc = val_acc
-                final_test_acc = test_acc
     test_accs.append(final_test_acc)
 
 test_acc = torch.tensor(test_accs)

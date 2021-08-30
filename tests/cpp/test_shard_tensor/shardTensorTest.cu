@@ -46,7 +46,7 @@ __global__ void quiver_tensor_gather(float** dev_ptrs, const int64_t* offsets, c
     unsigned int copy_count = 0;
     if(tid == 0){
     	printf("check tid = %d, start = %d, indices_length = %d \n", tid, start, indice_length);
-	printf("check offset[1] = %d, indices[10] = %d, dev_ptrs[0][1] = %d \n", offsets[1], indices[10], dev_ptrs[0][1]);
+	    printf("check offset[1] = %d, indices[10] = %d, dev_ptrs[0][1] = %d \n", offsets[1], indices[10], dev_ptrs[0][1]);
 
         dev_index = find(offsets, device_count, 49000);
 
@@ -100,8 +100,9 @@ int main(){
     cudaMalloc((void**) &res_device, sizeof(float) * numElems);
 
     for (int d = 0; d < numGPUs; d++) {
-         //cudaSetDevice(d);
+         cudaSetDevice(d);
          cudaMalloc((void**) &buffers[d], numElems * sizeof(float));
+         cudaCheckError();
     }
 
     cudaCheckError();

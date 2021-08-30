@@ -21,6 +21,22 @@
     }                                                          \
   }
 
+
+__global__ void delay(volatile int *flag,
+    unsigned long long timeout_clocks = 10000000) {
+    // Wait until the application notifies us that it has completed queuing up the
+    // experiment, or timeout and exit, allowing the application to make progress
+    long long int start_clock, sample_clock;
+    start_clock = clock64();
+
+    while (!*flag) {
+        sample_clock = clock64();
+
+        if (sample_clock - start_clock > timeout_clocks) {
+            break;
+        }
+    }
+}
 __device__ int find(const int64_t* offsets, const int device_count, const int64_t index){
     int i = 1;
     for(i = 1; i < device_count; i++){
@@ -75,6 +91,8 @@ int main(){
     std::cout<<"device count = " << numGPUs <<std::endl;
     std::vector<float *> buffers(numGPUs);
     std::vector<int64_t> offset_host;
+    std::vector<cudaStream_t> stream(numGPUs);
+
     offset_host.push_back(0);
     offset_host.push_back(numElems);
     std::cout<<"offset_host initialization finished " <<offset_host.size() <<std::endl;
@@ -102,10 +120,11 @@ int main(){
 
     for (int d = 0; d < numGPUs; d++) {
          cudaSetDevice(d);
+         cudaStreamCreateWithFlags(&stream[d], cudaStreamNonBlocking);
          cudaMalloc((void**) &buffers[d], numElems * sizeof(float));
+         cudaStreamSynchronize(stream[d]);
          cudaCheckError();
     }
-    sleep(5);
 
     float ** buffers_device;
     cudaMalloc((void ***) &buffers_device, sizeof(float*) * 2);
@@ -115,7 +134,7 @@ int main(){
     std::cout<<"all data initialization finished " <<std::endl;
 
 
-    quiver_tensor_gather<<<1024, 512>>>(buffers_device, offset_device, 2, indices_device, numElems, res_device, 1);
+    quiver_tensor_gather<<<1024, 512, 0, stream[0]>>>(buffers_device, offset_device, 2, indices_device, numElems, res_device, 1);
     cudaDeviceSynchronize();
     cudaCheckError();
 

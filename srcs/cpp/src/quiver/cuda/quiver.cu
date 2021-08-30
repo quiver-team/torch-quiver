@@ -150,9 +150,30 @@ class ShardTensor{
                 shape_[0] += tensor_list_[index].size(0);
             }
             //
+            init_p2p();
 
         }
-        ShardTensor(int device): device_(device), inited_(false), device_count_(0){}
+        void init_p2p(){
+            cudaGetDeviceCount(&numGPUs);
+            for (int i = 0; i < numGPUs; i++) {
+                cudaSetDevice(i);
+                for (int j = i + 1; j < numGPUs; j++) {
+                  int access = 0;
+                  cudaDeviceCanAccessPeer(&access, i, j);
+                  if (access) {
+                    cudaSetDevice(i);
+                    cudaDeviceEnablePeerAccess(j, 0);
+                    cudaCheckError();
+                    cudaSetDevice(j);
+                    cudaDeviceEnablePeerAccess(i, 0);
+                    cudaCheckError();
+                  }
+                }
+            }
+        }
+        ShardTensor(int device): device_(device), inited_(false), device_count_(0){
+            init_p2p();
+        }
         void append(torch::Tensor& tensor){
             // for now, we assume tensor is added ordered
             if(!inited_){
@@ -201,7 +222,14 @@ class ShardTensor{
             // decide Tensor
             auto options = torch::TensorOptions().dtype(tensor_list_[0].dtype()).device(torch::kCUDA, device_);
             auto res = torch::empty(res_shape, options);
-            quiver_tensor_gather<<<(indices.numel() + 1023) / 1024 , 1024, 0, stream>>>(&dev_ptrs_[0], thrust::raw_pointer_cast(offset_list_.data()), offset_list_.size(), indices.data_ptr<int64_t>(), indices.numel(), res.data_ptr<float>(), stride(0));
+
+            // Copy buffers Device
+            float ** buffers_device;
+            cudaMalloc((void ***) &buffers_device, sizeof(float*) * numGPUs);
+            cudaMemcpy(buffers_device, &dev_ptrs_[0], sizeof(float*) * dev_ptrs_.size(), cudaMemcpyHostToDevice);
+            cudaCheckError();
+
+            quiver_tensor_gather<<<(indices.numel() + 1023) / 1024 , 1024, 0, stream>>>(buffers_device, thrust::raw_pointer_cast(offset_list_.data()), offset_list_.size(), indices.data_ptr<int64_t>(), indices.numel(), res.data_ptr<float>(), stride(0));
             return res;
         }
 

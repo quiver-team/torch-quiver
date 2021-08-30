@@ -119,7 +119,7 @@ int main(){
     cudaCheckError();
 
     for (int d = 0; d < numGPUs; d++) {
-         cudaSetDevice(d);
+         //cudaSetDevice(d);
          cudaStreamCreateWithFlags(&stream[d], cudaStreamNonBlocking);
          cudaMalloc((void**) &buffers[d], numElems * sizeof(float));
          cudaStreamSynchronize(stream[d]);
@@ -134,7 +134,7 @@ int main(){
     std::cout<<"all data initialization finished " <<std::endl;
 
 
-    quiver_tensor_gather<<<1024, 512, 0, stream[0]>>>(buffers_device, offset_device, 2, indices_device, numElems, res_device, 1);
+    quiver_tensor_gather<<<1024, 512>>>(buffers_device, offset_device, 2, indices_device, numElems, res_device, 1);
     cudaDeviceSynchronize();
     cudaCheckError();
 

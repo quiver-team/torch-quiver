@@ -229,8 +229,8 @@ class ShardTensor{
             cudaMalloc((void ***) &buffers_device, sizeof(float*) * device_count_);
             cudaMemcpy(buffers_device, &dev_ptrs_[0], sizeof(float*) * dev_ptrs_.size(), cudaMemcpyHostToDevice);
             cudaCheckError();
-
             quiver_tensor_gather<<<(indices.numel() + 1023) / 1024 , 1024, 0, stream>>>(buffers_device, thrust::raw_pointer_cast(offset_list_.data()), offset_list_.size(), indices.data_ptr<int64_t>(), indices.numel(), res.data_ptr<float>(), stride(0));
+            cudaCheckError();
             return res;
         }
 

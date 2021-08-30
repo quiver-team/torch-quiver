@@ -12,6 +12,7 @@ def test_shard_tensor_intra_process():
     shard_tensor.append(device_1_tensor)
     print("shard_tensor shape = ", shard_tensor.shape())
     indices = torch.randint(0, 2000000, (800000, )).type(torch.long)
+    #indices = torch.arange(960000, 1040000).type(torch.long)
     indices = indices.to("cuda:0")
     # warm up
     feature = shard_tensor[indices]

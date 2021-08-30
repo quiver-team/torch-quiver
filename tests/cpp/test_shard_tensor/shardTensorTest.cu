@@ -74,10 +74,10 @@ __global__ void quiver_tensor_gather(float** dev_ptrs, const int64_t* offsets, c
     __syncthreads();
     while(start < indice_length){
         dev_index = find(offsets, device_count, indices[start]);
-	dev_ptr = dev_ptrs[dev_index];
-	dev_offset = indices[start] - offsets[dev_index];
+        dev_ptr = dev_ptrs[dev_index];
+        dev_offset = indices[start] - offsets[dev_index];
         
-	src_copy_start = dev_offset * stride;
+	    src_copy_start = dev_offset * stride;
         dst_copy_start = start * stride;
         for(copy_count = 0; copy_count < stride; copy_count ++){
             res[dst_copy_start + copy_count] = dev_ptr[src_copy_start + copy_count];
@@ -93,24 +93,26 @@ int main(){
     std::vector<int64_t> offset_host;
     std::vector<cudaStream_t> stream(numGPUs);
 
-    offset_host.push_back(0);
-    offset_host.push_back(numElems);
+
     std::cout<<"offset_host initialization finished " <<offset_host.size() <<std::endl;
 
     std::vector<int64_t> indices_host;
+    int offset_val = 0;
     for(int index = 0; index < numElems; index++){
-        indices_host.push_back(rand() % (numElems * 2));
+        indices_host.push_back(rand() % (numElems * numGPUs));
+        offset_host.push_back(offset_val);
+        offset_val += numElems;
     }
+
     std::cout<<"indices_host initialization finished " <<indices_host.size() <<std::endl;
     
     int64_t* offset_device;
     cudaMalloc((void**) &offset_device, sizeof(int64_t) * offset_host.size());
+    cudaMemcpy(offset_device, &offset_host[0], sizeof(int64_t) * offset_host.size(), cudaMemcpyHostToDevice);
     cudaCheckError();
 
     int64_t* indices_device;
     cudaMalloc((void**) &indices_device, sizeof(int64_t) * indices_host.size());
-    cudaCheckError();
-    cudaMemcpy(offset_device, &offset_host[0], sizeof(int64_t) * offset_host.size(), cudaMemcpyHostToDevice);
     cudaMemcpy(indices_device, &indices_host[0], sizeof(int64_t) * indices_host.size(), cudaMemcpyHostToDevice);
     cudaCheckError();
 
@@ -119,22 +121,20 @@ int main(){
     cudaCheckError();
 
     for (int d = 0; d < numGPUs; d++) {
-         //cudaSetDevice(d);
-         cudaStreamCreateWithFlags(&stream[d], cudaStreamNonBlocking);
+         cudaSetDevice(d);
          cudaMalloc((void**) &buffers[d], numElems * sizeof(float));
-         cudaStreamSynchronize(stream[d]);
          cudaCheckError();
     }
 
     float ** buffers_device;
-    cudaMalloc((void ***) &buffers_device, sizeof(float*) * 2);
+    cudaMalloc((void ***) &buffers_device, sizeof(float*) * numGPUs);
     cudaMemcpy(buffers_device, &buffers[0], sizeof(float*) * buffers.size(), cudaMemcpyHostToDevice);
     cudaCheckError();
     
     std::cout<<"all data initialization finished " <<std::endl;
 
 
-    quiver_tensor_gather<<<1024, 512>>>(buffers_device, offset_device, 2, indices_device, numElems, res_device, 1);
+    quiver_tensor_gather<<<1024, 512>>>(buffers_device, offset_device, numGPUs, indices_device, numElems, res_device, 1);
     cudaDeviceSynchronize();
     cudaCheckError();
 

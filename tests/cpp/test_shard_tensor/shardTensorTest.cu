@@ -103,7 +103,8 @@ int main(){
          cudaMalloc((void**) &buffers[d], numElems * sizeof(float));
          cudaCheckError();
     }
-
+    sleep(5);
+    
     float ** buffers_device;
     cudaMalloc((void ***) &buffers_device, sizeof(float*) * 2);
     cudaMemcpy(buffers_device, &buffers[0], sizeof(float*) * buffers.size(), cudaMemcpyHostToDevice);

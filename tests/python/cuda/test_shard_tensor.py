@@ -35,6 +35,13 @@ def test_shard_tensor_intra_process():
     torch.cuda.synchronize()
     consumed_time = time.time() - start
     print(f"gathered data shape = {feature.shape}, consumed {time.time() - start}")
+    torch.cuda.synchronize()
+    whole_tensor = torch.from_numpy(host_tensor).type(torch.float32).to("cuda:0")
+    start = time.time()
+    res = whole_tensor[indices]
+    torch.cuda.synchronize()
+    print(f"gathered data shape using torch tensor = {res.shape}, consumed {time.time() - start}")
+    
     feature = feature.cpu().numpy()
     feature_gt = host_tensor[host_indice]
     assert np.array_equal(feature, feature_gt), "TEST FAILED"

@@ -3,7 +3,7 @@
 #include <quiver/quiver.cu.hpp>
 #include <quiver/shard_tensor.cu.hpp>
 #include <torch/extension.h>
-
+#include <quiver/common.hpp>
 namespace quiver
 {
 class ShardTensor
@@ -137,11 +137,12 @@ class ShardTensor
                   << " offset_size " << offset_list_.size() << " Offset Values "
                   << offset_list_[0] << ", " << offset_list_[1] << " stride "
                   << stride(0) << std::endl;
-        quiver_tensor_gather<<<(indices.numel() + 1023) / 1024, 1024, 0,
-                               stream>>>(
-            buffers_device, offset_device, offset_list_.size(),
-            indices.data_ptr<int64_t>(), indices.numel(), res.data_ptr<float>(),
-            stride(0));
+        int blockSize = 0;
+        int numBlocks = 0;
+        cudaOccupancyMaxPotentialBlockSize(&numBlocks, &blockSize, quiver_tensor_gather);
+        std::cout<<"LOG >>> "<<" numBlocks "<< numBlocks <<" blockSize "<<blockSize<<std::endl;
+
+        quiver_tensor_gather<<<numBlocks , blockSize, 0, stream>>>(buffers_device, offset_device, offset_list_.size(), indices.data_ptr<int64_t>(), indices.numel(), res.data_ptr<float>(), stride(0));
         cudaCheckError();
         return res;
     }

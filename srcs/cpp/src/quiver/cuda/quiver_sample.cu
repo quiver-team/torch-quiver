@@ -3,7 +3,6 @@
 
 #include <thrust/device_vector.h>
 
-#include <ATen/cuda/CUDAContext.h>
 #include <numa.h>
 #include <pybind11/numpy.h>
 #include <sys/mman.h>

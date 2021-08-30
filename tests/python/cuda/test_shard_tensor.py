@@ -3,7 +3,7 @@ import torch_quiver as qv
 import random
 import time
 import numpy as np 
-
+import sys
 def test_shard_tensor_intra_process():
     NUM_ELEMENT = 1000000
     SAMPLE_SIZE = 80000
@@ -33,11 +33,12 @@ def test_shard_tensor_intra_process():
     start = time.time()
     feature = shard_tensor[indices]
     torch.cuda.synchronize()
+    consumed_time = time.time() - start
     print(f"gathered data shape = {feature.shape}, consumed {time.time() - start}")
     feature = feature.cpu().numpy()
     feature_gt = host_tensor[host_indice]
-    print(np.array_equal(feature, feature_gt)) 
-    print("TEST SUCCEED!")
+    assert np.array_equal(feature, feature_gt), "TEST FAILED"
+    print(f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s")
 
 test_shard_tensor_intra_process()
     

@@ -141,10 +141,10 @@ class ShardTensor
         */
         int blockSize = 0;
         int numBlocks = 0;
-        cudaOccupancyMaxPotentialBlockSize(&numBlocks, &blockSize, quiver_tensor_gather);
+        cudaOccupancyMaxPotentialBlockSize(&numBlocks, &blockSize, quiver_tensor_gather_aligned);
         //std::cout<<"LOG >>> "<<" numBlocks "<< numBlocks <<" blockSize "<<blockSize<<std::endl;
 
-        quiver_tensor_gather<<<numBlocks , blockSize, 0, stream>>>(buffers_device, offset_device, offset_list_.size(), indices.data_ptr<int64_t>(), indices.numel(), res.data_ptr<float>(), stride(0));
+        quiver_tensor_gather_aligned<<<numBlocks , blockSize, 0, stream>>>(buffers_device, offset_device, offset_list_.size(), indices.data_ptr<int64_t>(), indices.numel(), res.data_ptr<float>(), stride(0));
         cudaCheckError();
         return res;
     }

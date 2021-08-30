@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <torch/extension.h>
 
-#define WARP_SIZE 32
+#define WARP_SIZE 128
 
 __device__ int find(const int64_t *offsets, const int device_count,
                     const int64_t index)

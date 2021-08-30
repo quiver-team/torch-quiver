@@ -114,7 +114,7 @@ class SAGE(torch.nn.Module):
 
         return x_all
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 ##############################
 # Initilize Zero-Copy Sampler 
@@ -138,10 +138,10 @@ model = SAGE(dataset.num_features, 256, dataset.num_classes, num_layers=3)
 model = model.to(device)
 
 shard_tensor = qv.ShardTensor(0)
-half_count = data.shape[0] // 2
+half_count = data.x.shape[0] // 2
 shard_tensor.append(data.x[:half_count].to("cuda:0"))
 shard_tensor.append(data.x[half_count:].to("cuda:1"))
-
+torch.cuda.set_device(device)
 y = data.y.squeeze().to(device)
 
 def sample(input_nodes, sizes):

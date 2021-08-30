@@ -40,7 +40,7 @@ class ShardTensor
     }
     void init_p2p()
     {
-        std::cout << "LOG>>> Init P2P Access" << std::endl;
+        std::cout << "LOG>>> P2P Access Initilization" << std::endl;
         int numGPUs;
         cudaGetDeviceCount(&numGPUs);
         for (int i = 0; i < numGPUs; i++) {

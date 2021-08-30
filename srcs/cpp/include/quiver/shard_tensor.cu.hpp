@@ -35,15 +35,17 @@ __global__ void quiver_tensor_gather(float** dev_ptrs, const int64_t* offsets, c
     int64_t src_copy_start = 0;
     int64_t dst_copy_start = 0;
 
+    unsigned int local_start = thread_start;
     while(warp_start < indice_length){
+        local_start = thread_start;
         dev_index = find(offsets, device_count, indices[warp_start]);
         dev_ptr = dev_ptrs[dev_index];
         dev_offset = indices[warp_start] - offsets[dev_index];
 
         src_copy_start = dev_offset * stride;
         dst_copy_start = warp_start * stride;
-        for(; thread_start < stride; thread_start += WARP_SIZE){
-            res[dst_copy_start + thread_start] = dev_ptr[src_copy_start + thread_start];
+        for(; local_start < stride; local_start += WARP_SIZE){
+            res[dst_copy_start + local_start] = dev_ptr[src_copy_start + local_start];
         }
         warp_start += warp_step;
     }

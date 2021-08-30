@@ -226,7 +226,7 @@ class ShardTensor{
 
             // Copy buffers Device
             float ** buffers_device;
-            cudaMalloc((void ***) &buffers_device, sizeof(float*) * numGPUs);
+            cudaMalloc((void ***) &buffers_device, sizeof(float*) * device_count_);
             cudaMemcpy(buffers_device, &dev_ptrs_[0], sizeof(float*) * dev_ptrs_.size(), cudaMemcpyHostToDevice);
             cudaCheckError();
 

@@ -386,8 +386,11 @@ class SingleProcess:
                 self.sync.request_queues[rank].put(req)
             feature_results.append(result)
         recv_beg = time.time()
+        recv_time = 0.0
         for i in range(self.comm.ws - 1):
+            beg = time.time()
             req = self.sync.request_queues[self.comm.rank].get()
+            recv_time += time.time() - beg
             src = req.src
             dst = req.dst
             part_nodes = req.nodes
@@ -397,8 +400,11 @@ class SingleProcess:
             resp = FeatureResponse(src, dst, feature)
             self.sync.response_queues[src].put(resp)
         resp_beg = time.time()
+        resp_time = 0.0
         for i in range(self.comm.ws - 1):
+            beg = time.time()
             resp = self.sync.response_queues[self.comm.rank].get()
+            resp_time += time.time() - beg
             src = resp.src
             dst = resp.dst
             feature = resp.features
@@ -412,8 +418,8 @@ class SingleProcess:
         if self.comm.rank == 0:
             print(f'feature dispatch {send_beg - dispatch_beg}')
             print(f'feature send {recv_beg - send_beg}')
-            print(f'feature recv {resp_beg - recv_beg}')
-            print(f'feature resp {cat_beg - resp_beg}')
+            print(f'feature recv {recv_time} / {resp_beg - recv_beg}')
+            print(f'feature resp {resp_time} / {cat_beg - resp_beg}')
             print(f'feature cat {time.time() - cat_beg}')
         return total_features
 
@@ -456,15 +462,15 @@ class SingleProcess:
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
-    ws = 2
+    ws = 4
     num_epoch = 1
-    num_batch = 1000
+    num_batch = 200
     batch_size = 128
     sizes = [15, 10, 5]
     home = os.getenv('HOME')
     data_dir = osp.join(home, '.pyg')
     root = osp.join(data_dir, 'data', 'products')
-    root = "/home/dalong/data"
+    # root = "/home/dalong/data"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     split_idx = dataset.get_idx_split()
     data = dataset[0]

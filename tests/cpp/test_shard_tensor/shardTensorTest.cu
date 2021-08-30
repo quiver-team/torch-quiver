@@ -141,6 +141,7 @@ int main(){
     for (int d = 0; d < numGPUs; d++) {
          cudaSetDevice(d);
          cudaMalloc((void**) &buffers[d], numElems * sizeof(float));
+         cudaMemset(buffers[d], 0, numElems * sizeof(float));
          cudaCheckError();
     }
 

@@ -11,8 +11,8 @@ def test_shard_tensor_intra_process():
     #########################
     # Init With Numpy
     ########################
-    host_tensor = np.random.randint(0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM), dtype=np.float32)
-    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ), dtype=np.int64)
+    host_tensor = np.random.randint(0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
+    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
     
     device_0_tensor = torch.from_numpy(host_tensor[: NUM_ELEMENT]).type(torch.float32).to("cuda:0")
     device_1_tensor =  torch.from_numpy(host_tensor[NUM_ELEMENT:]).type(torch.float32).to("cuda:1")
@@ -34,11 +34,9 @@ def test_shard_tensor_intra_process():
     feature = shard_tensor[indices]
     torch.cuda.synchronize()
     print(f"gathered data shape = {feature.shape}, consumed {time.time() - start}")
-    feature_sum = torch.sum(feature)
-    print(feature_sum)
-    sum_gt = np.sum(host_tensor[host_indice])
-    print(sum_gt)
-    
+    feature = feature.cpu().numpy()
+    feature_gt = host_tensor[host_indice]
+    print(np.array_equal(feature, feature_gt)) 
     print("TEST SUCCEED!")
 
 test_shard_tensor_intra_process()

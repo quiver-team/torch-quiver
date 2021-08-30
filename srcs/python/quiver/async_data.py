@@ -90,7 +90,7 @@ class DataManager:
             reorder = buffer.feature_reorder
             buffer.feature_reorder = None
             buffer.state = "finished"
-            all_features[reorder] = all_features
+            all_features = all_features[reorder]
             return all_features
 
     # def recv_reindex(self, batch_id, nodes, row, col):

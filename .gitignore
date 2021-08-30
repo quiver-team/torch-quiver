@@ -15,3 +15,5 @@ generated
 venvgi/
 .idea/
 build/
+.vscode/
+srcs/python/torch_quiver.egg-info/

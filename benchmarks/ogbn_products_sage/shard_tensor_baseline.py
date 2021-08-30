@@ -11,7 +11,7 @@ from torch_geometric.nn import SAGEConv
 import torch
 import torch.nn.functional as F
 import torch.multiprocessing as mp
-
+import torch_quiver as qv
 from quiver.async_cuda_sampler import AsyncCudaNeighborSampler
 from torch_geometric.data import NeighborSampler
 from torch_geometric.nn import SAGEConv
@@ -117,7 +117,7 @@ class SAGE(torch.nn.Module):
         return x_all
 
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 ##############################
 # Initilize Zero-Copy Sampler
@@ -145,6 +145,13 @@ train_loader = torch.utils.data.DataLoader(
 
 model = SAGE(dataset.num_features, 256, dataset.num_classes, num_layers=3)
 model = model.to(device)
+
+shard_tensor = qv.ShardTensor(0)
+half_count = data.x.shape[0] // 2
+shard_tensor.append(data.x[:half_count], 0)
+shard_tensor.append(data.x[half_count:], 1)
+
+torch.cuda.set_device(device)
 
 x = data.x.to(device)
 y = data.y.squeeze().to(device)
@@ -182,10 +189,11 @@ def train(epoch):
     for seeds in train_loader:
         start_time = time.time()
         n_id, batch_size, adjs = sample(seeds, [15, 10, 5])
-
         print(f"sample consumed = {time.time() - start_time}")
         optimizer.zero_grad()
-        out = model(x[n_id], adjs)
+        nid = n_id.to("cuda")
+        feaure = shard_tensor[nid]
+        out = model(feaure, adjs)
         loss = F.nll_loss(out, y[n_id[:batch_size]])
         loss.backward()
         optimizer.step()
@@ -226,7 +234,7 @@ def test():
 
     return train_acc, val_acc, test_acc
 
-
+    
 test_accs = []
 for run in range(1, 11):
     print('')
@@ -244,7 +252,7 @@ for run in range(1, 11):
         if epoch > 5:
             train_acc, val_acc, test_acc = test()
             print(f'Train: {train_acc:.4f}, Val: {val_acc:.4f}, '
-                  f'Test: {test_acc:.4f}')
+                f'Test: {test_acc:.4f}')
 
             if val_acc > best_val_acc:
                 best_val_acc = val_acc

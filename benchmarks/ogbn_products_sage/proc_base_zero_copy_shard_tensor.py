@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 import torch.multiprocessing as mp
 
+import torch_quiver as qv
 from quiver.async_cuda_sampler import AsyncCudaNeighborSampler
 from torch_geometric.data import NeighborSampler
 from torch_geometric.nn import SAGEConv
@@ -16,9 +17,11 @@ import os.path as osp
 from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
 from quiver.models.sage_model import SAGE
 import time
-
+import numpy as np
+from scipy.sparse import csr_matrix
 
 from typing import List, NamedTuple, Optional, Tuple
+from numa import schedule, info
 
 
 class Adj(NamedTuple):
@@ -98,8 +101,18 @@ class SingleProcess:
         self.num_batch = num_batch
         self.args = args
 
-    def prepare(self, rank, sample_data, train_data, feature_data, sync, comm):
-        edge_index, batch_size, sizes, train_idx = sample_data
+    def prepare(self, rank, sample_data, train_data, shard_tensor_item_ipc, sync, comm):
+        #####################################################################################################
+        # Bind Task To NUMA Node And Sleep 1s So That Next Time This Processing Is Runing On Target NUMA Node
+        #####################################################################################################
+        total_nodes = info.get_max_node() + 1
+        current_node = 0 if rank < 2 else 1
+        schedule.bind(current_node)
+        
+        print(f"LOG >>> Rank {rank} Is Bind To NUMA Node {rank % total_nodes}/{total_nodes}")
+        time.sleep(1)
+        
+        csr_mat, batch_size, sizes, train_idx = sample_data
         device = rank
         torch.cuda.set_device(device)
         self.list_size = 10
@@ -119,15 +132,31 @@ class SingleProcess:
         self.comm.rank = rank
         self.train_idx = train_idx
         self.batch_size = batch_size
-        self.loader = AsyncCudaNeighborSampler(edge_index,
-                                               device=device)
+        self.indptr = torch.from_numpy(csr_mat.indptr[:-1]).type(torch.long)
+        self.indices = torch.from_numpy(csr_mat.indices).type(torch.long)
+        self.loader = AsyncCudaNeighborSampler(csr_indptr=self.indptr,
+                                               csr_indices=self.indices,
+                                               device=device,
+                                               copy=True)
         self.sizes = sizes
         num_features, num_hidden, num_classes, num_layers, y = train_data
         self.y = y
         device = torch.device('cuda:' +
                               str(self.comm.rank) if torch.cuda.is_available() else 'cpu')
         self.device = device
-        self.feature = feature_data.to(device)
+        
+        ###################################
+        # Rebuild Tensor In Child Process
+        ###################################
+        self.feature = qv.ShardTensor(rank)
+        for ipc_item in shard_tensor_item_ipc:
+            item = qv.ShardTensorItem()
+            item.from_ipc(ipc_item)
+            self.feature.append(item)
+        
+        torch.cuda.set_device(device)
+        
+        
         model = SAGE(num_features, num_hidden, num_classes, num_layers)
         model = model.to(device)
         model.reset_parameters()
@@ -279,10 +308,11 @@ class SingleProcess:
         adjs_list = [adjs[::-1] for adjs in adjs_list]
         return nodes_list, batch_size_list, adjs_list
 
-    def sample(self, nodes):
-        batch_size = len(nodes)
-        nodes = nodes.to(self.device)
+    def sample(self, input_nodes):
+        nodes = input_nodes.to(self.device)
         adjs = []
+
+        batch_size = len(nodes)
         for size in self.sizes:
             out, cnt = self.loader.sample_layer(nodes, size)
             frontier, row_idx, col_idx = self.loader.reindex(nodes, out, cnt)
@@ -371,56 +401,11 @@ class SingleProcess:
         return nodes, batch_size, adjs[::-1]
 
     def collect(self, nodes):
+        #########################
+        # Collect By Shard Tensor
+        #########################
         nodes = nodes.to(self.device)
-        dispatch_beg = time.time()
-        feature_reorder, feature_args = self.dispatch(nodes, self.comm.ws)
-        send_beg = time.time()
-        feature_results = []
-        for rank, part_nodes in enumerate(feature_args):
-            if rank == self.comm.rank:
-                result = self.feature[part_nodes]
-            else:
-                result = None
-                part_nodes = part_nodes.to(rank)
-                req = FeatureRequest(self.comm.rank, rank, part_nodes)
-                self.sync.request_queues[rank].put(req)
-            feature_results.append(result)
-        recv_beg = time.time()
-        recv_time = 0.0
-        for i in range(self.comm.ws - 1):
-            beg = time.time()
-            req = self.sync.request_queues[self.comm.rank].get()
-            recv_time += time.time() - beg
-            src = req.src
-            dst = req.dst
-            part_nodes = req.nodes
-            # to local
-            feature = self.feature[part_nodes]
-            # to global
-            resp = FeatureResponse(src, dst, feature)
-            self.sync.response_queues[src].put(resp)
-        resp_beg = time.time()
-        resp_time = 0.0
-        for i in range(self.comm.ws - 1):
-            beg = time.time()
-            resp = self.sync.response_queues[self.comm.rank].get()
-            resp_time += time.time() - beg
-            src = resp.src
-            dst = resp.dst
-            feature = resp.features
-            feature_results[dst] = feature.to(self.device)
-        cat_beg = time.time()
-        total_features = []
-        for feature in feature_results:
-            total_features.append(feature)
-        total_features = torch.cat(total_features)
-        total_features[feature_reorder] = total_features
-        if self.comm.rank == 0:
-            print(f'feature dispatch {send_beg - dispatch_beg}')
-            print(f'feature send {recv_beg - send_beg}')
-            print(f'feature recv {recv_time} / {resp_beg - recv_beg}')
-            print(f'feature resp {resp_time} / {cat_beg - resp_beg}')
-            print(f'feature cat {time.time() - cat_beg}')
+        total_features = self.feature[nodes]
         return total_features
 
     def __call__(self, rank):
@@ -444,11 +429,10 @@ class SingleProcess:
                     loss = F.nll_loss(out, self.y[label_ids].to(self.device))
                     loss.backward()
                     self.optimizer.step()
-                    # print(f'rank {self.comm.rank} sample {t1 - t0}')
-                    # print(f'rank {self.comm.rank} feature {t2 - t1}')
-                    # print(f'rank {self.comm.rank} took {time.time() - t0}')
+                    print(f'rank {self.comm.rank} sample {t1 - t0}')
+                    print(f'rank {self.comm.rank} feature {t2 - t1}')
+                    print(f'rank {self.comm.rank} took {time.time() - t0}')
                     t0 = time.time()
-                    count += 1
                     if count >= self.num_batch:
                         cont = False
                         break
@@ -459,31 +443,62 @@ class SingleProcess:
         # print(f'rank {self.comm.rank} recv avg {self.recv_time}')
         # print(f'rank {self.comm.rank} queue avg {self.queue_time}')
 
+def get_csr_from_coo(edge_index):
+    src = edge_index[0].numpy()
+    dst = edge_index[1].numpy()
+    node_count = max(np.max(src), np.max(dst))
+    data = np.zeros(dst.shape, dtype=np.int32)
+    csr_mat = csr_matrix((data, (edge_index[0].numpy(), edge_index[1].numpy())))
+    return csr_mat
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
-    ws = 4
+    ws = 1
     num_epoch = 1
-    num_batch = 200
+    num_batch = 100
     batch_size = 128
     sizes = [15, 10, 5]
-    home = os.getenv('HOME')
-    data_dir = osp.join(home, '.pyg')
-    root = osp.join(data_dir, 'data', 'products')
-    # root = "/home/dalong/data"
+    root = "/home/dalong/data/"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     split_idx = dataset.get_idx_split()
     data = dataset[0]
     train_idx = split_idx['train']
     edge_index = data.edge_index
-    x, y = data.x.share_memory_(), data.y.squeeze().share_memory_()
-    sample_data = edge_index, batch_size, sizes, train_idx
+    csr_mat = get_csr_from_coo(edge_index)
+    y = data.y.squeeze().share_memory_()
+    
+    ######################################
+    # Init Shard Tensor In Main Process
+    ######################################
+    qv.init_p2p()
+    shard_tensors = []
+    shard_tensor = qv.ShardTensor(0)
+    half_count = data.x.shape[0] // 2
+    shard_tensor.append(data.x[: half_count], 0)
+    shard_tensor.append(data.x[half_count:], 1)
+    shard_tensor_ipc = shard_tensor.share_ipc()
+    shard_item_ipc = [item.share_ipc() for item in shard_tensor_ipc]
+        
+    
+    sample_data = csr_mat, batch_size, sizes, train_idx
     train_data = dataset.num_features, 256, dataset.num_classes, 3, y
     comm = CommConfig(0, ws)
     sync = SyncManager(ws)
     proc = SingleProcess(num_epoch, num_batch, sample_data,
-                         train_data, x, sync, comm)
+                         train_data, shard_item_ipc, sync, comm)
     procs = launch_multiprocess(proc, ws)
     time.sleep(50)
     for p in procs:
         p.kill()
+
+
+'''
+
+def get_csr_from_coo(edge_index):
+    src = edge_index[0].numpy()
+    dst = edge_index[1].numpy()
+    node_count = max(np.max(src), np.max(dst))
+    data = np.zeros(dst.shape, dtype=np.int32)
+    csr_mat = csr_matrix((data, (edge_index[0].numpy(), edge_index[1].numpy())), shape=(node_count, node_count))
+    return csr_mat
+'''

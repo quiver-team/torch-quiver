@@ -12,8 +12,10 @@ def test_shard_tensor_intra_process():
     shard_tensor.append(device_1_tensor)
     print("shard_tensor shape = ", shard_tensor.shape())
     indices = torch.randint(0, 2000000, (800000, )).type(torch.long)
+    indices = indices.to("cuda:0")
     start = time.time()
     feature = shard_tensor[indices]
+    print(feature[0]);
     print(f"gathered data shape = {feature.shape}, consumed {time.time() - start}")
     
 

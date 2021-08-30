@@ -154,6 +154,7 @@ class ShardTensor{
 
         }
         void init_p2p(){
+            int numGPUs;
             cudaGetDeviceCount(&numGPUs);
             for (int i = 0; i < numGPUs; i++) {
                 cudaSetDevice(i);

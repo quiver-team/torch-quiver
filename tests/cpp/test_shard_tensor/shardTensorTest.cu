@@ -159,6 +159,7 @@ int main(){
 
     quiver_tensor_gather<<<1024, 512>>>(buffers_device, offset_device, numGPUs, indices_device, numElems, res_device, 1);
     cudaDeviceSynchronize();
+    cudaDeviceSynchronize();
     cudaCheckError();
 
     std::cout<<"test finished " <<std::endl;

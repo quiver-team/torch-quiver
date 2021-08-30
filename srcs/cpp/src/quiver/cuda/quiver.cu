@@ -154,6 +154,7 @@ class ShardTensor{
 
         }
         void init_p2p(){
+            std::cout<<"LOG>>> Init P2P Access"<<std::endl;
             int numGPUs;
             cudaGetDeviceCount(&numGPUs);
             for (int i = 0; i < numGPUs; i++) {
@@ -161,6 +162,7 @@ class ShardTensor{
                 for (int j = i + 1; j < numGPUs; j++) {
                   int access = 0;
                   cudaDeviceCanAccessPeer(&access, i, j);
+                  std::cout<<"LOG>>> "<<i<<" "<<j<<" "<<access<<std::endl;
                   if (access) {
                     cudaSetDevice(i);
                     cudaDeviceEnablePeerAccess(j, 0);
@@ -234,7 +236,7 @@ class ShardTensor{
             cudaMalloc((void**) &offset_device, sizeof(int64_t) * offset_list_.size());
             cudaMemcpy(offset_device, &offset_list_[0], sizeof(int64_t) * offset_list_.size(), cudaMemcpyHostToDevice);
             cudaCheckError();
-
+            std::cout<<"LOG >>> "<<" offset_size "<<offset_list_.size()<<std::endl;               
             quiver_tensor_gather<<<(indices.numel() + 1023) / 1024 , 1024, 0, stream>>>(buffers_device, offset_device, offset_list_.size(), indices.data_ptr<int64_t>(), indices.numel(), res.data_ptr<float>(), stride(0));
             cudaCheckError();
             return res;

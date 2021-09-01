@@ -4,6 +4,7 @@ import random
 import time
 import numpy as np
 import sys
+import torch.multiprocessing as mp
 
 
 def test_shard_tensor_intra_process():
@@ -40,14 +41,17 @@ def test_shard_tensor_intra_process():
     feature = shard_tensor[indices]
     torch.cuda.synchronize()
     consumed_time = time.time() - start
-    print(f"gathered data shape = {feature.shape}, consumed {time.time() - start}")
+    print(
+        f"gathered data shape = {feature.shape}, consumed {time.time() - start}")
     torch.cuda.synchronize()
-    whole_tensor = torch.from_numpy(host_tensor).type(torch.float32).to("cuda:0")
+    whole_tensor = torch.from_numpy(
+        host_tensor).type(torch.float32).to("cuda:0")
     start = time.time()
     res = whole_tensor[indices]
     torch.cuda.synchronize()
-    print(f"gathered data shape using torch tensor = {res.shape}, consumed {time.time() - start}")
-    
+    print(
+        f"gathered data shape using torch tensor = {res.shape}, consumed {time.time() - start}")
+
     feature = feature.cpu().numpy()
     feature_gt = host_tensor[host_indice]
     assert np.array_equal(feature, feature_gt), "TEST FAILED"
@@ -55,4 +59,72 @@ def test_shard_tensor_intra_process():
         f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s")
 
 
-test_shard_tensor_intra_process()
+def peer_process(queue, barrier, local_tensor):
+    torch.cuda.set_device(1)
+    device_1_tensor = local_tensor.to("cuda:1")
+    torch.cuda.synchronize()
+    queue.put(device_1_tensor)
+    barrier.wait()
+
+
+def test_shard_tensor_inter_process():
+    NUM_ELEMENT = 1000000
+    SAMPLE_SIZE = 80000
+    FEATURE_DIM = 600
+    torch.cuda.set_device(1)
+    #########################
+    # Init With Numpy
+    ########################
+    host_tensor = np.random.randint(
+        0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
+    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
+
+    device_0_tensor = torch.from_numpy(
+        host_tensor[: NUM_ELEMENT]).type(torch.float32).to("cuda:0")
+    remote_tensor = torch.from_numpy(
+        host_tensor[NUM_ELEMENT:]).type(torch.float32)
+    queue = mp.Queue(4)
+    barrier = mp.Barrier(2)
+    proc = mp.Process(target=peer_process, args=(
+        queue, barrier, remote_tensor))
+    proc.start()
+    device_1_tensor = queue.get()
+    shard_tensor = qv.ShardTensor(1)
+    shard_tensor.append(device_0_tensor)
+    shard_tensor.append(device_1_tensor)
+
+    print("shard_tensor shape = ", shard_tensor.shape())
+
+    indices = torch.from_numpy(host_indice).type(torch.long)
+    indices = indices.to("cuda:0")
+
+    # warm up
+    feature = shard_tensor[indices]
+    torch.cuda.synchronize()
+
+    start = time.time()
+    feature = shard_tensor[indices]
+    torch.cuda.synchronize()
+    consumed_time = time.time() - start
+    print(
+        f"gathered data shape = {feature.shape}, consumed {time.time() - start}")
+    torch.cuda.synchronize()
+    whole_tensor = torch.from_numpy(
+        host_tensor).type(torch.float32).to("cuda:0")
+    start = time.time()
+    res = whole_tensor[indices]
+    torch.cuda.synchronize()
+    print(
+        f"gathered data shape using torch tensor = {res.shape}, consumed {time.time() - start}")
+
+    feature = feature.cpu().numpy()
+    feature_gt = host_tensor[host_indice]
+    assert np.array_equal(feature, feature_gt), "TEST FAILED"
+    barrier.wait()
+    print(
+        f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s")
+
+
+if __name__ == '__main__':
+    mp.set_start_method('spawn')
+    test_shard_tensor_inter_process()

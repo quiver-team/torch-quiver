@@ -60,6 +60,8 @@ class ShardTensor
                 }
             }
         }
+        cudaSetDevice(device_);
+
     }
     ShardTensor(int device) : device_(device), inited_(false), device_count_(0)
     {

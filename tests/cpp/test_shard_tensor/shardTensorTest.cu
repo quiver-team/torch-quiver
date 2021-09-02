@@ -38,7 +38,7 @@ __global__ void delay(volatile int *flag,
     }
 }
 #define WARP_SIZE 32
-
+#define WARP_GROUP  4
 __device__ int find(const int64_t* offsets, const int device_count, const int64_t index){
     int i = 1;
     for(i = 1; i < device_count; i++){
@@ -69,7 +69,7 @@ __global__ void quiver_tensor_gather(float** dev_ptrs, const int64_t* offsets, c
     float* dev_ptr;
     int64_t src_copy_start = 0;
     int64_t dst_copy_start = 0;
-
+    unsigned int local_start = 0;                                    
     while(warp_start < indice_length){
         dev_index = find(offsets, device_count, indices[warp_start]);
         dev_ptr = dev_ptrs[dev_index];
@@ -148,6 +148,11 @@ int main(){
 
 
     cudaSetDevice(0);
+
+    cudaPointerAttributes attributes;
+    cudaPointerGetAttributes(attributes, (void*) buffers[1]);
+    std::cout<< "check device ", attributes.device << " check device pointer" << attributes.devicePointer<<std::endl;
+    
     float ** buffers_device;
     cudaMalloc((void ***) &buffers_device, sizeof(float*) * numGPUs);
     cudaMemcpy(buffers_device, &buffers[0], sizeof(float*) * buffers.size(), cudaMemcpyHostToDevice);

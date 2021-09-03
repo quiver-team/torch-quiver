@@ -88,6 +88,9 @@ class ShardTensor
                                    tensor.sizes()[0]);
         }
         dev_ptrs_.push_back(tensor.data_ptr<float>());
+        cudaPointerAttributes attributes;
+        cudaPointerGetAttributes(&attributes, (void*) tensor.data_ptr<float>());
+        std::cout<< "check device " << attributes.device << " check device pointer" << attributes.devicePointer<<std::endl;
         shape_[0] += tensor.size(0);
         device_count_ += 1;
     }

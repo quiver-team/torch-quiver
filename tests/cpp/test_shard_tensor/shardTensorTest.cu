@@ -151,7 +151,11 @@ int main(){
 
     cudaPointerAttributes attributes;
     cudaPointerGetAttributes(&attributes, (void*) buffers[1]);
-    std::cout<< "check device ", attributes.device << " check device pointer" << attributes.devicePointer<<std::endl;
+    std::cout<< "check device " << attributes.device << " check device pointer" << attributes.devicePointer<<std::endl;
+    
+    cudaPointerGetAttributes(&attributes,  attributes.devicePointer);
+    std::cout<< "check device " << attributes.device << " check device pointer" << attributes.devicePointer<<std::endl;
+
 
     float ** buffers_device;
     cudaMalloc((void ***) &buffers_device, sizeof(float*) * numGPUs);

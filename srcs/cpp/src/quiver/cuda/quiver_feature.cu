@@ -37,7 +37,7 @@ class ShardTensor
             shape_[0] += tensor_list_[index].size(0);
         }
         //
-        init_p2p();
+        //init_p2p();
     }
     void init_p2p()
     {
@@ -46,6 +46,22 @@ class ShardTensor
         cudaGetDeviceCount(&numGPUs);
         for (int i = 0; i < numGPUs; i++) {
             cudaSetDevice(i);
+            cudaDeviceProp prop;
+            cudaGetDeviceProperties(&prop, i);
+
+            // CUDA IPC is only supported on devices with unified addressing
+            if (!prop.unifiedAddressing) {
+                printf("Device %d does not support unified addressing, skipping...\n", i);
+                continue;
+            }
+            // This sample requires two processes accessing each device, so we need
+            // to ensure exclusive or prohibited mode is not set
+            if (prop.computeMode != cudaComputeModeDefault) {
+                printf("Device %d is in an unsupported compute mode for this sample\n",
+                    i);
+                continue;
+            }
+            
             for (int j = i + 1; j < numGPUs; j++) {
                 int access = 0;
                 cudaDeviceCanAccessPeer(&access, i, j);
@@ -61,10 +77,12 @@ class ShardTensor
                 }
             }
         }
+        cudaSetDevice(device_);
+
     }
     ShardTensor(int device) : device_(device), inited_(false), device_count_(0)
     {
-        init_p2p();
+        //init_p2p();
     }
     void append(torch::Tensor &tensor)
     {
@@ -86,6 +104,9 @@ class ShardTensor
                                    tensor.sizes()[0]);
         }
         dev_ptrs_.push_back(tensor.data_ptr<float>());
+        cudaPointerAttributes attributes;
+        cudaPointerGetAttributes(&attributes, (void*) tensor.data_ptr<float>());
+        std::cout<< "check device " << attributes.device << " check device pointer" << attributes.devicePointer<<std::endl;
         shape_[0] += tensor.size(0);
         device_count_ += 1;
     }
@@ -199,6 +220,8 @@ void register_cuda_quiver_feature(pybind11::module &m)
         .def(py::init<int>())
         .def("__getitem__", &quiver::ShardTensor::operator[],
              py::call_guard<py::gil_scoped_release>())
+        .def("init_p2p", &quiver::ShardTensor::init_p2p,
+            py::call_guard<py::gil_scoped_release>())
         .def("shape", &quiver::ShardTensor::shape,
              py::call_guard<py::gil_scoped_release>())
         .def("numel", &quiver::ShardTensor::numel,

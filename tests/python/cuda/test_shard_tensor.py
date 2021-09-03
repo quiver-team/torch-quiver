@@ -5,6 +5,7 @@ import time
 import numpy as np
 import sys
 import torch.multiprocessing as mp
+import gc  
 
 
 def test_shard_tensor_intra_process():
@@ -60,11 +61,13 @@ def test_shard_tensor_intra_process():
 
 
 def peer_process(queue, barrier, local_tensor):
+    gc.disable()  
     torch.cuda.set_device(1)
     device_1_tensor = local_tensor.to("cuda:1")
     torch.cuda.synchronize()
     queue.put(device_1_tensor)
     barrier.wait()
+    gc.enable()  
 
 
 def test_shard_tensor_inter_process():

@@ -37,7 +37,7 @@ class ShardTensor
             shape_[0] += tensor_list_[index].size(0);
         }
         //
-        init_p2p();
+        //init_p2p();
     }
     void init_p2p()
     {
@@ -82,7 +82,7 @@ class ShardTensor
     }
     ShardTensor(int device) : device_(device), inited_(false), device_count_(0)
     {
-        init_p2p();
+        //init_p2p();
     }
     void append(torch::Tensor &tensor)
     {
@@ -220,6 +220,8 @@ void register_cuda_quiver_feature(pybind11::module &m)
         .def(py::init<int>())
         .def("__getitem__", &quiver::ShardTensor::operator[],
              py::call_guard<py::gil_scoped_release>())
+        .def("init_p2p", &quiver::ShardTensor::init_p2p,
+            py::call_guard<py::gil_scoped_release>())
         .def("shape", &quiver::ShardTensor::shape,
              py::call_guard<py::gil_scoped_release>())
         .def("numel", &quiver::ShardTensor::numel,

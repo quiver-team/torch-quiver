@@ -46,6 +46,22 @@ class ShardTensor
         cudaGetDeviceCount(&numGPUs);
         for (int i = 0; i < numGPUs; i++) {
             cudaSetDevice(i);
+            cudaDeviceProp prop;
+            cudaGetDeviceProperties(&prop, i);
+
+            // CUDA IPC is only supported on devices with unified addressing
+            if (!prop.unifiedAddressing) {
+                printf("Device %d does not support unified addressing, skipping...\n", i);
+                continue;
+            }
+            // This sample requires two processes accessing each device, so we need
+            // to ensure exclusive or prohibited mode is not set
+            if (prop.computeMode != cudaComputeModeDefault) {
+                printf("Device %d is in an unsupported compute mode for this sample\n",
+                    i);
+                continue;
+            }
+            
             for (int j = i + 1; j < numGPUs; j++) {
                 int access = 0;
                 cudaDeviceCanAccessPeer(&access, i, j);

@@ -66,7 +66,7 @@ class ShardTensor
         return shape;
     }
 
-    void append(ShardTensorItem item){
+    void append_item(ShardTensorItem item){
         if (!inited_) {
             shape_.resize(item.shape);
             // std::cout<<"check shape_ size "<<shape_.size()<<std::endl;
@@ -290,7 +290,6 @@ void register_cuda_quiver_feature(pybind11::module &m)
     
     
     py::class_<quiver::ShardTensorItem>(m, "ShardTensorItem")
-        .def(py::init<>())
         .def("shape", &quiver::ShardTensorItem::shape,
             py::call_guard<py::gil_scoped_release>())
         .def("mem_handle", &quiver::ShardTensorItem::mem_handle,
@@ -317,6 +316,8 @@ void register_cuda_quiver_feature(pybind11::module &m)
         .def("device_count", &quiver::ShardTensor::device_count,
              py::call_guard<py::gil_scoped_release>())
         .def("append", &quiver::ShardTensor::append,
+             py::call_guard<py::gil_scoped_release>())
+        .def("append_item", &quiver::ShardTensor::append_item,
              py::call_guard<py::gil_scoped_release>())
         .def("share_ipc", &quiver::ShardTensor::share_ipc,
              py::call_guard<py::gil_scoped_release>());

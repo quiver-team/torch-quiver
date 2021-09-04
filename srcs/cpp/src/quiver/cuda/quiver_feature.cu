@@ -21,11 +21,11 @@ class ShardTensorItem
 {
   public:
     int device;
-    std::string mem_handle;
+    PyBytesObject mem_handle;
     std::vector<int> shape;
     // for now we assume it is all float
     int dtype;
-    ShardTensorItem(int device_, std::string mem_handle_, std::vector<int> shape_):device(device_), mem_handle(mem_handle_), shape(shape_)
+    ShardTensorItem(int device_, PyBytesObject mem_handle_, std::vector<int> shape_):device(device_), mem_handle(mem_handle_), shape(shape_)
     {
 
     }
@@ -226,9 +226,11 @@ class ShardTensor
             if(tensor_devices_[index] >= 0){
                 cudaIpcMemHandle_t handle;
                 cudaIpcGetMemHandle(&handle, dev_ptrs_[index]);
-                std::string string_handle = (char *)(&handle);
+                auto _handle = PyBytes_FromStringAndSize((char *)&handle, CUDA_IPC_HANDLE_SIZE);
+                std::string string_handle = THPStorage_(bytesAsHandleString)(_handle);
                 ShardTensorItem item(tensor_devices_[index], string_handle, tensor_shapes_[index]);
                 res.push_back(item);
+
             }
         }
         return res;

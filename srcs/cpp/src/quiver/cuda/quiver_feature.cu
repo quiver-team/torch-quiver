@@ -279,6 +279,7 @@ void register_cuda_quiver_feature(pybind11::module &m)
     m.def("init_p2p", &quiver::init_p2p,
             py::call_guard<py::gil_scoped_release>());
     
+    /*
     py::class_<quiver::ShardTensorItem>(m, "ShardTensorItem")
         .def(py::init<>())
         .def("shape", &quiver::ShardTensorItem::shape,
@@ -287,6 +288,7 @@ void register_cuda_quiver_feature(pybind11::module &m)
             py::call_guard<py::gil_scoped_release>())
         .def("device", &quiver::ShardTensorItem::device,
             py::call_guard<py::gil_scoped_release>());
+    */
 
     py::class_<quiver::ShardTensor>(m, "ShardTensor")
         //.def(py::init<std::vector<torch::Tensor>, int>())

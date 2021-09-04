@@ -7,10 +7,9 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <c10/cuda/CUDAGuard.h>
-#endif
 
 #include <torch/csrc/utils/python_numbers.h>
-#include <ATen/MapAllocator.h>
+//#include <ATen/MapAllocator.h>
 #include <atomic>
 #include <string>
 

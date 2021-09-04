@@ -71,6 +71,7 @@ def test_shard_tensor_ipc():
     NUM_ELEMENT = 1000000
     SAMPLE_SIZE = 80000
     FEATURE_DIM = 600
+    gc.disable()
     #########################
     # Init With Numpy
     ########################
@@ -82,15 +83,53 @@ def test_shard_tensor_ipc():
         host_tensor[: NUM_ELEMENT]).type(torch.float32)
     device_1_tensor = torch.from_numpy(
         host_tensor[NUM_ELEMENT:]).type(torch.float32)
-
+    
+    indices = torch.from_numpy(host_indice).type(torch.long)
+    indices = indices.to("cuda:0")
+    
     print(
         f"device_0_tensor device {device_0_tensor.device}\ndevice_1_tensor device {device_1_tensor.device}")
-    shard_tensor = qv.ShardTensor(0)
-    shard_tensor.append(device_0_tensor, 0)
-    shard_tensor.append(device_1_tensor, 1)
+    shard_tensor2 = qv.ShardTensor(0)
+    shard_tensor2.append(device_0_tensor, 0)
+    shard_tensor2.append(device_1_tensor, 1)
     
-    ipc_res = shard_tensor.share_ipc()
+    ipc_res = shard_tensor2.share_ipc()
     print(ipc_res)
+    
+    ###################################
+    # Create Shard Tensor With IPC
+    #################################
+    shard_tensor = qv.ShardTensor(0)
+    for item in ipc_res:
+        shard_tensor2.append(item)
+    
+     # warm up
+    feature = shard_tensor[indices]
+    torch.cuda.synchronize()
+
+    start = time.time()
+    feature = shard_tensor[indices]
+    torch.cuda.synchronize()
+    consumed_time = time.time() - start
+    print(
+        f"gathered data shape = {feature.shape}, consumed {time.time() - start}")
+    torch.cuda.synchronize()
+    whole_tensor = torch.from_numpy(
+        host_tensor).type(torch.float32).to("cuda:0")
+    start = time.time()
+    res = whole_tensor[indices]
+    torch.cuda.synchronize()
+    print(
+        f"gathered data shape using torch tensor = {res.shape}, consumed {time.time() - start}")
+
+    feature = feature.cpu().numpy()
+    feature_gt = host_tensor[host_indice]
+    assert np.array_equal(feature, feature_gt), "TEST FAILED"
+    print(
+        f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s")
+    
+    gc.enable()
+    
     
 
 test_shard_tensor_item()

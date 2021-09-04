@@ -51,7 +51,7 @@ class ShardTensor
     {
     }
 
-    int get_tensor_bytes(torch::Tensor tensor){
+    int64_t get_tensor_bytes(torch::Tensor tensor){
         // assume it's float 
         int dim = tensor.dim();
         int total_bytes = 4;
@@ -116,11 +116,11 @@ class ShardTensor
                                    tensor.sizes()[0]);
         }
         void *ptr = NULL;
-        int data_size = get_tensor_bytes(tensor);
+        int64_t data_size = get_tensor_bytes(tensor);
         tensor_devices_.push_back(target_device);
         if(target_device >= 0){
             // if target_device >= 0, it means we use p2p 
-            printf("LOG >>> Malloc Data On Device %d With %d Bytes\n", target_device, data_size);
+            printf("LOG >>> Malloc Data On Device %d With %lld Bytes\n", target_device, data_size);
             cudaSetDevice(target_device);
             cudaMalloc(&ptr, data_size);
             cudaMemcpy(ptr, tensor.data_ptr<float>(), data_size, cudaMemcpyHostToDevice);

@@ -4,6 +4,15 @@
 #include <quiver/quiver.cu.hpp>
 #include <quiver/shard_tensor.cu.hpp>
 #include <torch/extension.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <c10/cuda/CUDAGuard.h>
+#endif
+
+#include <torch/csrc/utils/python_numbers.h>
+#include <ATen/MapAllocator.h>
+#include <atomic>
+#include <string>
 
 namespace quiver
 {
@@ -212,9 +221,93 @@ class ShardTensor
     std::vector<int64_t> shape_;
     bool inited_;
 };
+static PyObject * shareCuda(PyObject *_self, PyObject *noargs)
+{
+  HANDLE_TH_ERRORS
+  auto self = (THPStorage*)_self;
+  THWStorage *storage = self->cdata;
+
+  if (storage->received_cuda()) {
+    AT_ERROR(
+        "Attempted to send CUDA tensor received from another process; this is not currently supported. Consider cloning before sending.");
+  }
+
+  at::DeviceGuard device_guard(storage->device());
+  THPObjectPtr tuple(PyTuple_New(8));
+  THPObjectPtr device(THPUtils_packInt32(storage->device().index()));
+  THPObjectPtr _handle(Py_None);
+  Py_INCREF(Py_None);
+  THPObjectPtr size_bytes(THPUtils_packUInt64(storage->nbytes()));
+  THPObjectPtr _offset_bytes(THPUtils_packInt32(0));
+  THPObjectPtr _ref_counter(Py_None);
+  Py_INCREF(Py_None);
+  THPObjectPtr _ref_counter_offset(THPUtils_packInt32(0));
+  THPObjectPtr _event_handle(Py_None);
+  Py_INCREF(Py_None);
+  THPObjectPtr _event_sync_required(Py_None);
+  Py_INCREF(Py_None);
+  if (THWStorage_(data)(LIBRARY_STATE storage)) {
+    // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
+    size_t base_size;
+    void *base_ptr = c10::cuda::CUDACachingAllocator::getBaseAllocation(THWStorage_(data)(LIBRARY_STATE storage), &base_size);
+    ptrdiff_t offset_bytes = (char*)storage->data<scalar_t>() - (char*)base_ptr;
+
+    // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
+    cudaIpcMemHandle_t handle;
+    THCudaCheck(cudaIpcGetMemHandle(&handle, base_ptr));
+
+    _handle = PyBytes_FromStringAndSize((char *)&handle, CUDA_IPC_HANDLE_SIZE);
+    _offset_bytes = PyLong_FromSsize_t((Py_ssize_t)offset_bytes);
+
+    // Put Storage Data behind new ref counting context
+    // See Note [CUDA IPC Refcounting implementation explained]
+    at::DataPtr sent_data_ptr = torch::GetNewRefCountedSentData(storage->data(), storage->device());
+    auto old_data_ptr = storage->set_data_ptr(std::move(sent_data_ptr));
+    auto sent_data  =  static_cast<torch::CudaIPCSentData*>(storage->data_ptr().get_context());
+    sent_data->set_original_ptr(std::move(old_data_ptr));
+    _ref_counter = PyBytes_FromString((sent_data->handle()).c_str());
+    _ref_counter_offset = THPUtils_packInt64(sent_data->offset());
+
+    // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
+    cudaIpcEventHandle_t ipc_event_handle;
+
+#ifndef __HIP_PLATFORM_HCC__
+    if (sent_data->event_sync_required_) {
+      THCudaCheck(cudaIpcGetEventHandle(&ipc_event_handle, sent_data->event_));
+    }
+#else
+    // ipc_event_handle unused in storage receiver, we can leave it uninitialized.
+#endif
+
+    _event_handle = PyBytes_FromStringAndSize((char *)&ipc_event_handle, CUDA_IPC_HANDLE_SIZE);
+    _event_sync_required = PyBool_FromLong(sent_data->event_sync_required_);
+
+  }
+
+  if (!tuple || !device || !_handle || !size_bytes || !_offset_bytes || !_event_handle) {
+    return nullptr;
+  }
+  PyTuple_SET_ITEM(tuple.get(), 0, device.release());
+  // cudaIpcMemHandle_t(of basePtr)
+  PyTuple_SET_ITEM(tuple.get(), 1, _handle.release());
+  // Size(in bytes) of the real storage, note this is not the size of basePtr memory block.
+  PyTuple_SET_ITEM(tuple.get(), 2, size_bytes.release());
+  // Offset(in bytes) of the real storage in the basePtr memory block.
+  // NB: this offset MUST be in bytes instead of numel, since we use (storage_handle, offset)
+  //     as key in shared_cache(multiprocessing/reduction.py).
+  //     Offset in numel cannot uniquely represent a storage.
+  PyTuple_SET_ITEM(tuple.get(), 3, _offset_bytes.release());
+  PyTuple_SET_ITEM(tuple.get(), 4, _ref_counter.release());
+  PyTuple_SET_ITEM(tuple.get(), 5, _ref_counter_offset.release());
+  PyTuple_SET_ITEM(tuple.get(), 6, _event_handle.release());
+  PyTuple_SET_ITEM(tuple.get(), 7, _event_sync_required.release());
+  return tuple.release();
+  END_HANDLE_TH_ERRORS
+}
 }  // namespace quiver
 void register_cuda_quiver_feature(pybind11::module &m)
 {
+    m.def("share_cda", &quiver::shareCuda);
     py::class_<quiver::ShardTensor>(m, "ShardTensor")
         //.def(py::init<std::vector<torch::Tensor>, int>())
         .def(py::init<int>())

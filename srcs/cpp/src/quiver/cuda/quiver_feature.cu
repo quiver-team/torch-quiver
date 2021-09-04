@@ -120,6 +120,7 @@ class ShardTensor
         tensor_devices_.push_back(target_device);
         if(target_device >= 0){
             // if target_device >= 0, it means we use p2p 
+            printf("LOG >>> Malloc Data On Device %d With %d Bytes\n", target_device, data_size);
             cudaSetDevice(target_device);
             cudaMalloc(&ptr, data_size);
             cudaMemcpy(ptr, tensor.data_ptr<float>(), data_size, cudaMemcpyHostToDevice);

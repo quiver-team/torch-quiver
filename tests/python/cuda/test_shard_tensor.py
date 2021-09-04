@@ -131,7 +131,7 @@ def test_shard_tensor_ipc():
     gc.enable()
     
     
-
+qv.init_p2p()
 test_shard_tensor_item()
 test_shard_tensor_intra_process()
 test_shard_tensor_ipc()

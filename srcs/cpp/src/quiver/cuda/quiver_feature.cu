@@ -17,8 +17,9 @@ namespace quiver
 {
 #define CHECK_CPU(x)                                                          \
 AT_ASSERTM(!x.device().is_cuda(), #x " must be CPU tensor")
-class ShardTensorItem{
-public:
+class ShardTensorItem
+{
+  public:
     int device;
     std::string mem_handle;
     std::vector<int> shape;
@@ -28,7 +29,9 @@ public:
     {
 
     }
-    ShardTensorItem();
+    ShardTensorItem(){
+
+    };
     void set_device(int device_){
         device = device;
     }
@@ -66,9 +69,9 @@ class ShardTensor
         return shape;
     }
 
-    void append_item(ShardTensorItem item){
+    void append(ShardTensorItem item){
         if (!inited_) {
-            shape_.resize(item.shape);
+            shape_.resize(item.shape.size());
             // std::cout<<"check shape_ size "<<shape_.size()<<std::endl;
             shape_[0] = 0;
             auto tensor_sizes = item.shape;
@@ -315,9 +318,9 @@ void register_cuda_quiver_feature(pybind11::module &m)
              py::call_guard<py::gil_scoped_release>())
         .def("device_count", &quiver::ShardTensor::device_count,
              py::call_guard<py::gil_scoped_release>())
-        .def("append", &quiver::ShardTensor::append,
+        .def("append", py::overload_cast<torch::Tensor, int>(&quiver::ShardTensor::append),
              py::call_guard<py::gil_scoped_release>())
-        .def("append_item", &quiver::ShardTensor::append_item,
+        .def("append", py::overload_cast<quiver::ShardTensorItem>(&quiver::ShardTensor::append),
              py::call_guard<py::gil_scoped_release>())
         .def("share_ipc", &quiver::ShardTensor::share_ipc,
              py::call_guard<py::gil_scoped_release>());

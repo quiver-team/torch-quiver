@@ -14,6 +14,7 @@ def test_shard_tensor_item():
     qv.shape = [1,2,3]
     qv.mem_handle = "mem_handle"
     print(qv.device, qv.shape, qv.mem_handle)
+    print("ShardTensorItem TEST SUCCEED")
     
 def test_shard_tensor_intra_process():
     NUM_ELEMENT = 1000000

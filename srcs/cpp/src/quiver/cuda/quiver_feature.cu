@@ -47,47 +47,6 @@ class ShardTensor
         //
         //init_p2p();
     }
-    void init_p2p()
-    {
-        std::cout << "LOG>>> P2P Access Initilization" << std::endl;
-        int numGPUs;
-        cudaGetDeviceCount(&numGPUs);
-        for (int i = 0; i < numGPUs; i++) {
-            cudaSetDevice(i);
-            cudaDeviceProp prop;
-            cudaGetDeviceProperties(&prop, i);
-
-            // CUDA IPC is only supported on devices with unified addressing
-            if (!prop.unifiedAddressing) {
-                printf("Device %d does not support unified addressing, skipping...\n", i);
-                continue;
-            }
-            // This sample requires two processes accessing each device, so we need
-            // to ensure exclusive or prohibited mode is not set
-            if (prop.computeMode != cudaComputeModeDefault) {
-                printf("Device %d is in an unsupported compute mode for this sample\n",
-                    i);
-                continue;
-            }
-            
-            for (int j = 0; j < numGPUs; j++) {
-                int access = 0;
-                cudaDeviceCanAccessPeer(&access, i, j);
-                std::cout << "LOG>>> " << i << " " << j << " " << access
-                          << std::endl;
-                if (access) {
-                    cudaSetDevice(i);
-                    cudaDeviceEnablePeerAccess(j, 0);
-                    cudaCheckError();
-                    cudaSetDevice(j);
-                    cudaDeviceEnablePeerAccess(i, 0);
-                    cudaCheckError();
-                }
-            }
-        }
-        cudaSetDevice(device_);
-
-    }
     ShardTensor(int device) : device_(device), inited_(false), device_count_(0)
     {
         //init_p2p();
@@ -220,16 +179,54 @@ class ShardTensor
     std::vector<int64_t> shape_;
     bool inited_;
 };
+void init_p2p(){
+    std::cout << "LOG>>> P2P Access Initilization" << std::endl;
+    int numGPUs;
+    cudaGetDeviceCount(&numGPUs);
+    for (int i = 0; i < numGPUs; i++) {
+        cudaSetDevice(i);
+        cudaDeviceProp prop;
+        cudaGetDeviceProperties(&prop, i);
+
+        // CUDA IPC is only supported on devices with unified addressing
+        if (!prop.unifiedAddressing) {
+            printf("Device %d does not support unified addressing, skipping...\n", i);
+            continue;
+        }
+        // This sample requires two processes accessing each device, so we need
+        // to ensure exclusive or prohibited mode is not set
+        if (prop.computeMode != cudaComputeModeDefault) {
+            printf("Device %d is in an unsupported compute mode for this sample\n",
+                i);
+            continue;
+        }
+        
+        for (int j = 0; j < numGPUs; j++) {
+            int access_i_j = 0;
+            int access_j_i = 0;
+            cudaDeviceCanAccessPeer(&access, i, j);
+            cudaDeviceCanAccessPeer(&access, j, i);
+            if (access_i_j && access_j_i) {
+                cudaSetDevice(i);
+                cudaDeviceEnablePeerAccess(j, 0);
+                cudaCheckError();
+                cudaSetDevice(j);
+                cudaDeviceEnablePeerAccess(i, 0);
+                cudaCheckError();
+            }
+        }
+    }
+}
 }  // namespace quiver
 void register_cuda_quiver_feature(pybind11::module &m)
 {
+    m.def("init_p2p", &quiver::init_p2p,
+            py::call_guard<py::gil_scoped_release>());
     py::class_<quiver::ShardTensor>(m, "ShardTensor")
         //.def(py::init<std::vector<torch::Tensor>, int>())
         .def(py::init<int>())
         .def("__getitem__", &quiver::ShardTensor::operator[],
              py::call_guard<py::gil_scoped_release>())
-        .def("init_p2p", &quiver::ShardTensor::init_p2p,
-            py::call_guard<py::gil_scoped_release>())
         .def("shape", &quiver::ShardTensor::shape,
              py::call_guard<py::gil_scoped_release>())
         .def("numel", &quiver::ShardTensor::numel,

@@ -74,7 +74,10 @@ def test_shard_tensor_inter_process():
     NUM_ELEMENT = 1000000
     SAMPLE_SIZE = 80000
     FEATURE_DIM = 600
-    torch.cuda.set_device(1)
+    
+    
+    qv.init_p2p()
+    torch.cuda.set_device(0)
     #########################
     # Init With Numpy
     ########################
@@ -84,15 +87,18 @@ def test_shard_tensor_inter_process():
 
     device_0_tensor = torch.from_numpy(
         host_tensor[: NUM_ELEMENT]).type(torch.float32).to("cuda:0")
+    
     remote_tensor = torch.from_numpy(
         host_tensor[NUM_ELEMENT:]).type(torch.float32)
+    
     queue = mp.Queue(4)
     barrier = mp.Barrier(2)
     proc = mp.Process(target=peer_process, args=(
         queue, barrier, remote_tensor))
     proc.start()
+    
     device_1_tensor = queue.get()
-    shard_tensor = qv.ShardTensor(1)
+    shard_tensor = qv.ShardTensor(0)
     shard_tensor.append(device_0_tensor)
     shard_tensor.append(device_1_tensor)
 

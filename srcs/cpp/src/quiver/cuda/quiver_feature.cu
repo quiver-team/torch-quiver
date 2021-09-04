@@ -204,8 +204,8 @@ void init_p2p(){
         for (int j = 0; j < numGPUs; j++) {
             int access_i_j = 0;
             int access_j_i = 0;
-            cudaDeviceCanAccessPeer(&access, i, j);
-            cudaDeviceCanAccessPeer(&access, j, i);
+            cudaDeviceCanAccessPeer(&access_i_j, i, j);
+            cudaDeviceCanAccessPeer(&access_j_i, j, i);
             if (access_i_j && access_j_i) {
                 cudaSetDevice(i);
                 cudaDeviceEnablePeerAccess(j, 0);

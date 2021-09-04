@@ -130,9 +130,6 @@ class ShardTensor
         device_count_ += 1;
     }
 
-    std::tuple<torch::Tensor, long> map(int64_t index)
-    {
-    }
 
     torch::Tensor operator[](torch::Tensor &indices)
     {
@@ -230,7 +227,7 @@ class ShardTensor
     std::vector<int64_t> offset_list_;
     std::vector<float *> dev_ptrs_;
     std::vector<int> tensor_devices_;
-    std::vector<int> tensor_shapes_;
+    std::vector<std::vector<int>> tensor_shapes_;
     int device_;
     int device_count_;
     std::vector<int64_t> shape_;
@@ -284,7 +281,7 @@ void register_cuda_quiver_feature(pybind11::module &m)
     
     py::class_<quiver::ShardTensorItem>(m, "ShardTensorItem")
         .def(py::init<>())
-        .def("shape", &quiver::ShardTensorItem::shape，
+        .def("shape", &quiver::ShardTensorItem::shape,
             py::call_guard<py::gil_scoped_release>())
         .def("mem_handle", &quiver::ShardTensorItem::mem_handle,
             py::call_guard<py::gil_scoped_release>())

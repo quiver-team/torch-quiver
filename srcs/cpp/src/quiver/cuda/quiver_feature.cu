@@ -226,8 +226,7 @@ class ShardTensor
             if(tensor_devices_[index] >= 0){
                 cudaIpcMemHandle_t handle;
                 cudaIpcGetMemHandle(&handle, dev_ptrs_[index]);
-                auto _handle = PyBytes_FromStringAndSize((char *)&handle, CUDA_IPC_HANDLE_SIZE);
-                std::string string_handle = THPStorage_(bytesAsHandleString)(_handle);
+                std::string string_handle((char *)&handle);
                 ShardTensorItem item(tensor_devices_[index], string_handle, tensor_shapes_[index]);
                 res.push_back(item);
 

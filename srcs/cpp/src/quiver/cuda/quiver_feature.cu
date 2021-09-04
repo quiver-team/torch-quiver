@@ -71,7 +71,7 @@ class ShardTensor
         }
         void *ptr = NULL;
         tensor_devices_.push_back(item.device());
-        cudaIpcOpenMemHandle(&ptr, *(cudaIpcMemHandle_t *)item.mem_handle.data(), cudaIpcMemLazyEnablePeerAccess);
+        cudaIpcOpenMemHandle(&ptr, *(cudaIpcMemHandle_t *)item.mem_handle().data(), cudaIpcMemLazyEnablePeerAccess);
         dev_ptrs_.push_back((float*)ptr);
         cudaPointerAttributes attributes;
         cudaPointerGetAttributes(&attributes, ptr);

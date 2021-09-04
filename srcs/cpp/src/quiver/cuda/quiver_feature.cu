@@ -21,11 +21,11 @@ class ShardTensorItem
 {
   public:
     int device;
-    PyBytesObject mem_handle;
+    std::string mem_handle;
     std::vector<int> shape;
     // for now we assume it is all float
     int dtype;
-    ShardTensorItem(int device_, PyBytesObject mem_handle_, std::vector<int> shape_):device(device_), mem_handle(mem_handle_), shape(shape_)
+    ShardTensorItem(int device_, std::string mem_handle_, std::vector<int> shape_):device(device_), mem_handle(mem_handle_), shape(shape_)
     {
 
     }

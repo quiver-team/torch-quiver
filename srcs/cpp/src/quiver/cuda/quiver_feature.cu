@@ -20,7 +20,7 @@ AT_ASSERTM(!x.device().is_cuda(), #x " must be CPU tensor")
 class ShardTensorItem{
 public:
     ShardTensorItem(int device, std::string mem_handle, std::vector<int> shape):device_(device), mem_handle_(mem_handle), shape_(shape){}
-    int device(){return device_}
+    int device(){return device_;}
     std::string mem_handle(){return mem_handle_;}
     std::vector<int> shape(){return shape_;}
 
@@ -37,7 +37,6 @@ class ShardTensor
     ShardTensor(int device) : device_(device), inited_(false), device_count_(0)
     {
     }
-    ShardTensor()
 
     int get_tensor_bytes(torch::Tensor tensor){
         // assume it's float 
@@ -215,9 +214,10 @@ class ShardTensor
         for(int index=0; index < dev_ptrs_.size(); index++){
             if(tensor_devices_[index] >= 0){
                 cudaIpcMemHandle_t handle;
-                cudaIpcGetMemHandle(&handle, base_ptr));
+                cudaIpcGetMemHandle(&handle, base_ptr);
                 std::string string_handle = (char *)(&handle);
                 ShardTensorItem item(tensor_devices_[index], string_handle, tensor_shapes_[index]);
+                res.push_back(item);
             }
         }
         return res;

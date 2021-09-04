@@ -293,12 +293,9 @@ void register_cuda_quiver_feature(pybind11::module &m)
     
     
     py::class_<quiver::ShardTensorItem>(m, "ShardTensorItem")
-        .def("shape", &quiver::ShardTensorItem::shape,
-            py::call_guard<py::gil_scoped_release>())
-        .def("mem_handle", &quiver::ShardTensorItem::mem_handle,
-            py::call_guard<py::gil_scoped_release>())
-        .def("device", &quiver::ShardTensorItem::device,
-            py::call_guard<py::gil_scoped_release>());
+        .def_readwrite("device", &quiver::ShardTensorItem::device)
+        .def_readwrite("shape", &quiver::ShardTensorItem::shape)
+        .def_readwrite("mem_handle", &quiver::ShardTensor::mem_handle);
     
 
     py::class_<quiver::ShardTensor>(m, "ShardTensor")

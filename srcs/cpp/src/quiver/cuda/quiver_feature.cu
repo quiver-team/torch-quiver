@@ -15,44 +15,76 @@
 
 namespace quiver
 {
+#define CHECK_CPU(x)                                                          \
+AT_ASSERTM(!x.device().is_cuda(), #x " must be CPU tensor")
+class ShardTensorItem{
+public:
+    ShardTensorItem(int device, std::string mem_handle, std::vector<int> shape):device_(device), mem_handle_(mem_handle), shape_(shape){}
+    int device(){return device_}
+    std::string mem_handle(){return mem_handle_;}
+    std::vector<int> shape(){return shape_;}
+
+private:
+    int device_;
+    std::string mem_handle_;
+    std::vector<int> shape_;
+    // for now we assume it is all float
+    int dtype_;
+}
 class ShardTensor
 {
   public:
-    ShardTensor(std::vector<torch::Tensor> &input_tensor_list, int device)
-        : tensor_list_(input_tensor_list), device_(device), inited_(true)
-    {
-        // init dev_ptrs
-        dev_ptrs_.resize(input_tensor_list.size());
-        for (int index = 0; index < input_tensor_list.size(); index++) {
-            dev_ptrs_[index] = input_tensor_list[index].data_ptr<float>();
-        }
-        // init offset_list_
-        device_count_ = dev_ptrs_.size();
-        offset_list_.resize(device_count_);
-        offset_list_[0] = 0;
-        for (int index = 1; index < device_count_; index++) {
-            offset_list_[index] =
-                offset_list_[index - 1] + tensor_list_[index - 1].sizes()[0];
-        }
-
-        // init shape
-        shape_.resize(input_tensor_list[0].dim());
-        shape_[0] = 0;
-        for (int index = 1; index < shape_.size(); index++) {
-            shape_[index] = tensor_list_[0].size(index);
-        }
-        for (int index = 0; index < tensor_list_.size(); index++) {
-            shape_[0] += tensor_list_[index].size(0);
-        }
-        //
-        //init_p2p();
-    }
     ShardTensor(int device) : device_(device), inited_(false), device_count_(0)
     {
-        //init_p2p();
     }
-    void append(torch::Tensor &tensor)
+    ShardTensor()
+
+    int get_tensor_bytes(torch::Tensor tensor){
+        // assume it's float 
+        int dim = tensor.dim();
+        int total_bytes = 4;
+        for(int index = 0; index < dim; index++){
+            total_bytes *= tensor.sizes()[index];
+        }
+        return total_bytes;
+    }
+    std::vector<int> get_tensor_shape(torch::Tensor tensor){
+        std::vector<int> shape; 
+        int dim = tensor.dim();
+        for(int index = 0; index < dim; index++){
+            shape.push_back(tensor.sizes()[index]);
+        }
+        return shape;
+    }
+
+    void append(ShardTensorItem item){
+        if (!inited_) {
+            shape_.resize(item.shape());
+            // std::cout<<"check shape_ size "<<shape_.size()<<std::endl;
+            shape_[0] = 0;
+            auto tensor_sizes = item.shape();
+            for (int index = 1; index < shape_.size(); index++) {
+                shape_[index] = tensor_sizes[index];
+            }
+            inited_ = true;
+            offset_list_.push_back(0);
+        }
+        void *ptr = NULL;
+        tensor_devices_.push_back(item.device());
+        cudaIpcOpenMemHandle(&ptr, *(cudaIpcMemHandle_t *)item.mem_handle.data(), cudaIpcMemLazyEnablePeerAccess);
+        dev_ptrs_.push_back((float*)ptr);
+        cudaPointerAttributes attributes;
+        cudaPointerGetAttributes(&attributes, ptr);
+        if(attributes.devicePointer == 0){
+            printf("WARNING: Tensor from device %d can NOT be accessed in kernel launched on device %d \n", attributes.device, device_);
+        }
+        shape_[0] += item.shape()[0];
+        device_count_ += 1;
+    }
+
+    void append(torch::Tensor &tensor, int target_device)
     {
+        CHECK_CPU(tensor);
         // for now, we assume tensor is added ordered
         if (!inited_) {
             shape_.resize(tensor.dim());
@@ -65,33 +97,43 @@ class ShardTensor
             inited_ = true;
             offset_list_.push_back(0);
         }
-        tensor_list_.push_back(tensor);
+        tensor_shapes_.push_back(get_tensor_shape(tensor));
+
         if (device_count_ > 0) {
             offset_list_.push_back(offset_list_[device_count_ - 1] +
                                    tensor.sizes()[0]);
         }
-        dev_ptrs_.push_back(tensor.data_ptr<float>());
+        void *ptr = NULL;
+        int data_size = get_tensor_bytes(tensor);
+        tensor_devices_.push_back(target_device);
+        if(target_device >= 0){
+            // if target_device >= 0, it means we use p2p 
+            cudaSetDevice(target_device);
+            cudaMalloc(&ptr, data_size);
+            cudaMemcpy(ptr, tensor.data_ptr<float>(), data_size, cudaMemcpyHostToDevice);
+            cudaSetDevice(device_);
+        }else{
+            cudaSetDevice(device_);
+            // if target_device < 0, it means we use Zero-Copy 
+            cudaHostRegister(tensor.data_ptr<float>(), data_size, cudaHostRegisterMapped);
+            cudaHostGetDevicePointer(&ptr, (void *)tensor.data_ptr<float>(), 0);
+        }
+
+        dev_ptrs_.push_back((float*)ptr);
+
         cudaPointerAttributes attributes;
-        cudaPointerGetAttributes(&attributes, (void*) tensor.data_ptr<float>());
+        cudaPointerGetAttributes(&attributes, ptr);
         if(attributes.devicePointer == 0){
             printf("WARNING: Tensor from device %d can NOT be accessed in kernel launched on device %d \n", attributes.device, device_);
         }
         shape_[0] += tensor.size(0);
         device_count_ += 1;
     }
+
     std::tuple<torch::Tensor, long> map(int64_t index)
     {
-        for (int i = 0; i < offset_list_.size(); i++) {
-            if (index < offset_list_[i]) {
-                if (i == 0) { return std::make_tuple(tensor_list_[0], index); }
-            } else {
-                return std::make_tuple(tensor_list_[i - 1],
-                                       index - offset_list_[i - 1]);
-            }
-        }
-        return std::make_tuple(tensor_list_[device_count_ - 1],
-                               index - offset_list_[device_count_ - 1]);
     }
+
     torch::Tensor operator[](torch::Tensor &indices)
     {
         /*
@@ -106,7 +148,7 @@ class ShardTensor
         res_shape[0] = indices.numel();
         // decide Tensor
         auto options = torch::TensorOptions()
-                           .dtype(tensor_list_[0].dtype())
+                           .dtype(at::kFloat)
                            .device(torch::kCUDA, device_);
         auto res = torch::empty(res_shape, options);
 
@@ -168,19 +210,32 @@ class ShardTensor
         }
         return res;
     }
+    std::vector<ShardTensorItem> ipc_share(){
+        std::vector<ShardTensorItem> res;
+        for(int index=0; index < dev_ptrs_.size(); index++){
+            if(tensor_devices_[index] >= 0){
+                cudaIpcMemHandle_t handle;
+                cudaIpcGetMemHandle(&handle, base_ptr));
+                std::string string_handle = (char *)(&handle);
+                ShardTensorItem item(tensor_devices_[index], string_handle, tensor_shapes_[index]);
+            }
+        }
+        return res;
+    }
 
     int device_count() const { return device_count_; }
 
   private:
-    std::vector<torch::Tensor> tensor_list_;
     std::vector<int64_t> offset_list_;
     std::vector<float *> dev_ptrs_;
-
+    std::vector<int> tensor_devices_;
+    std::vector<int> tensor_shapes_;
     int device_;
     int device_count_;
     std::vector<int64_t> shape_;
     bool inited_;
 };
+
 void init_p2p(){
     std::cout << "LOG>>> P2P Access Initilization" << std::endl;
     int numGPUs;
@@ -225,6 +280,16 @@ void register_cuda_quiver_feature(pybind11::module &m)
 {
     m.def("init_p2p", &quiver::init_p2p,
             py::call_guard<py::gil_scoped_release>());
+    
+    py::class_<quiver::ShardTensorItem>(m, "ShardTensorItem")
+        .def(py::init<>())
+        .def("shape", &quiver::ShardTensorItem::shape，
+            py::call_guard<py::gil_scoped_release>())
+        .def("mem_handle", &quiver::ShardTensorItem::mem_handle,
+            py::call_guard<py::gil_scoped_release>())
+        .def("device", &quiver::ShardTensorItem::device,
+            py::call_guard<py::gil_scoped_release>());
+
     py::class_<quiver::ShardTensor>(m, "ShardTensor")
         //.def(py::init<std::vector<torch::Tensor>, int>())
         .def(py::init<int>())
@@ -243,5 +308,8 @@ void register_cuda_quiver_feature(pybind11::module &m)
         .def("device_count", &quiver::ShardTensor::device_count,
              py::call_guard<py::gil_scoped_release>())
         .def("append", &quiver::ShardTensor::append,
-             py::call_guard<py::gil_scoped_release>());
+             py::call_guard<py::gil_scoped_release>())
+        .def("share_ipc", &quiver::ShardTensor::share_ipc,
+             py::call_guard<py::gil_scoped_release>()));
+            
 }

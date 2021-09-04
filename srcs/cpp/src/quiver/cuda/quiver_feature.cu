@@ -19,17 +19,23 @@ namespace quiver
 AT_ASSERTM(!x.device().is_cuda(), #x " must be CPU tensor")
 class ShardTensorItem{
 public:
-    ShardTensorItem(int device, std::string mem_handle, std::vector<int> shape):device_(device), mem_handle_(mem_handle), shape_(shape){}
-    int device(){return device_;}
-    std::string mem_handle(){return mem_handle_;}
-    std::vector<int> shape(){return shape_;}
+    ShardTensorItem(int device_, std::string mem_handle_, std::vector<int> shape_):device(device_), mem_handle(mem_handle_), shape(shape_){}
+    ShardTensorItem();
+    void set_device(int device_){
+        device = device;
+    }
+    void set_mem_handle(string mem_handle_){
+        mem_handle = mem_handle_;
+    }
+    void set_shape(vector<int> shape_){
+        shape = shape_;
+    }
 
-private:
-    int device_;
-    std::string mem_handle_;
-    std::vector<int> shape_;
+    int device;
+    std::string mem_handle;
+    std::vector<int> shape;
     // for now we assume it is all float
-    int dtype_;
+    int dtype;
 };
 
 class ShardTensor
@@ -59,10 +65,10 @@ class ShardTensor
 
     void append(ShardTensorItem item){
         if (!inited_) {
-            shape_.resize(item.shape());
+            shape_.resize(item.shape);
             // std::cout<<"check shape_ size "<<shape_.size()<<std::endl;
             shape_[0] = 0;
-            auto tensor_sizes = item.shape();
+            auto tensor_sizes = item.shape;
             for (int index = 1; index < shape_.size(); index++) {
                 shape_[index] = tensor_sizes[index];
             }
@@ -70,15 +76,15 @@ class ShardTensor
             offset_list_.push_back(0);
         }
         void *ptr = NULL;
-        tensor_devices_.push_back(item.device());
-        cudaIpcOpenMemHandle(&ptr, *(cudaIpcMemHandle_t *)item.mem_handle().data(), cudaIpcMemLazyEnablePeerAccess);
+        tensor_devices_.push_back(item.device);
+        cudaIpcOpenMemHandle(&ptr, *(cudaIpcMemHandle_t *)item.mem_handle.data(), cudaIpcMemLazyEnablePeerAccess);
         dev_ptrs_.push_back((float*)ptr);
         cudaPointerAttributes attributes;
         cudaPointerGetAttributes(&attributes, ptr);
         if(attributes.devicePointer == 0){
             printf("WARNING: Tensor from device %d can NOT be accessed in kernel launched on device %d \n", attributes.device, device_);
         }
-        shape_[0] += item.shape()[0];
+        shape_[0] += item.shape[0];
         device_count_ += 1;
     }
 
@@ -279,7 +285,7 @@ void register_cuda_quiver_feature(pybind11::module &m)
     m.def("init_p2p", &quiver::init_p2p,
             py::call_guard<py::gil_scoped_release>());
     
-    /*
+    
     py::class_<quiver::ShardTensorItem>(m, "ShardTensorItem")
         .def(py::init<>())
         .def("shape", &quiver::ShardTensorItem::shape,
@@ -288,7 +294,7 @@ void register_cuda_quiver_feature(pybind11::module &m)
             py::call_guard<py::gil_scoped_release>())
         .def("device", &quiver::ShardTensorItem::device,
             py::call_guard<py::gil_scoped_release>());
-    */
+    
 
     py::class_<quiver::ShardTensor>(m, "ShardTensor")
         //.def(py::init<std::vector<torch::Tensor>, int>())

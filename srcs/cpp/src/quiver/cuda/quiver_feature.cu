@@ -30,7 +30,8 @@ private:
     std::vector<int> shape_;
     // for now we assume it is all float
     int dtype_;
-}
+};
+
 class ShardTensor
 {
   public:
@@ -209,12 +210,12 @@ class ShardTensor
         }
         return res;
     }
-    std::vector<ShardTensorItem> ipc_share(){
+    std::vector<ShardTensorItem> share_ipc(){
         std::vector<ShardTensorItem> res;
         for(int index=0; index < dev_ptrs_.size(); index++){
             if(tensor_devices_[index] >= 0){
                 cudaIpcMemHandle_t handle;
-                cudaIpcGetMemHandle(&handle, base_ptr);
+                cudaIpcGetMemHandle(&handle, dev_ptrs_[index]);
                 std::string string_handle = (char *)(&handle);
                 ShardTensorItem item(tensor_devices_[index], string_handle, tensor_shapes_[index]);
                 res.push_back(item);
@@ -310,6 +311,6 @@ void register_cuda_quiver_feature(pybind11::module &m)
         .def("append", &quiver::ShardTensor::append,
              py::call_guard<py::gil_scoped_release>())
         .def("share_ipc", &quiver::ShardTensor::share_ipc,
-             py::call_guard<py::gil_scoped_release>()));
+             py::call_guard<py::gil_scoped_release>());
             
 }

@@ -19,23 +19,26 @@ namespace quiver
 AT_ASSERTM(!x.device().is_cuda(), #x " must be CPU tensor")
 class ShardTensorItem{
 public:
-    ShardTensorItem(int device_, std::string mem_handle_, std::vector<int> shape_):device(device_), mem_handle(mem_handle_), shape(shape_){}
-    ShardTensorItem();
-    void set_device(int device_){
-        device = device;
-    }
-    void set_mem_handle(string mem_handle_){
-        mem_handle = mem_handle_;
-    }
-    void set_shape(vector<int> shape_){
-        shape = shape_;
-    }
-
     int device;
     std::string mem_handle;
     std::vector<int> shape;
     // for now we assume it is all float
     int dtype;
+    ShardTensorItem(int device_, std::string mem_handle_, std::vector<int> shape_):device(device_), mem_handle(mem_handle_), shape(shape_)
+    {
+
+    }
+    ShardTensorItem();
+    void set_device(int device_){
+        device = device;
+    }
+    void set_mem_handle(std::string mem_handle_){
+        mem_handle = mem_handle_;
+    }
+    void set_shape(std::vector<int> shape_){
+        shape = shape_;
+    }
+
 };
 
 class ShardTensor

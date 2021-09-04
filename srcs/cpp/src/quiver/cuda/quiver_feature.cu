@@ -73,7 +73,9 @@ class ShardTensor
         dev_ptrs_.push_back(tensor.data_ptr<float>());
         cudaPointerAttributes attributes;
         cudaPointerGetAttributes(&attributes, (void*) tensor.data_ptr<float>());
-        std::cout<< "check device " << attributes.device << " check device pointer" << attributes.devicePointer<<std::endl;
+        if(attributes.devicePointer == 0){
+            printf("WARNING: Tensor from device %d can NOT be accessed in kernel launched on device %d \n", attributes.device, device_);
+        }
         shape_[0] += tensor.size(0);
         device_count_ += 1;
     }

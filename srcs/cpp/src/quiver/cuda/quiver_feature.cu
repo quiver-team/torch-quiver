@@ -315,7 +315,7 @@ void register_cuda_quiver_feature(pybind11::module &m)
              py::call_guard<py::gil_scoped_release>())
         .def("device_count", &quiver::ShardTensor::device_count,
              py::call_guard<py::gil_scoped_release>())
-        .def("append", py::overload_cast<torch::Tensor, int>(&quiver::ShardTensor::append),
+        .def("append", py::overload_cast<torch::Tensor&, int>(&quiver::ShardTensor::append),
              py::call_guard<py::gil_scoped_release>())
         .def("append", py::overload_cast<quiver::ShardTensorItem>(&quiver::ShardTensor::append),
              py::call_guard<py::gil_scoped_release>())

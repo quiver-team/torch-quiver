@@ -112,7 +112,7 @@ def test_shard_tensor_ipc():
     shard_tensor2.append(device_1_tensor, 1)
     
     ipc_res = shard_tensor2.share_ipc()
-    print(ipc_res[0].device)
+    print(ipc_res[0].device, ipc_res[0].mem_handle)
     process = mp.Process(target=child_proc, args = (ipc_res[0].mem_handle, ipc_res[0].device, ipc_res[0].shape,
                                                     ipc_res[1].mem_handle, ipc_res[1].device, ipc_res[1].shape)
                         )

@@ -116,6 +116,7 @@ def test_shard_tensor_ipc():
     process = mp.Process(target=child_proc, args = (ipc_res[0].mem_handle, ipc_res[0].device, ipc_res[0].shape,
                                                     ipc_res[1].mem_handle, ipc_res[1].device, ipc_res[1].shape)
                         )
+    process.start()
     process.join()
     gc.enable()
     

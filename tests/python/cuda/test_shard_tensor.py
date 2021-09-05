@@ -10,10 +10,10 @@ import gc
 
 def test_shard_tensor_item():
     item = qv.ShardTensorItem()
-    qv.device = 1
-    qv.shape = [1,2,3]
-    qv.mem_handle = "mem_handle"
-    print(qv.device, qv.shape, qv.mem_handle)
+    item.device = 1
+    item.shape = [1,2,3]
+    item.mem_handle = "mem_handle"
+    print(item.device, item.shape, item.mem_handle)
     print("ShardTensorItem TEST SUCCEED")
     
 def test_shard_tensor_intra_process():
@@ -112,6 +112,7 @@ def test_shard_tensor_ipc():
     shard_tensor2.append(device_1_tensor, 1)
     
     ipc_res = shard_tensor2.share_ipc()
+    print(ipc_res[0].device)
     process = mp.Process(target=child_proc, args = (ipc_res[0].mem_handle, ipc_res[0].device, ipc_res[0].shape,
                                                     ipc_res[1].mem_handle, ipc_res[1].device, ipc_res[1].shape)
                         )

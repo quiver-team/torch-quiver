@@ -33,12 +33,16 @@ class ShardTensorItem
 
     };
     std::tuple<int, py::bytes, std::vector<int>> share_ipc(){
-        return std::make_tuple(device, py::bytes((char *)&mem_handle), shape);
+        auto _handle = PyBytes_FromStringAndSize((char *)&mem_handle, CUDA_IPC_HANDLE_SIZE);
+        auto bytes_obj = py::reinterpret_steal<py::object>((PyObject*)_handle);
+        return std::make_tuple(device, bytes_obj, shape);
     }
-    void from_ipc(int device_, char* mem_handle_bytes, std::vector<int> shape_){
+    void from_ipc(int device_, std::string handle, std::vector<int> shape_){
         device = device_;
         shape = shape_;
-        mem_handle = *(cudaIpcMemHandle_t*) mem_handle_bytes;
+        auto ipc_handle = reinterpret_cast<const cudaIpcMemHandle_t*>(handle.c_str());
+
+        mem_handle = *ipc_handle;
     }
 
 
@@ -83,7 +87,8 @@ class ShardTensor
         }
         void *ptr = NULL;
         tensor_devices_.push_back(item.device);
-        cudaIpcOpenMemHandle(&ptr, *(cudaIpcMemHandle_t *)&item.mem_handle, cudaIpcMemLazyEnablePeerAccess);
+        std::cout<< (char*)item.mem_handle<<" "<< std::endl;
+        cudaIpcOpenMemHandle(&ptr, item.mem_handle, cudaIpcMemLazyEnablePeerAccess);
         dev_ptrs_.push_back((float*)ptr);
         cudaPointerAttributes attributes;
         cudaPointerGetAttributes(&attributes, ptr);

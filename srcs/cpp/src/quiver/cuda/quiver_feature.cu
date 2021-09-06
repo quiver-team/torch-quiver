@@ -39,6 +39,11 @@ class ShardTensorItem
         std::string handl_str(handle_char);
         return std::make_tuple(device, py::bytes(handl_str), shape);
     }
+    void from_ipc(int device_, char* mem_handle_bytes, std::vector<int> shape_){
+        device = device_;
+        shape = shape_;
+        mem_handle = *(cudaIpcMemHandle_t*) mem_handle_bytes;
+    }
 
 
 };
@@ -294,7 +299,8 @@ void register_cuda_quiver_feature(pybind11::module &m)
     
     py::class_<quiver::ShardTensorItem>(m, "ShardTensorItem")
         .def(py::init<>())
-        .def("share_ipc", &quiver::ShardTensorItem::share_ipc);
+        .def("share_ipc", &quiver::ShardTensorItem::share_ipc)
+        .def("from_ipc", &quiver::ShardTensorItem::from_ipc);
     
 
     py::class_<quiver::ShardTensor>(m, "ShardTensor")

@@ -88,6 +88,7 @@ def test_shard_tensor_intra_process():
 
 def child_proc(ipc_item0, ipc_item1):
     print(ipc_item0)
+    torch.cuda_set_device(1)
     item0 = qv.ShardTensorItem()
     item0.from_ipc(ipc_item0[0], ipc_item0[1], ipc_item0[2])
     
@@ -107,6 +108,8 @@ def test_shard_tensor_ipc():
     #########################
     # Init With Numpy
     ########################
+    torch.cuda_set_device(0)
+
     host_tensor = np.random.randint(
         0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
     host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))

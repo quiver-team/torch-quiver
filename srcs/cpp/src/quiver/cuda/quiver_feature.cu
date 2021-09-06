@@ -22,21 +22,21 @@ class ShardTensorItem
   public:
     int device;
     cudaIpcMemHandle_t mem_handle;
-    PyObject* handle_obj;
+    char* handle_char;
 
     std::vector<int> shape;
     // for now we assume it is all float
     int dtype;
     ShardTensorItem(int device_, cudaIpcMemHandle_t mem_handle_, std::vector<int> shape_):device(device_), mem_handle(mem_handle_), shape(shape_)
     {
-        handle_obj = PyBytes_FromStringAndSize((char *)&mem_handle, CUDA_IPC_HANDLE_SIZE);
+        auto handle_obj = PyBytes_FromStringAndSize((char *)&mem_handle, CUDA_IPC_HANDLE_SIZE);
+        handle_char = PyBytes_AS_STRING(handle_obj);
     }
     ShardTensorItem(){
 
     };
-    std::tuple<int, PyObject, std::vector<int>> share_ipc(){
-        PyObject* tuple(PyTuple_New(8));
-        return std::make_tuple(device, *handle_obj, shape);
+    std::tuple<int, char*, std::vector<int>> share_ipc(){
+        return std::make_tuple(device, handle_char, shape);
     }
 
 

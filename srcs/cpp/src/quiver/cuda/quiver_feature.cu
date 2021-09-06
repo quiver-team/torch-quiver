@@ -21,26 +21,24 @@ class ShardTensorItem
 {
   public:
     int device;
-    std::string mem_handle;
+    cudaIpcMemHandle_t mem_handle;
+    PyObject* handle_obj;
+
     std::vector<int> shape;
     // for now we assume it is all float
     int dtype;
-    ShardTensorItem(int device_, std::string mem_handle_, std::vector<int> shape_):device(device_), mem_handle(mem_handle_), shape(shape_)
+    ShardTensorItem(int device_, cudaIpcMemHandle_t mem_handle_, std::vector<int> shape_):device(device_), mem_handle(mem_handle_), shape(shape_)
     {
-
+        handle_obj = PyBytes_FromStringAndSize((char *)&mem_handle, CUDA_IPC_HANDLE_SIZE);
     }
     ShardTensorItem(){
 
     };
-    void set_device(int device_){
-        device = device;
+    std::tuple<int, PyObject, std::vector<int>> share_ipc(){
+        PyObject* tuple(PyTuple_New(8));
+        return std::make_tuple(device, *handle_obj, shape);
     }
-    void set_mem_handle(std::string mem_handle_){
-        mem_handle = mem_handle_;
-    }
-    void set_shape(std::vector<int> shape_){
-        shape = shape_;
-    }
+
 
 };
 
@@ -83,7 +81,7 @@ class ShardTensor
         }
         void *ptr = NULL;
         tensor_devices_.push_back(item.device);
-        cudaIpcOpenMemHandle(&ptr, *(cudaIpcMemHandle_t *)item.mem_handle.data(), cudaIpcMemLazyEnablePeerAccess);
+        cudaIpcOpenMemHandle(&ptr, *(cudaIpcMemHandle_t *)&item.mem_handle, cudaIpcMemLazyEnablePeerAccess);
         dev_ptrs_.push_back((float*)ptr);
         cudaPointerAttributes attributes;
         cudaPointerGetAttributes(&attributes, ptr);
@@ -226,14 +224,7 @@ class ShardTensor
             if(tensor_devices_[index] >= 0){
                 cudaIpcMemHandle_t send_handle;
                 cudaIpcGetMemHandle((cudaIpcMemHandle_t *)&send_handle, dev_ptrs_[index]);
-                void* ptr;
-                cudaIpcOpenMemHandle(&ptr,  *(cudaIpcMemHandle_t *)&send_handle, cudaIpcMemLazyEnablePeerAccess);
-                cudaPointerAttributes attributes;
-                cudaPointerGetAttributes(&attributes, ptr);
-                printf("Tensor from device %d can be accessed in kernel launched on device %d by %d \n", attributes.device, device_, attributes.devicePointer);
-                
-                std::string string_handle((char *)&handle);
-                ShardTensorItem item(tensor_devices_[index], string_handle, tensor_shapes_[index]);
+                ShardTensorItem item(tensor_devices_[index], send_handle, tensor_shapes_[index]);
                 res.push_back(item);
 
             }
@@ -304,7 +295,6 @@ void register_cuda_quiver_feature(pybind11::module &m)
         .def(py::init<>())
         .def_readwrite("device", &quiver::ShardTensorItem::device)
         .def_readwrite("shape", &quiver::ShardTensorItem::shape)
-        .def_readwrite("mem_handle", &quiver::ShardTensorItem::mem_handle);
     
 
     py::class_<quiver::ShardTensor>(m, "ShardTensor")

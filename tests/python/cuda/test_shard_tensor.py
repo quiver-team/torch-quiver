@@ -30,8 +30,10 @@ def test_shard_tensor_item():
     res = shard_tensor.share_ipc()
     item = res[0].share_ipc()
     print(item[0], item[1], item[2])
-    new_shard_tensor = qv.ShardTensorItem()
-    new_shard_tensor.from_ipc(item[0], item[1], item[2])
+    new_shard_tensor_item = qv.ShardTensorItem()
+    new_shard_tensor_item.from_ipc(item[0], item[1], item[2])
+    res1 = new_shard_tensor_item.share_ipc()
+    assert res[1] == res1[1]
     
 def test_shard_tensor_intra_process():
     NUM_ELEMENT = 1000000

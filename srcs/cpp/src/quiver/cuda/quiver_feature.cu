@@ -33,7 +33,7 @@ class ShardTensorItem
 
     };
     std::tuple<int, py::bytes, std::vector<int>> share_ipc(){
-        auto object = py::reinterpret_steal<py::object>(handle_obj);
+        //auto object = py::reinterpret_steal<py::object>(handle_obj);
         auto handle_obj = PyBytes_FromStringAndSize((char *)&mem_handle, CUDA_IPC_HANDLE_SIZE);
         char* handle_char = PyBytes_AsString(handle_obj);
         std::string handl_str(handle_char);

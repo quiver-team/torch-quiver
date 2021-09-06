@@ -33,11 +33,7 @@ class ShardTensorItem
 
     };
     std::tuple<int, py::bytes, std::vector<int>> share_ipc(){
-        //auto object = py::reinterpret_steal<py::object>(handle_obj);
-        auto handle_obj = PyBytes_FromStringAndSize((char *)&mem_handle, CUDA_IPC_HANDLE_SIZE);
-        char* handle_char = PyBytes_AsString(handle_obj);
-        std::string handl_str(handle_char);
-        return std::make_tuple(device, py::bytes(handl_str), shape);
+        return std::make_tuple(device, py::bytes((char *)&mem_handle), shape);
     }
     void from_ipc(int device_, char* mem_handle_bytes, std::vector<int> shape_){
         device = device_;
@@ -225,6 +221,7 @@ class ShardTensor
         return res;
     }
     std::vector<ShardTensorItem> share_ipc(){
+        cudaSetDevice(device_);
         std::vector<ShardTensorItem> res;
         for(int index=0; index < dev_ptrs_.size(); index++){
             if(tensor_devices_[index] >= 0){

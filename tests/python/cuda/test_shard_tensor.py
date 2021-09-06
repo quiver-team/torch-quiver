@@ -98,9 +98,6 @@ def child_proc(ipc_item0, ipc_item1):
     shard_tensor.append(item0)
     shard_tensor.append(item1)
     
-    
-    
-    
 
 def test_shard_tensor_ipc():
     NUM_ELEMENT = 1000000

@@ -87,7 +87,7 @@ class ShardTensor
         }
         void *ptr = NULL;
         tensor_devices_.push_back(item.device);
-        std::cout<< (char*)item.mem_handle<<" "<< std::endl;
+        std::cout<< (char*)&item.mem_handle<<" "<< std::endl;
         cudaIpcOpenMemHandle(&ptr, item.mem_handle, cudaIpcMemLazyEnablePeerAccess);
         dev_ptrs_.push_back((float*)ptr);
         cudaPointerAttributes attributes;

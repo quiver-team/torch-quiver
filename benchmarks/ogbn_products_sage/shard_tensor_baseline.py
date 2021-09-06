@@ -148,8 +148,9 @@ model = model.to(device)
 
 shard_tensor = qv.ShardTensor(0)
 half_count = data.x.shape[0] // 2
-shard_tensor.append(data.x[:half_count].to("cuda:0"))
-shard_tensor.append(data.x[half_count:].to("cuda:1"))
+shard_tensor.append(data.x[:half_count], 0)
+shard_tensor.append(data.x[half_count:], 1)
+
 torch.cuda.set_device(device)
 
 x = data.x.to(device)

@@ -293,8 +293,7 @@ void register_cuda_quiver_feature(pybind11::module &m)
     
     py::class_<quiver::ShardTensorItem>(m, "ShardTensorItem")
         .def(py::init<>())
-        .def_readwrite("device", &quiver::ShardTensorItem::device)
-        .def_readwrite("shape", &quiver::ShardTensorItem::shape)
+        .def("share_ipc", &quiver::ShardTensorItem::share_ipc);
     
 
     py::class_<quiver::ShardTensor>(m, "ShardTensor")

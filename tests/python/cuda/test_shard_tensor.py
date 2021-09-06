@@ -32,8 +32,8 @@ def test_shard_tensor_item():
     print(item[0], item[1], item[2])
     new_shard_tensor_item = qv.ShardTensorItem()
     new_shard_tensor_item.from_ipc(item[0], item[1], item[2])
-    res1 = new_shard_tensor_item.share_ipc()
-    assert res[1] == res1[1]
+    item1 = new_shard_tensor_item.share_ipc()
+    assert item[1] == item1[1]
     
 def test_shard_tensor_intra_process():
     NUM_ELEMENT = 1000000
@@ -87,6 +87,7 @@ def test_shard_tensor_intra_process():
         f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s")
 
 def child_proc(ipc_item0, ipc_item1):
+    print(ipc_item0)
     item0 = qv.ShardTensorItem()
     item0.from_ipc(ipc_item0[0], ipc_item0[1], ipc_item0[2])
     
@@ -128,6 +129,7 @@ def test_shard_tensor_ipc():
     shard_tensor2.append(device_1_tensor, 1)
     
     ipc_res = shard_tensor2.share_ipc()
+    print(ipc_res[0].share_ipc())
     process = mp.Process(target=child_proc, args = (ipc_res[0].share_ipc(), ipc_res[1].share_ipc()))
     process.start()
     process.join()

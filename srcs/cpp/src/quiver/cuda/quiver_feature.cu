@@ -224,10 +224,10 @@ class ShardTensor
         std::vector<ShardTensorItem> res;
         for(int index=0; index < dev_ptrs_.size(); index++){
             if(tensor_devices_[index] >= 0){
-                cudaIpcMemHandle_t handle;
-                cudaIpcGetMemHandle(&handle, dev_ptrs_[index]);
+                cudaIpcMemHandle_t send_handle;
+                cudaIpcGetMemHandle((cudaIpcMemHandle_t *)&send_handle, dev_ptrs_[index]);
                 void* ptr;
-                cudaIpcOpenMemHandle(&ptr, handle, cudaIpcMemLazyEnablePeerAccess);
+                cudaIpcOpenMemHandle(&ptr,  *(cudaIpcMemHandle_t *)&send_handle, cudaIpcMemLazyEnablePeerAccess);
                 cudaPointerAttributes attributes;
                 cudaPointerGetAttributes(&attributes, ptr);
                 printf("Tensor from device %d can be accessed in kernel launched on device %d by %d \n", attributes.device, device_, attributes.devicePointer);

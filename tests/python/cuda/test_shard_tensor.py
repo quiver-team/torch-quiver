@@ -136,4 +136,7 @@ def test_shard_tensor_ipc():
 qv.init_p2p()
 test_shard_tensor_item()
 test_shard_tensor_intra_process()
-test_shard_tensor_ipc()
+
+if __name__ == "__main__":
+    mp.set_start_method("spawn")
+    test_shard_tensor_ipc()

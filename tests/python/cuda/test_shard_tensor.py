@@ -9,12 +9,30 @@ import gc
 
 
 def test_shard_tensor_item():
-    item = qv.ShardTensorItem()
-    item.device = 1
-    item.shape = [1,2,3]
-    item.mem_handle = "mem_handle"
-    print(item.device, item.shape, item.mem_handle)
-    print("ShardTensorItem TEST SUCCEED")
+   
+    NUM_ELEMENT = 100
+    FEATURE_DIM = 60
+    #########################
+    # Init With Numpy
+    ########################
+    host_tensor = np.random.randint(
+        0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
+
+    device_0_tensor = torch.from_numpy(
+        host_tensor[: NUM_ELEMENT]).type(torch.float32)
+    device_1_tensor = torch.from_numpy(
+        host_tensor[NUM_ELEMENT:]).type(torch.float32)
+
+    shard_tensor = qv.ShardTensor(0)
+    shard_tensor.append(device_0_tensor, 0)
+    shard_tensor.append(device_1_tensor, 1)
+    
+    res = shard_tensor.share_ipc()
+    item = res[0].share_ipc()
+    print(item)
+    
+    
+    
     
 def test_shard_tensor_intra_process():
     NUM_ELEMENT = 1000000

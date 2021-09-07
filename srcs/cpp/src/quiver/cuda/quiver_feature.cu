@@ -86,6 +86,9 @@ class ShardTensor
             inited_ = true;
             offset_list_.push_back(0);
         }
+        if (device_count_ > 0) {
+            offset_list_.push_back(offset_list_[device_count_ - 1] + item.shape[0]);
+        }
         cudaSetDevice(device_);
         void *ptr = NULL;
         tensor_devices_.push_back(item.device);

@@ -226,10 +226,10 @@ class ShardTensor
         return res;
     }
     std::vector<ShardTensorItem> share_ipc(){
-        cudaSetDevice(device_);
         std::vector<ShardTensorItem> res;
         for(int index=0; index < dev_ptrs_.size(); index++){
             if(tensor_devices_[index] >= 0){
+                cudaSetDevice(tensor_devices_[index]);
                 cudaIpcMemHandle_t send_handle;
                 cudaIpcGetMemHandle((cudaIpcMemHandle_t *)&send_handle, dev_ptrs_[index]);
                 ShardTensorItem item(tensor_devices_[index], send_handle, tensor_shapes_[index]);

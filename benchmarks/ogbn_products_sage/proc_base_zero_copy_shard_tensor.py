@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import torch.multiprocessing as mp
 
-import pytorch_quiver as qv
+import torch_quiver as qv
 from quiver.async_cuda_sampler import AsyncCudaNeighborSampler
 from torch_geometric.data import NeighborSampler
 from torch_geometric.nn import SAGEConv

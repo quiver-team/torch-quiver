@@ -87,8 +87,13 @@ def test_shard_tensor_intra_process():
         f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s")
 
 def child_proc(ipc_item0, ipc_item1):
-    print(ipc_item0)
-    torch.cuda_set_device(1)
+    torch.cuda.set_device(1)
+    NUM_ELEMENT = 1000000
+    SAMPLE_SIZE = 80000
+    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
+    indices = torch.from_numpy(host_indice).type(torch.long)
+    indices = indices.to("cuda:1")
+    
     item0 = qv.ShardTensorItem()
     item0.from_ipc(ipc_item0[0], ipc_item0[1], ipc_item0[2])
     
@@ -99,6 +104,14 @@ def child_proc(ipc_item0, ipc_item1):
     shard_tensor.append(item0)
     shard_tensor.append(item1)
     
+    start = time.time()
+    feature = shard_tensor[indices]
+    torch.cuda.synchronize()
+    print(
+        f"gathered data shape = {feature.shape}, consumed {time.time() - start}")
+    
+    
+    
 
 def test_shard_tensor_ipc():
     NUM_ELEMENT = 1000000
@@ -108,7 +121,7 @@ def test_shard_tensor_ipc():
     #########################
     # Init With Numpy
     ########################
-    torch.cuda_set_device(0)
+    torch.cuda.set_device(0)
 
     host_tensor = np.random.randint(
         0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
@@ -136,10 +149,10 @@ def test_shard_tensor_ipc():
     gc.enable()
     
     
-qv.init_p2p()
-test_shard_tensor_item()
-test_shard_tensor_intra_process()
 
 if __name__ == "__main__":
     mp.set_start_method("spawn")
+    qv.init_p2p()
+    test_shard_tensor_item()
+    test_shard_tensor_intra_process()
     test_shard_tensor_ipc()

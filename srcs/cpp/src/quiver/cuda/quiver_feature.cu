@@ -85,6 +85,7 @@ class ShardTensor
             inited_ = true;
             offset_list_.push_back(0);
         }
+        cudaSetDevice(device_);
         void *ptr = NULL;
         tensor_devices_.push_back(item.device);
         cudaIpcOpenMemHandle(&ptr, item.mem_handle, cudaIpcMemLazyEnablePeerAccess);

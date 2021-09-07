@@ -91,8 +91,13 @@ def child_proc(ipc_item0, ipc_item1):
     NUM_ELEMENT = 10000
     SAMPLE_SIZE = 800
     host_indice = np.random.randint(0,1 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
-    indices = torch.from_numpy(host_indice).type(torch.long)
-    indices = indices.to("cuda:0")
+    indices_part1 = torch.from_numpy(host_indice).type(torch.long)
+    indices_part1 = indices_part1.to("cuda:0")
+    
+    host_indice_2 = np.random.randint(1 * NUM_ELEMENT, 2* NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
+    indices_part2 = torch.from_numpy(host_indice_2).type(torch.long)
+    indices_part2 = indices_part2.to("cuda:0")
+    
     
     item0 = qv.ShardTensorItem()
     item0.from_ipc(ipc_item0[0], ipc_item0[1], ipc_item0[2])
@@ -104,12 +109,19 @@ def child_proc(ipc_item0, ipc_item1):
     shard_tensor.append(item0)
     shard_tensor.append(item1)
     
-    print(shard_tensor.shape())
+    print(f"check shard tensor shape ", shard_tensor.shape())
     start = time.time()
-    feature = shard_tensor[indices]
+    feature = shard_tensor[indices_part1]
     torch.cuda.synchronize()
     print(
-        f"gathered data shape = {feature.shape}, consumed {time.time() - start}")
+        f"gathered upper half data shape = {feature.shape}, consumed {time.time() - start}")
+    
+    print(f"check shard tensor shape ", shard_tensor.shape())
+    start = time.time()
+    feature = shard_tensor[indices_part2]
+    torch.cuda.synchronize()
+    print(
+        f"gathered down half data shape = {feature.shape}, consumed {time.time() - start}")
     
     
     

@@ -31,7 +31,7 @@ def test_shard_tensor_item():
     item = res[0].share_ipc()
     print(item[0], item[1], item[2])
     new_shard_tensor_item = qv.ShardTensorItem()
-    new_shard_tensor_item.from_ipc(item[0], item[1], item[2])
+    new_shard_tensor_item.from_ipc(item)
     item1 = new_shard_tensor_item.share_ipc()
     assert item[1] == item1[1]
     
@@ -104,10 +104,10 @@ def child_proc(ipc_item0, ipc_item1):
     
     
     item0 = qv.ShardTensorItem()
-    item0.from_ipc(ipc_item0[0], ipc_item0[1], ipc_item0[2])
+    item0.from_ipc(ipc_item0)
     
     item1 = qv.ShardTensorItem()
-    item1.from_ipc(ipc_item1[0], ipc_item1[1], ipc_item1[2])
+    item1.from_ipc(ipc_item1)
     
     shard_tensor = qv.ShardTensor(0)
     shard_tensor.append(item0)

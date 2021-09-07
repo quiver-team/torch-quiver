@@ -38,9 +38,11 @@ class ShardTensorItem
         auto bytes_obj = py::reinterpret_steal<py::object>((PyObject*)_handle);
         return std::make_tuple(device, bytes_obj, shape);
     }
-    void from_ipc(int device_, std::string handle, std::vector<int> shape_){
-        device = device_;
-        shape = shape_;
+    void from_ipc(std::tuple<int, std::string, std::vector<int>> ipc_data){
+
+        device = std::get<0>(ipc_data);
+        shape = std::get<1>(ipc_data);
+        auto handle = std::get<2>(ipc_data);
         auto ipc_handle = reinterpret_cast<const cudaIpcMemHandle_t*>(handle.c_str());
 
         mem_handle = *ipc_handle;

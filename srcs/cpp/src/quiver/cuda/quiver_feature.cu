@@ -232,13 +232,13 @@ class ShardTensor
         for(int index=0; index < dev_ptrs_.size(); index++){
             if(tensor_devices_[index] >= 0){
                 cudaSetDevice(tensor_devices_[index]);
-                ShardTensorItem item = new ShardTensorItem();
-                item.device = tensor_devices_[index];
-                item.shape = tensor_shapes_[index];
-                cudaIpcGetMemHandle(item.mem_handle, dev_ptrs_[index]);
-                res.push_back(item);
+                ShardTensorItem* item = new ShardTensorItem();
+                item -> device = tensor_devices_[index];
+                item -> shape = tensor_shapes_[index];
+                cudaIpcGetMemHandle(&(item -> mem_handle), dev_ptrs_[index]);
+                res.push_back(*item);
 
-                char *s = (char*)&item.mem_handle;
+                char *s = (char*)&(item -> mem_handle);
                 for(int index = 0; index < CUDA_IPC_HANDLE_SIZE; index++){
                     std::cout<<s[index];
                 }

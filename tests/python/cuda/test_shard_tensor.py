@@ -98,6 +98,10 @@ def child_proc(ipc_item0, ipc_item1):
     indices_part2 = torch.from_numpy(host_indice_2).type(torch.long)
     indices_part2 = indices_part2.to("cuda:0")
     
+    host_indice3 = np.random.randint(0,2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
+    indices = torch.from_numpy(host_indice3).type(torch.long)
+    indices = indices.to("cuda:0")
+    
     
     item0 = qv.ShardTensorItem()
     item0.from_ipc(ipc_item0[0], ipc_item0[1], ipc_item0[2])
@@ -122,6 +126,13 @@ def child_proc(ipc_item0, ipc_item1):
     torch.cuda.synchronize()
     print(
         f"gathered down half data shape = {feature.shape}, consumed {time.time() - start}")
+    
+    print(f"check shard tensor shape ", shard_tensor.shape())
+    start = time.time()
+    feature = shard_tensor[indices]
+    torch.cuda.synchronize()
+    print(
+        f"gathered whole data shape = {feature.shape}, consumed {time.time() - start}")
     
     
     

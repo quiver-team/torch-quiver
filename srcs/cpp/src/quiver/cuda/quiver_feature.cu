@@ -232,7 +232,7 @@ class ShardTensor
         for(int index=0; index < dev_ptrs_.size(); index++){
             if(tensor_devices_[index] >= 0){
                 cudaSetDevice(tensor_devices_[index]);
-                ShardTensorItem item;
+                ShardTensorItem item = new ShardTensorItem();
                 item.device = tensor_devices_[index];
                 item.shape = tensor_shapes_[index];
                 cudaIpcGetMemHandle(item.mem_handle, dev_ptrs_[index]);

@@ -467,6 +467,7 @@ if __name__ == '__main__':
     ######################################
     # Init Shard Tensor In Main Process
     ######################################
+    qv.init_p2p()
     shard_tensor = qv.ShardTensor(0)
     half_count = data.x.shape[0] // 2
     shard_tensor.append(data.x[: half_count], 0)

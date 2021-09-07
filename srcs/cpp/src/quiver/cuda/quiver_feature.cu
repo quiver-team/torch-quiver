@@ -41,8 +41,8 @@ class ShardTensorItem
     void from_ipc(std::tuple<int, std::string, std::vector<int>> ipc_data){
 
         device = std::get<0>(ipc_data);
-        shape = std::get<1>(ipc_data);
-        auto handle = std::get<2>(ipc_data);
+        shape = std::get<2>(ipc_data);
+        auto handle = std::get<1>(ipc_data);
         auto ipc_handle = reinterpret_cast<const cudaIpcMemHandle_t*>(handle.c_str());
 
         mem_handle = *ipc_handle;
@@ -242,7 +242,6 @@ class ShardTensor
                 item -> shape = tensor_shapes_[index];
                 cudaIpcGetMemHandle(&(item -> mem_handle), dev_ptrs_[index]);
                 res.push_back(*item);
-                char *s = (char*)&(item -> mem_handle);
 
             }
         }

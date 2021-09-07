@@ -87,7 +87,6 @@ class ShardTensor
         }
         void *ptr = NULL;
         tensor_devices_.push_back(item.device);
-        std::cout<< (char*)&item.mem_handle<<" "<< std::endl;
         cudaIpcOpenMemHandle(&ptr, item.mem_handle, cudaIpcMemLazyEnablePeerAccess);
         dev_ptrs_.push_back((float*)ptr);
         cudaPointerAttributes attributes;
@@ -95,6 +94,7 @@ class ShardTensor
         if(attributes.devicePointer == 0){
             printf("WARNING: Tensor from device %d can NOT be accessed in kernel launched on device %d \n", attributes.device, device_);
         }
+        printf("LOG >>>: Tensor from device %d can be accessed in kernel launched on device %d  by %d \n", attributes.device, device_, ptr);
         shape_[0] += item.shape[0];
         device_count_ += 1;
     }
@@ -278,7 +278,7 @@ void init_p2p(){
         for (int j = i + 1; j < numGPUs; j++) {
             int access_i_j = 0;
             int access_j_i = 0;
-            printf("Enable P2P Access Between %d ---> %d \n", i, j);
+            printf("Enable P2P Access Between %d <---> %d \n", i, j);
             cudaDeviceCanAccessPeer(&access_i_j, i, j);
             cudaDeviceCanAccessPeer(&access_j_i, j, i);
             if (access_i_j && access_j_i) {

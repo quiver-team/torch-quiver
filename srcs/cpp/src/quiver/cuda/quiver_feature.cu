@@ -237,12 +237,7 @@ class ShardTensor
                 item -> shape = tensor_shapes_[index];
                 cudaIpcGetMemHandle(&(item -> mem_handle), dev_ptrs_[index]);
                 res.push_back(*item);
-
                 char *s = (char*)&(item -> mem_handle);
-                for(int index = 0; index < CUDA_IPC_HANDLE_SIZE; index++){
-                    std::cout<<s[index];
-                }
-                std::cout<<std::endl;
 
             }
         }

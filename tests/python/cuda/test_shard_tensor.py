@@ -148,7 +148,7 @@ def test_shard_tensor_ipc():
         f"device_0_tensor device {device_0_tensor.device}\ndevice_1_tensor device {device_1_tensor.device}")
     shard_tensor2 = qv.ShardTensor(1)
     shard_tensor2.append(device_0_tensor, 0)
-    shard_tensor2.append(device_1_tensor, 0)
+    shard_tensor2.append(device_1_tensor, 1)
     
     ipc_res = shard_tensor2.share_ipc()
     print(ipc_res[0].share_ipc()[1] == ipc_res[1].share_ipc()[1])

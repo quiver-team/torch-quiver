@@ -147,7 +147,9 @@ class SingleProcess:
         # Rebuild Tensor In Child Process
         ###################################
         self.feature = qv.ShardTensor(rank)
-        for item in shard_tensor_item_ipc:
+        for ipc_item in shard_tensor_item_ipc:
+            item = qv.ShardTensorItem()
+            item.from_ipc(ipc_item)
             self.feature.append(item)
         torch.cuda.set_device(device)
         

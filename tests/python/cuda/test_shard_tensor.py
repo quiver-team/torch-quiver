@@ -86,19 +86,23 @@ def test_shard_tensor_intra_process():
     print(
         f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s")
 
-def child_proc(ipc_item0):
+def child_proc(ipc_item0, ipc_item1):
     torch.cuda.set_device(1)
     NUM_ELEMENT = 1000000
     SAMPLE_SIZE = 80000
-    host_indice = np.random.randint(0, NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
+    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
     indices = torch.from_numpy(host_indice).type(torch.long)
     indices = indices.to("cuda:1")
     
     item0 = qv.ShardTensorItem()
     item0.from_ipc(ipc_item0[0], ipc_item0[1], ipc_item0[2])
     
+    item1 = qv.ShardTensorItem()
+    item1.from_ipc(ipc_item1[0], ipc_item1[1], ipc_item1[2])
+    
     shard_tensor = qv.ShardTensor(1)
     shard_tensor.append(item0)
+    shard_tensor.append(item1)
     
     start = time.time()
     feature = shard_tensor[indices]
@@ -121,24 +125,21 @@ def test_shard_tensor_ipc():
 
     host_tensor = np.random.randint(
         0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
-    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
 
     device_0_tensor = torch.from_numpy(
         host_tensor[: NUM_ELEMENT]).type(torch.float32)
     device_1_tensor = torch.from_numpy(
         host_tensor[NUM_ELEMENT:]).type(torch.float32)
     
-    indices = torch.from_numpy(host_indice).type(torch.long)
-    indices = indices.to("cuda:0")
-    
     print(
         f"device_0_tensor device {device_0_tensor.device}\ndevice_1_tensor device {device_1_tensor.device}")
     shard_tensor2 = qv.ShardTensor(0)
     shard_tensor2.append(device_0_tensor, 0)
+    shard_tensor2.append(device_1_tensor, 1)
     
     ipc_res = shard_tensor2.share_ipc()
-    print(ipc_res[0].share_ipc())
-    process = mp.Process(target=child_proc, args = (ipc_res[0].share_ipc(),))
+    print(ipc_res[0].share_ipc()[1] == ipc_res[1].share_ipc()[1])
+    process = mp.Process(target=child_proc, args = (ipc_res[0].share_ipc(),ipc_res[1].share_ipc()))
     process.start()
     process.join()
     gc.enable()

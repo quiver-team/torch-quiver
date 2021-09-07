@@ -94,7 +94,7 @@ class ShardTensor
         if(attributes.devicePointer == 0){
             printf("WARNING: Tensor from device %d can NOT be accessed in kernel launched on device %d \n", attributes.device, device_);
         }
-        printf("LOG >>>: Tensor from device %d can be accessed in kernel launched on device %d  by %d \n", attributes.device, device_, ptr);
+        printf("LOG >>>: Tensor from device %d can be accessed in kernel launched on device %d  by %d \n", attributes.device, device_, attributes.devicePointer);
         shape_[0] += item.shape[0];
         device_count_ += 1;
     }

@@ -12,11 +12,153 @@ import argparse
 from torch.nn.parallel import DistributedDataParallel
 import tqdm
 
-from model import SAGE
-from load_graph import load_reddit, inductive_split, load_ogb
+import sklearn.linear_model as lm
+import sklearn.metrics as skm
 
-GPU_FEATURE = False
-GPU_SAMPLE = False
+GPU_FEATURE = True
+GPU_SAMPLE = 2
+
+class SAGE(nn.Module):
+    def __init__(self, in_feats, n_hidden, n_classes, n_layers, activation, dropout):
+        super().__init__()
+        self.init(in_feats, n_hidden, n_classes, n_layers, activation, dropout)
+
+    def init(self, in_feats, n_hidden, n_classes, n_layers, activation, dropout):
+        self.n_layers = n_layers
+        self.n_hidden = n_hidden
+        self.n_classes = n_classes
+        self.layers = nn.ModuleList()
+        if n_layers > 1:
+            self.layers.append(dglnn.SAGEConv(in_feats, n_hidden, 'mean'))
+            for i in range(1, n_layers - 1):
+                self.layers.append(dglnn.SAGEConv(n_hidden, n_hidden, 'mean'))
+            self.layers.append(dglnn.SAGEConv(n_hidden, n_classes, 'mean'))
+        else:
+            self.layers.append(dglnn.SAGEConv(in_feats, n_classes, 'mean'))
+        self.dropout = nn.Dropout(dropout)
+        self.activation = activation
+
+    def forward(self, blocks, x):
+        h = x
+        for l, (layer, block) in enumerate(zip(self.layers, blocks)):
+            h = layer(block, h)
+            if l != len(self.layers) - 1:
+                h = self.activation(h)
+                h = self.dropout(h)
+        return h
+
+    def inference(self, g, x, device, batch_size, num_workers):
+        """
+        Inference with the GraphSAGE model on full neighbors (i.e. without neighbor sampling).
+        g : the entire graph.
+        x : the input of entire node set.
+
+        The inference code is written in a fashion that it could handle any number of nodes and
+        layers.
+        """
+        # During inference with sampling, multi-layer blocks are very inefficient because
+        # lots of computations in the first few layers are repeated.
+        # Therefore, we compute the representation of all nodes layer by layer.  The nodes
+        # on each layer are of course splitted in batches.
+        # TODO: can we standardize this?
+        for l, layer in enumerate(self.layers):
+            y = th.zeros(g.num_nodes(), self.n_hidden if l != len(self.layers) - 1 else self.n_classes)
+
+            sampler = dgl.dataloading.MultiLayerFullNeighborSampler(1)
+            dataloader = dgl.dataloading.NodeDataLoader(
+                g,
+                th.arange(g.num_nodes()).to(g.device),
+                sampler,
+                batch_size=batch_size,
+                shuffle=True,
+                drop_last=False,
+                num_workers=num_workers)
+
+            for input_nodes, output_nodes, blocks in tqdm.tqdm(dataloader):
+                block = blocks[0]
+
+                block = block.int().to(device)
+                h = x[input_nodes].to(device)
+                h = layer(block, h)
+                if l != len(self.layers) - 1:
+                    h = self.activation(h)
+                    h = self.dropout(h)
+
+                y[output_nodes] = h.cpu()
+
+            x = y
+        return y
+
+def compute_acc_unsupervised(emb, labels, train_nids, val_nids, test_nids):
+    """
+    Compute the accuracy of prediction given the labels.
+    """
+    emb = emb.cpu().numpy()
+    labels = labels.cpu().numpy()
+    train_nids = train_nids.cpu().numpy()
+    train_labels = labels[train_nids]
+    val_nids = val_nids.cpu().numpy()
+    val_labels = labels[val_nids]
+    test_nids = test_nids.cpu().numpy()
+    test_labels = labels[test_nids]
+
+    emb = (emb - emb.mean(0, keepdims=True)) / emb.std(0, keepdims=True)
+
+    lr = lm.LogisticRegression(multi_class='multinomial', max_iter=10000)
+    lr.fit(emb[train_nids], train_labels)
+
+    pred = lr.predict(emb)
+    f1_micro_eval = skm.f1_score(val_labels, pred[val_nids], average='micro')
+    f1_micro_test = skm.f1_score(test_labels, pred[test_nids], average='micro')
+    return f1_micro_eval, f1_micro_test
+
+
+def load_reddit():
+    from dgl.data import RedditDataset
+
+    # load reddit data
+    data = RedditDataset(self_loop=True)
+    g = data[0]
+    g.ndata['features'] = g.ndata['feat']
+    g.ndata['labels'] = g.ndata['label']
+    return g, data.num_classes
+
+def load_ogb(name):
+    from ogb.nodeproppred import DglNodePropPredDataset
+
+    print('load', name)
+    data = DglNodePropPredDataset(name=name)
+    print('finish loading', name)
+    splitted_idx = data.get_idx_split()
+    graph, labels = data[0]
+    labels = labels[:, 0]
+
+    graph.ndata['features'] = graph.ndata['feat']
+    graph.ndata['labels'] = labels
+    in_feats = graph.ndata['features'].shape[1]
+    num_labels = len(th.unique(labels[th.logical_not(th.isnan(labels))]))
+
+    # Find the node IDs in the training, validation, and test set.
+    train_nid, val_nid, test_nid = splitted_idx['train'], splitted_idx['valid'], splitted_idx['test']
+    train_mask = th.zeros((graph.number_of_nodes(),), dtype=th.bool)
+    train_mask[train_nid] = True
+    val_mask = th.zeros((graph.number_of_nodes(),), dtype=th.bool)
+    val_mask[val_nid] = True
+    test_mask = th.zeros((graph.number_of_nodes(),), dtype=th.bool)
+    test_mask[test_nid] = True
+    graph.ndata['train_mask'] = train_mask
+    graph.ndata['val_mask'] = val_mask
+    graph.ndata['test_mask'] = test_mask
+    print('finish constructing', name)
+    return graph, num_labels
+
+def inductive_split(g):
+    """Split the graph into training graph, validation graph, and test graph by training
+    and validation masks.  Suitable for inductive models."""
+    train_g = g.subgraph(g.ndata['train_mask'])
+    val_g = g.subgraph(g.ndata['train_mask'] | g.ndata['val_mask'])
+    test_g = g
+    return train_g, val_g, test_g
 
 def compute_acc(pred, labels):
     """
@@ -81,8 +223,8 @@ def run(proc_id, n_gpus, args, devices, data):
     test_nid = test_mask.nonzero().squeeze()
     # Create PyTorch DataLoader for constructing blocks
     sampler = dgl.dataloading.MultiLayerNeighborSampler(
-        [int(fanout) for fanout in args.fan_out.split(',')])
-    if GPU_SAMPLE:
+        [int(fanout) for fanout in args.fan_out.split(',')], zero_copy=GPU_SAMPLE==2)
+    if GPU_SAMPLE == 1:
         train_g = train_g.to(dev_id)
         train_nid = train_nid.to(dev_id)
     dataloader = dgl.dataloading.NodeDataLoader(
@@ -90,7 +232,7 @@ def run(proc_id, n_gpus, args, devices, data):
         train_nid,
         sampler,
         use_ddp=False,
-        device=dev_id,# if GPU_SAMPLE else None,
+        device=dev_id if GPU_SAMPLE > 0 else None,
         batch_size=args.batch_size,
         shuffle=True,
         drop_last=False,

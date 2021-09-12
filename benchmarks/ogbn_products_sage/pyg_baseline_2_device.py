@@ -65,7 +65,9 @@ def run(rank, world_size, dataset):
     dist.init_process_group('nccl', rank=rank, world_size=world_size)
 
     data = dataset[0]
-    train_idx = data.train_mask.nonzero(as_tuple=False).view(-1)
+    split_idx = dataset.get_idx_split()
+
+    train_idx = split_idx['train']
     train_idx = train_idx.split(train_idx.size(0) // world_size)[rank]
 
     train_loader = NeighborSampler(data.edge_index, node_idx=train_idx,
@@ -120,8 +122,6 @@ if __name__ == '__main__':
     root = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'products')
     root = "/home/dalong/data/"
     dataset = PygNodePropPredDataset('ogbn-products', root)
-    split_idx = dataset.get_idx_split()
-    evaluator = Evaluator(name='ogbn-products')
     world_size = torch.cuda.device_count()
     print('Let\'s use', world_size, 'GPUs!')
     mp.spawn(run, args=(world_size, dataset), nprocs=world_size, join=True)

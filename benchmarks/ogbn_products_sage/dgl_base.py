@@ -11,7 +11,7 @@ import math
 import argparse
 from torch.nn.parallel import DistributedDataParallel
 import tqdm
-
+import os.path as osp
 import sklearn.linear_model as lm
 import sklearn.metrics as skm
 
@@ -123,9 +123,10 @@ def load_reddit():
     g.ndata['labels'] = g.ndata['label']
     return g, data.num_classes
 
-def load_ogb(name):
+def load_ogb(name, root = "/home/dalong/data"):
     from ogb.nodeproppred import DglNodePropPredDataset
 
+    name = osp.join(root, name)
     print('load', name)
     data = DglNodePropPredDataset(name=name)
     print('finish loading', name)

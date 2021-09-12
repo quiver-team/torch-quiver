@@ -68,7 +68,7 @@ def run(rank, world_size, dataset):
     train_idx = train_idx.split(train_idx.size(0) // world_size)[rank]
 
     train_loader = NeighborSampler(data.edge_index, node_idx=train_idx,
-                                   sizes=[25, 10], batch_size=4096,
+                                   sizes=[15, 10, 5], batch_size=4096,
                                    shuffle=True, num_workers=12)
 
     if rank == 0:
@@ -77,7 +77,7 @@ def run(rank, world_size, dataset):
                                           shuffle=False, num_workers=6)
 
     torch.manual_seed(12345)
-    model = SAGE(dataset.num_features, 256, dataset.num_classes).to(rank)
+    model = SAGE(dataset.num_features, 256, dataset.num_classes, num_layers=3).to(rank)
     model = DistributedDataParallel(model, device_ids=[rank])
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 

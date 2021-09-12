@@ -9,8 +9,9 @@ from torch.nn.parallel import DistributedDataParallel
 
 from torch_geometric.nn import SAGEConv
 from torch_geometric.datasets import Reddit
-from torch_geometric.loader import NeighborSampler
-
+from torch_geometric.data import NeighborSampler
+import os.path as osp
+from ogb.nodeproppred import PygNodePropPredDataset, Evaluator
 
 class SAGE(torch.nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels,
@@ -116,8 +117,11 @@ def run(rank, world_size, dataset):
 
 
 if __name__ == '__main__':
-    dataset = Reddit('/home/dalong/data/Reddit')
-
+    root = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'products')
+    root = "/home/dalong/data/"
+    dataset = PygNodePropPredDataset('ogbn-products', root)
+    split_idx = dataset.get_idx_split()
+    evaluator = Evaluator(name='ogbn-products')
     world_size = torch.cuda.device_count()
     print('Let\'s use', world_size, 'GPUs!')
     mp.spawn(run, args=(world_size, dataset), nprocs=world_size, join=True)

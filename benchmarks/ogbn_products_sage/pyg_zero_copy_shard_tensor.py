@@ -116,7 +116,7 @@ def run(rank, world_size, dataset):
 
 
 if __name__ == '__main__':
-    dataset = Reddit('/home/dalong/Reddit')
+    dataset = Reddit('/home/dalong/data/Reddit')
 
     world_size = torch.cuda.device_count()
     print('Let\'s use', world_size, 'GPUs!')

@@ -68,7 +68,7 @@ def run(rank, world_size, dataset):
     train_idx = train_idx.split(train_idx.size(0) // world_size)[rank]
 
     train_loader = NeighborSampler(data.edge_index, node_idx=train_idx,
-                                   sizes=[25, 10], batch_size=1024,
+                                   sizes=[25, 10], batch_size=4096,
                                    shuffle=True, num_workers=0)
 
     if rank == 0:

@@ -10,7 +10,7 @@ from torch.nn.parallel import DistributedDataParallel
 from torch_geometric.nn import SAGEConv
 from torch_geometric.datasets import Reddit
 from torch_geometric.data import NeighborSampler
-
+import time
 
 class SAGE(torch.nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels,
@@ -85,8 +85,10 @@ def run(rank, world_size, dataset):
 
     for epoch in range(1, 21):
         model.train()
-
+        start_time = time.time()
         for batch_size, n_id, adjs in train_loader:
+            if rank == 0:
+                print(f"data time = {time.time()  - start_time}")
             adjs = [adj.to(rank) for adj in adjs]
 
             optimizer.zero_grad()
@@ -94,6 +96,9 @@ def run(rank, world_size, dataset):
             loss = F.nll_loss(out, y[n_id[:batch_size]])
             loss.backward()
             optimizer.step()
+            if rank == 0:
+                print(f"iter time = {time.time()  - start_time}")
+            start_time = time.time()
 
         dist.barrier()
 

@@ -149,10 +149,11 @@ class SingleProcess:
         # Rebuild Tensor In Child Process
         ###################################
         self.feature = qv.ShardTensor(rank)
-        for ipc_item in shard_tensor_item_ipc[current_node]:
+        for ipc_item in shard_tensor_item_ipc:
             item = qv.ShardTensorItem()
             item.from_ipc(ipc_item)
             self.feature.append(item)
+        
         torch.cuda.set_device(device)
         
         
@@ -470,16 +471,13 @@ if __name__ == '__main__':
     # Init Shard Tensor In Main Process
     ######################################
     qv.init_p2p()
-    total_nodes = info.get_max_node() + 1
     shard_tensors = []
-    for index in range(total_nodes):
-        shard_tensor = qv.ShardTensor(0)
-        half_count = data.x.shape[0] // 2
-        shard_tensor.append(data.x[: half_count], 0)
-        shard_tensor.append(data.x[half_count:], 1)
-        shard_tensor_ipc = shard_tensor.share_ipc()
-        shard_item_ipc = [item.share_ipc() for item in shard_tensor_ipc]
-        shard_tensors.append(shard_item_ipc)
+    shard_tensor = qv.ShardTensor(0)
+    half_count = data.x.shape[0] // 2
+    shard_tensor.append(data.x[: half_count], 0)
+    shard_tensor.append(data.x[half_count:], 1)
+    shard_tensor_ipc = shard_tensor.share_ipc()
+    shard_item_ipc = [item.share_ipc() for item in shard_tensor_ipc]
         
     
     sample_data = csr_mat, batch_size, sizes, train_idx
@@ -487,7 +485,7 @@ if __name__ == '__main__':
     comm = CommConfig(0, ws)
     sync = SyncManager(ws)
     proc = SingleProcess(num_epoch, num_batch, sample_data,
-                         train_data, shard_tensors, sync, comm)
+                         train_data, shard_item_ipc, sync, comm)
     procs = launch_multiprocess(proc, ws)
     time.sleep(50)
     for p in procs:

@@ -126,9 +126,8 @@ def load_reddit():
 def load_ogb(name, root = "/home/dalong/data"):
     from ogb.nodeproppred import DglNodePropPredDataset
 
-    name = osp.join(root, name)
     print('load', name)
-    data = DglNodePropPredDataset(name=name)
+    data = DglNodePropPredDataset(name=name, root=root)
     print('finish loading', name)
     splitted_idx = data.get_idx_split()
     graph, labels = data[0]

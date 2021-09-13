@@ -1,11 +1,16 @@
 import torch
 import torch_quiver as qv
+
 import random
 import time
 import numpy as np
 import sys
 import torch.multiprocessing as mp
 import gc  
+
+from quiver import ShardTensor as PyShardTensor
+from quiver import ShardTensorConfig
+
 
 
 def test_shard_tensor_item():
@@ -172,6 +177,28 @@ def test_shard_tensor_ipc():
     process.join()
     gc.enable()
     
+
+def test_py_shard_tensor_basic():
+    NUM_ELEMENT = 10000
+    SAMPLE_SIZE = 800
+    FEATURE_DIM = 600
+    gc.disable()
+    #########################
+    # Init With Numpy
+    ########################
+    torch.cuda.set_device(1)
+
+    host_tensor = np.random.randint(
+        0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
+    tensor = torch.from_numpy(host_tensor).type(torch.float32)
+    host_indice = np.random.randint(0,2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
+    indices = torch.from_numpy(host_indice).type(torch.long)
+    shard_tensor_config = ShardTensorConfig({0: '100M', 1: "100M"})
+    shard_tensor = PyShardTensor(0, shard_tensor_config)
+    start = time.time()
+    feature = shard_tensor[indices]
+    torch.cuda.synchronize()
+    print("PyShard Tensor Feature Collection Consumed {time.time() - staart}")
     
 
 if __name__ == "__main__":
@@ -179,4 +206,5 @@ if __name__ == "__main__":
     qv.init_p2p()
     #test_shard_tensor_item()
     #test_shard_tensor_intra_process()
-    test_shard_tensor_ipc()
+    #test_shard_tensor_ipc()
+    test_py_shard_tensor_basic()

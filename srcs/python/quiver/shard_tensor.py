@@ -51,6 +51,20 @@ class ShardTensorConfig:
     
     def __init__(self, device_memory_budget):
         self.device_memory_budget = device_memory_budget
+        for device in device_memory_budget:
+            if isinstance(self.device_memory_budget[device], int):
+                continue
+            elif isinstance(self.device_memory_budget[device], float):
+                self.device_memory_budget[device] = int(self.device_memory_budget[device])
+            
+            elif isinstance(self.device_memory_budget[device], str):
+                if self.device_memory_budget[device].upper().endswith("M") or self.device_memory_budget[device].upper().endswith("MB"):
+                    self.device_memory_budget[device] = int(float(self.device_memory_budget[device]) * 1024 * 1024)
+                
+                if self.device_memory_budget[device].upper().endswith("G") or self.device_memory_budget[device].upper().endswith("GB"):
+                    self.device_memory_budget[device] = int(float(self.device_memory_budget[device]) * 1024 * 1024 * 1024)
+            else:
+                raise Exception("memory budget input is not valid")
     
     def reorder_device(self, device_order):
         tmp_device_memory_budget = {}

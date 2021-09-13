@@ -137,15 +137,14 @@ class ShardTensor:
         # call request
 
         if self.current_numa == 0:
-            request_nodes_mask = nodes[nodes >= self.shard_tensor_config.tensor_offset_numa[0]]
+            request_nodes_mask = (nodes >= self.shard_tensor_config.tensor_offset_numa[0]) & (nodes < self.shard_tensor_config.tensor_offset_numa[1])
         else:
-            request_nodes_mask = nodes[nodes < self.shard_tensor_config.tensor_offset_numa[0]]
-        
-        if request_nodes_mask.shape[0] > 0 :
+            request_nodes_mask = nodes < self.shard_tensor_config.tensor_offset_numa[0]
+        request_nodes = torch.masked_select(nodes, request_nodes_mask)
+        part_orders = torch.masked_select(input_orders, request_nodes_mask)
+        if request_nodes.shape[0] > 0 :
             chosen_device = self.topo.random_pick_device_from_numa(1 - self.current_numa)
-            request_nodes = torch.masked_select(nodes, request_nodes_mask)
-            part_orders = torch.masked_select(input_orders, request_nodes_mask)
-            
+                        
             with torch.device(chosen_device):
                 result = self.shard_tensor[request_nodes]
             result.to(self.current_device)

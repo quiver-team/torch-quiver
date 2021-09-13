@@ -72,7 +72,7 @@ class ShardTensorConfig:
             tmp_device_memory_budget[device] = self.device_memory_budget[device]
         self.device_memory_budget = tmp_device_memory_budget
     
-    @getattr
+    @property
     def device_list(self):
         return list(self.device_memory_budget.keys())
     

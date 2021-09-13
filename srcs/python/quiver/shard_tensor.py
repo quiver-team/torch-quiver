@@ -31,7 +31,7 @@ class Topo:
         access_book = torch.zeros((len(device_list), len(device_list)))
         for src_index, src_device in enumerate(device_list):
             for dst_index, dst_device in enumerate(device_list):
-                if torch._C._cuda_canDeviceAccessPeer(src_device, dst_device) and torch._C._cuda_canDeviceAccessPeer(dst_device, src_device):
+                if src_device // 2 == dst_device // 2:
                     access_book[src_index][dst_index] = 1
                     access_book[dst_index][src_index] = 1
         self.Device2Numa, self.Numa2Device = color_mat(access_book)
@@ -143,13 +143,13 @@ class ShardTensor:
         part_orders = torch.masked_select(input_orders, request_nodes_mask)
         # ptr0, ptr1, ptr2, ptr3, ptr_cpu
         if request_nodes.shape[0] > 0 :
-            # chosen_device = 2
             chosen_device = self.topo.random_pick_device_from_numa(1 - self.current_numa)
+            print(f'choose {chosen_device}')
             # access ptr2, ptr3 on device 2 to collect data
-            with torch.device(chosen_device):
+            with torch.cuda.device(chosen_device):
                 request_nodes = request_nodes.to(chosen_device)
                 result = self.shard_tensor[request_nodes]
-            result.to(self.current_device)
+            result = result.to(self.current_device)
             feature[part_orders] = result
         
         return feature

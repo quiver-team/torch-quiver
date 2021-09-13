@@ -79,6 +79,7 @@ class ShardTensor
     }
 
     void append(ShardTensorItem item){
+        cudaSetDevice(device_);
         if (!inited_) {
             shape_.resize(item.shape.size());
             // std::cout<<"check shape_ size "<<shape_.size()<<std::endl;
@@ -92,8 +93,17 @@ class ShardTensor
         }
         if (device_count_ > 0) {
             offset_list_.push_back(offset_list_[device_count_ - 1] + item.shape[0]);
+            int access_i_j, access_j_i;
+            cudaDeviceCanAccessPeer(&access_i_j, device_, item.device);
+            cudaDeviceCanAccessPeer(&access_j_i, item.device, device_);
+            if ((access_i_j && access_j_i)|| device_ == item.device) {
+                access_book.push_back(1);
+            }else{
+                access_book.push_back(0);
+            }
+        }else{
+            access_book.push_back(1);
         }
-        cudaSetDevice(device_);
         void *ptr = NULL;
         tensor_devices_.push_back(item.device);
         cudaIpcOpenMemHandle(&ptr, item.mem_handle, cudaIpcMemLazyEnablePeerAccess);
@@ -106,16 +116,6 @@ class ShardTensor
         printf("LOG >>>: Tensor from device %d can be accessed in kernel launched on device %d  by %d \n", attributes.device, device_, attributes.devicePointer);
         shape_[0] += item.shape[0];
         device_count_ += 1;
-
-        // decide access book
-        int access_i_j, access_j_i;
-        cudaDeviceCanAccessPeer(&access_i_j, device_, item.device);
-        cudaDeviceCanAccessPeer(&access_j_i, item.device, device_);
-        if ((access_i_j && access_j_i)|| device_ == item.device) {
-            access_book.push_back(1);
-        }else{
-            access_book.push_back(0);
-        }
 
     }
 
@@ -150,11 +150,27 @@ class ShardTensor
             cudaMalloc(&ptr, data_size);
             cudaMemcpy(ptr, tensor.data_ptr<float>(), data_size, cudaMemcpyHostToDevice);
             cudaSetDevice(device_);
+
+            // decide access book
+            int access_i_j, access_j_i;
+            cudaDeviceCanAccessPeer(&access_i_j, device_, target_device);
+            cudaDeviceCanAccessPeer(&access_j_i, target_device, device_);
+            if ((access_i_j && access_j_i) || device_ == target_device) {
+                access_book.push_back(1);
+                printf("%d <-> %d support peer access \n", device_, target_device);
+            }else{
+                access_book.push_back(0);
+                printf("%d <-> %d dont support peer access \n", device_, target_device);
+            }
+
+
         }else{
             cudaSetDevice(device_);
             // if target_device < 0, it means we use Zero-Copy 
             cudaHostRegister(tensor.data_ptr<float>(), data_size, cudaHostRegisterMapped);
             cudaHostGetDevicePointer(&ptr, (void *)tensor.data_ptr<float>(), 0);
+            access_book.push_back(1);
+            printf("%d <-> CPU support peer access \n", device_);
         }
 
         dev_ptrs_.push_back((float*)ptr);
@@ -167,16 +183,6 @@ class ShardTensor
         shape_[0] += tensor.size(0);
         device_count_ += 1;
 
-        // decide access book
-        int access_i_j, access_j_i;
-        cudaDeviceCanAccessPeer(&access_i_j, device_, target_device);
-        cudaDeviceCanAccessPeer(&access_j_i, target_device, device_);
-        if ((access_i_j && access_j_i) || device_ == target_device) {
-            access_book.push_back(1);
-        }else{
-            access_book.push_back(0);
-        }
-
     }
 
 
@@ -188,6 +194,7 @@ class ShardTensor
         indice_length, const float* res, const int item_byte_size){
         torch::zeros((100,100),torch::KF32);
         */
+
         cudaSetDevice(device_);
         auto stream = at::cuda::getCurrentCUDAStream();
         std::vector<int64_t> res_shape(shape_);

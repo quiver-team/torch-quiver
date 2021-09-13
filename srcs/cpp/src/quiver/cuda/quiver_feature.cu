@@ -196,14 +196,15 @@ class ShardTensor
         */
         int current_device = 0;
         cudaGetDevice(&current_device);
-        auto stream = at::cuda::getCurrentCUDAStream();
+        // auto stream = at::cuda::getCurrentCUDAStream();
+        auto stream = at::cuda::getStreamFromPool(false, current_device);
 
         std::vector<int64_t> res_shape(shape_);
         res_shape[0] = indices.numel();
         // decide Tensor
         auto options = torch::TensorOptions()
                            .dtype(at::kFloat)
-                           .device(torch::kCUDA, device_);
+                           .device(torch::kCUDA, current_device);
         auto res = torch::empty(res_shape, options);
 
         // Copy buffers Device

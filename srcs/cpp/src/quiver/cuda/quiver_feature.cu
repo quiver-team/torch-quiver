@@ -98,11 +98,14 @@ class ShardTensor
             cudaDeviceCanAccessPeer(&access_j_i, item.device, device_);
             if ((access_i_j && access_j_i)|| device_ == item.device) {
                 access_book.push_back(1);
+                printf("%d <-> %d support peer access \n", device_, item.device);
             }else{
                 access_book.push_back(0);
+                printf("%d <-> %d dont support peer access \n", device_, item.device);
             }
         }else{
             access_book.push_back(1);
+            printf("%d <-> CPU support peer access \n", device_);
         }
         void *ptr = NULL;
         tensor_devices_.push_back(item.device);

@@ -130,7 +130,6 @@ class ShardTensor:
         
     def __getitem__(self, nodes):
 
-        print("check node device", nodes.device)
         input_orders = torch.arange(nodes.size(0), dtype=torch.long, device=nodes.device)
         # async
         feature = self.shard_tensor[nodes]

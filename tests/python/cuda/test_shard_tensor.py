@@ -194,7 +194,7 @@ def test_py_shard_tensor_basic():
     host_indice = np.random.randint(0,2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
     indices = torch.from_numpy(host_indice).type(torch.long)
     indices = indices.to("cuda:0")
-    shard_tensor_config = ShardTensorConfig({0: '100M', 1: "100M"})
+    shard_tensor_config = ShardTensorConfig({0: '1.1G', 1: "900M"})
     shard_tensor = PyShardTensor(0, shard_tensor_config)
     shard_tensor.from_cpu_tensor(tensor)
     start = time.time()

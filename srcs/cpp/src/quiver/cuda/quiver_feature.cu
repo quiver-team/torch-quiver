@@ -356,10 +356,19 @@ void init_p2p(){
         }
     }
 }
+bool can_device_access_peer(int src_device_index, int dst_device_index){
+    int access = 0;
+    cudaDeviceCanAccessPeer(&access, i, j);
+    return access == 1;
+}
+
 }  // namespace quiver
 void register_cuda_quiver_feature(pybind11::module &m)
 {
     m.def("init_p2p", &quiver::init_p2p,
+            py::call_guard<py::gil_scoped_release>());
+    
+    m.def("can_device_access_peer", &quiver::can_device_access_peer,
             py::call_guard<py::gil_scoped_release>());
     
     

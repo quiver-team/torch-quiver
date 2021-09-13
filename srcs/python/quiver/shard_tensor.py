@@ -18,7 +18,6 @@ def color_mat(access_book):
                 if(dst_device != src_device and access_book[src_device, dst_device] == 1):
                     device2numa[dst_device] = device2numa[src_device]
                     numa2device[device2numa[src_device]].append(dst_device)
-        
     
     return device2numa, numa2device
             
@@ -59,12 +58,15 @@ class ShardTensorConfig:
             
             elif isinstance(self.device_memory_budget[device], str):
                 if self.device_memory_budget[device].upper().endswith("M") or self.device_memory_budget[device].upper().endswith("MB"):
-                    self.device_memory_budget[device] = int(float(self.device_memory_budget[device][:-1]) * 1024 * 1024)
+                    end = -1 if self.device_memory_budget[device].upper().endswith("M") else -2
+                    self.device_memory_budget[device] = int(float(self.device_memory_budget[device][:end]) * 1024 * 1024)
                 
                 elif self.device_memory_budget[device].upper().endswith("G") or self.device_memory_budget[device].upper().endswith("GB"):
-                    self.device_memory_budget[device] = int(float(self.device_memory_budget[device][:-1]) * 1024 * 1024 * 1024)
+                    end = -1 if self.device_memory_budget[device].upper().endswith("G") else -2
+                    self.device_memory_budget[device] = int(float(self.device_memory_budget[device][:end]) * 1024 * 1024 * 1024)
             else:
                 raise Exception("memory budget input is not valid")
+            print(f"LOG >>> Memory Budge On {device} is {self.device_memory_budget[device] // 1024 // 1024}MB")
     
     def reorder_device(self, device_order):
         tmp_device_memory_budget = {}
@@ -114,10 +116,13 @@ class ShardTensor:
             numa_node = self.topo.get_numa_node(device_id)
             numa_size[numa_node] += size
             print(f"LOG >>> Assign {size}/{tensor.shape[0]} elementes to {device_id}")
-        # 接着继续给CPU分配数据
-        self.shard_tensor.append(tensor[offset:], -1)
-        
-        print(f"LOG >>> Assign {tensor.shape[0] -  offset} elementes to CPU")
+            if offset > tensor.shape[0]:
+                break
+        if offset < tensor.shape[0]:
+            # 接着继续给CPU分配数据
+            self.shard_tensor.append(tensor[offset:], -1)
+            print(f"LOG >>> Assign {tensor.shape[0] -  offset} elementes to CPU")
+            
         # init config 
         self.shard_tensor_config.tensor_offset_numa.append(numa_size[0])
         self.shard_tensor_config.tensor_offset_numa.append(numa_size[0] + numa_size[1])

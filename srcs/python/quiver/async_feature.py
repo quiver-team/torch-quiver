@@ -127,3 +127,73 @@ class AsyncFeature:
         total_features = torch.cat(total_features)
         total_features = total_features[feature_reorder]
         return total_features
+
+
+class TorchShardTensor:
+    def __init__(self, rank, ws, cpu_tensor, gpu_tensors, range_list):
+        self.rank = rank
+        self.ws = ws
+        self.local_tensor = qv.ShardTensor(rank)
+        self.local_tensor.append(gpu_tensors[rank], rank)
+        self.local_tensor.append(cpu_tensor, -1)
+        self.gpu_tensors = gpu_tensors
+        self.range_list = range_list
+        self.stream_list = []
+        for i in range(ws):
+            s = torch.cuda.Stream(i)
+            self.stream_list.append(s)
+    
+
+    def collect(self, nodes):
+        torch.cuda.set_device(self.rank)
+        nodes = nodes.to(self.rank)
+        input_orders = torch.arange(nodes.size(
+            0), dtype=torch.long, device=torch.device(self.rank))
+        beg_r = self.range_list[self.rank]
+        end_r = self.range_list[self.rank + 1]
+        beg_mask = torch.ge(nodes, beg_r)
+        end_mask = torch.lt(nodes, end_r)
+        local_mask = torch.bitwise_and(beg_mask, end_mask)
+        local_gpu_nodes = torch.masked_select(nodes, local_mask) - beg_r
+        local_gpu_order = torch.masked_select(input_orders, local_mask)
+        beg_r = self.range_list[self.ws]
+        end_r = self.range_list[self.ws + 1]
+        beg_mask = torch.ge(nodes, beg_r)
+        end_mask = torch.lt(nodes, end_r)
+        cpu_mask = torch.bitwise_and(beg_mask, end_mask)
+        cpu_nodes = torch.masked_select(nodes, cpu_mask) - beg_r + self.range_list[self.rank]
+        cpu_order = torch.masked_select(input_orders, cpu_mask)
+        local_nodes = torch.cat([local_gpu_nodes, cpu_nodes])
+        local_order = torch.cat([local_gpu_order, cpu_order])
+        with torch.cuda.stream(self.stream_list[self.rank]):
+            local_result = self.local_tensor[local_nodes]
+        remote_orders = []
+        remote_results = []
+        for rank in range(self.ws):
+            if rank == self.rank:
+                continue
+            beg_r = self.range_list[rank]
+            end_r = self.range_list[rank + 1]
+            beg_mask = torch.ge(nodes, beg_r)
+            end_mask = torch.lt(nodes, end_r)
+            mask = torch.bitwise_and(beg_mask, end_mask)
+            part_nodes = torch.masked_select(nodes, mask).to(rank) - beg_r
+            part_orders = torch.masked_select(input_orders, mask)
+            remote_orders.append(part_orders)
+            torch.cuda.set_device(rank)
+            with torch.cuda.stream(self.stream_list[rank]):
+                result = self.gpu_tensors[rank][part_nodes]
+                result = result.to(self.rank, non_blocking=True)
+                remote_results.append(result)
+        for rank in range(self.ws):
+            if rank == self.rank:
+                continue
+            self.stream_list[rank].synchronize()
+        torch.cuda.set_device(self.rank)
+        self.stream_list[self.rank].synchronize()
+        remote_results.insert(0, local_result)
+        remote_orders.insert(0, local_order)
+        total_results = torch.cat(remote_results)
+        total_orders = torch.cat(remote_orders)
+        total_results[total_orders] = total_results
+        return total_results

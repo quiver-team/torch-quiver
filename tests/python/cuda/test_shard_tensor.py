@@ -199,7 +199,7 @@ def test_py_shard_tensor_basic():
     start = time.time()
     feature = shard_tensor[indices]
     torch.cuda.synchronize()
-    print("PyShard Tensor Feature Collection Consumed {time.time() - staart}")
+    print(f"PyShard Tensor Feature Collection Consumed {time.time() - start}")
     
 
 if __name__ == "__main__":

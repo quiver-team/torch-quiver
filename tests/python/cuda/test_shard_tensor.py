@@ -212,3 +212,4 @@ if __name__ == "__main__":
     #test_shard_tensor_intra_process()
     test_shard_tensor_ipc()
     #test_py_shard_tensor_basic()
+    # test_py_shard_tensor_basic()

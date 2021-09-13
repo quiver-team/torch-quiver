@@ -219,13 +219,14 @@ class ShardTensor
                    sizeof(int64_t) * offset_list_.size(),
                    cudaMemcpyHostToDevice);
         cudaCheckError();
-
+        
+        /*
         std::cout << "LOG >>> "
                   << " offset_size " << offset_list_.size() << " Offset Values "
                   << offset_list_[0] << ", " << offset_list_[1] << " stride "
                   << stride(0) << std::endl;
         std::cout<< "LOG >>> " << "access book size "<< access_book.size() <<std::endl;
-
+        */
         // copy device access book
         int *access_book_device;
         cudaMalloc((void **)&access_book_device,

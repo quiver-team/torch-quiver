@@ -141,9 +141,11 @@ class ShardTensor:
             request_nodes_mask = nodes < self.shard_tensor_config.tensor_offset_numa[0]
         request_nodes = torch.masked_select(nodes, request_nodes_mask)
         part_orders = torch.masked_select(input_orders, request_nodes_mask)
+        # ptr0, ptr1, ptr2, ptr3, ptr_cpu
         if request_nodes.shape[0] > 0 :
+            # chosen_device = 2
             chosen_device = self.topo.random_pick_device_from_numa(1 - self.current_numa)
-                        
+            # access ptr2, ptr3 on device 2 to collect data
             with torch.device(chosen_device):
                 request_nodes = request_nodes.to(chosen_device)
                 result = self.shard_tensor[request_nodes]
@@ -159,9 +161,3 @@ class ShardTensor:
     @property
     def device(self):
         return self.current_device
-    
-    
-    
-            
-        
-        

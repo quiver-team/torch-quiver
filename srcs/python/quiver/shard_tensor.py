@@ -115,7 +115,7 @@ class ShardTensor:
             offset += size
             numa_node = self.topo.get_numa_node(device_id)
             numa_size[numa_node] += size
-            print(f"LOG >>> Assign {size}/{tensor.shape[0]} elementes to {device_id}")
+            print(f"LOG >>> Assign {int(100 * size * 1.0 / tensor.shape[0])}% elementes to {device_id}")
             if offset > tensor.shape[0]:
                 break
         if offset < tensor.shape[0]:

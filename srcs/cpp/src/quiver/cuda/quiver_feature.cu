@@ -111,7 +111,7 @@ class ShardTensor
         int access_i_j, access_j_i;
         cudaDeviceCanAccessPeer(&access_i_j, device_, item.device);
         cudaDeviceCanAccessPeer(&access_j_i, item.device, device_);
-        if ((access_i_j && access_j_i)|| device_ == item.device) {
+        if ((access_i_j && access_j_i)|| device_ == target_device) {
             access_book.push_back(1);
         }else{
             access_book.push_back(0);
@@ -213,6 +213,12 @@ class ShardTensor
                    cudaMemcpyHostToDevice);
         cudaCheckError();
 
+        std::cout << "LOG >>> "
+                  << " offset_size " << offset_list_.size() << " Offset Values "
+                  << offset_list_[0] << ", " << offset_list_[1] << " stride "
+                  << stride(0) << std::endl;
+        std::cout<< "LOG >>> " << "access book size "<< access_book.size() <<std::endl;
+
         // copy device access book
         int *access_book_device;
         cudaMalloc((void **)&access_book_device,
@@ -221,12 +227,10 @@ class ShardTensor
                    sizeof(int) * access_book.size(),
                    cudaMemcpyHostToDevice);
         cudaCheckError();
+        
 
         
-        std::cout << "LOG >>> "
-                  << " offset_size " << offset_list_.size() << " Offset Values "
-                  << offset_list_[0] << ", " << offset_list_[1] << " stride "
-                  << stride(0) << std::endl;
+    
         
         int blockSize = 0;
         int numBlocks = 0;

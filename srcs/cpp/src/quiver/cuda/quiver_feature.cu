@@ -111,7 +111,7 @@ class ShardTensor
         int access_i_j, access_j_i;
         cudaDeviceCanAccessPeer(&access_i_j, device_, item.device);
         cudaDeviceCanAccessPeer(&access_j_i, item.device, device_);
-        if ((access_i_j && access_j_i)|| device_ == target_device) {
+        if ((access_i_j && access_j_i)|| device_ == item.device) {
             access_book.push_back(1);
         }else{
             access_book.push_back(0);

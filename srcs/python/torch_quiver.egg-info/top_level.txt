@@ -1,2 +1,0 @@
-quiver
-torch_quiver

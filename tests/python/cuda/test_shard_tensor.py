@@ -92,20 +92,21 @@ def test_shard_tensor_intra_process():
         f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s")
 
 def child_proc(ipc_item0, ipc_item1):
-    torch.cuda.set_device(0)
+    current_device = 3
+    torch.cuda.set_device(current_device)
     NUM_ELEMENT = 10000
     SAMPLE_SIZE = 800
     host_indice = np.random.randint(0,1 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
     indices_part1 = torch.from_numpy(host_indice).type(torch.long)
-    indices_part1 = indices_part1.to("cuda:0")
+    indices_part1 = indices_part1.to(current_device)
     
     host_indice_2 = np.random.randint(1 * NUM_ELEMENT, 2* NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
     indices_part2 = torch.from_numpy(host_indice_2).type(torch.long)
-    indices_part2 = indices_part2.to("cuda:0")
+    indices_part2 = indices_part2.to(current_device)
     
     host_indice3 = np.random.randint(0,2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
     indices = torch.from_numpy(host_indice3).type(torch.long)
-    indices = indices.to("cuda:0")
+    indices = indices.to(current_device)
     
     
     item0 = qv.ShardTensorItem()
@@ -114,7 +115,7 @@ def child_proc(ipc_item0, ipc_item1):
     item1 = qv.ShardTensorItem()
     item1.from_ipc(ipc_item1)
     
-    shard_tensor = qv.ShardTensor(0)
+    shard_tensor = qv.ShardTensor(current_device)
     shard_tensor.append(item0)
     shard_tensor.append(item1)
     
@@ -163,13 +164,10 @@ def test_shard_tensor_ipc():
     print(
         f"device_0_tensor device {device_0_tensor.device}\ndevice_1_tensor device {device_1_tensor.device}")
     shard_tensor2 = qv.ShardTensor(1)
-    shard_tensor2.append(device_0_tensor, 0)
-    shard_tensor2.append(device_1_tensor, 1)
-    shard_tensor2.append(device_1_tensor, -1)
+    shard_tensor2.append(device_0_tensor, 2)
+    shard_tensor2.append(device_1_tensor, 3)
 
-    
-    
-    
+
     ipc_res = shard_tensor2.share_ipc()
     print(ipc_res[0].share_ipc()[1] == ipc_res[1].share_ipc()[1])
     process = mp.Process(target=child_proc, args = (ipc_res[0].share_ipc(),ipc_res[1].share_ipc()))

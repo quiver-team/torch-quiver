@@ -59,10 +59,10 @@ class ShardTensorConfig:
             
             elif isinstance(self.device_memory_budget[device], str):
                 if self.device_memory_budget[device].upper().endswith("M") or self.device_memory_budget[device].upper().endswith("MB"):
-                    self.device_memory_budget[device] = int(float(self.device_memory_budget[device]) * 1024 * 1024)
+                    self.device_memory_budget[device] = int(float(self.device_memory_budget[device][:-1]) * 1024 * 1024)
                 
-                if self.device_memory_budget[device].upper().endswith("G") or self.device_memory_budget[device].upper().endswith("GB"):
-                    self.device_memory_budget[device] = int(float(self.device_memory_budget[device]) * 1024 * 1024 * 1024)
+                elif self.device_memory_budget[device].upper().endswith("G") or self.device_memory_budget[device].upper().endswith("GB"):
+                    self.device_memory_budget[device] = int(float(self.device_memory_budget[device][:-1]) * 1024 * 1024 * 1024)
             else:
                 raise Exception("memory budget input is not valid")
     
@@ -107,21 +107,25 @@ class ShardTensor:
         size = 0
         numa_size = [0, 0]
         # 首先给GPU分配数据
-        for index, device_id, memory_budget in enumerate(self.shard_tensor_config.device_memory_budget.items()):
+        for  device_id, memory_budget in self.shard_tensor_config.device_memory_budget.items():
             size = self.partition(tensor, memory_budget)
             self.shard_tensor.append(tensor[offset: offset + size], device_id)
             offset += size
             numa_node = self.topo.get_numa_node(device_id)
             numa_size[numa_node] += size
+            print(f"LOG >>> Assign {size}/{tensor.shape[0]} elementes to {device_id}")
         # 接着继续给CPU分配数据
         self.shard_tensor.append(tensor[offset:], -1)
         
+        print(f"LOG >>> Assign {tensor.shape[0] -  offset} elementes to CPU")
         # init config 
-        self.shard_tensor_config.tensor_offset_numa[0] = numa_size[0]
-        self.shard_tensor_config.tensor_offset_numa[0] = numa_size[0] + numa_size[1]
+        self.shard_tensor_config.tensor_offset_numa.append(numa_size[0])
+        self.shard_tensor_config.tensor_offset_numa.append(numa_size[0] + numa_size[1])
     
         
     def __getitem__(self, nodes):
+
+        print("check node device", nodes.device)
         input_orders = torch.arange(nodes.size(0), dtype=torch.long, device=nodes.device)
         # async
         feature = self.shard_tensor[nodes]

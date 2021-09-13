@@ -56,6 +56,8 @@ class ShardTensor
   public:
     ShardTensor(int device) : device_(device), inited_(false), device_count_(0)
     {
+
+
     }
 
     size_t get_tensor_bytes(torch::Tensor tensor){
@@ -104,6 +106,17 @@ class ShardTensor
         printf("LOG >>>: Tensor from device %d can be accessed in kernel launched on device %d  by %d \n", attributes.device, device_, attributes.devicePointer);
         shape_[0] += item.shape[0];
         device_count_ += 1;
+
+        // decide access book
+        int access_i_j, access_j_i;
+        cudaDeviceCanAccessPeer(&access_i_j, device_, item.device);
+        cudaDeviceCanAccessPeer(&access_j_i, item.device, device_);
+        if (access_i_j && access_j_i) {
+            access_book.push_back(1);
+        }else{
+            access_book.push_back(0);
+        }
+
     }
 
     void append(torch::Tensor &tensor, int target_device)
@@ -153,6 +166,17 @@ class ShardTensor
         }
         shape_[0] += tensor.size(0);
         device_count_ += 1;
+
+        // decide access book
+        int access_i_j, access_j_i;
+        cudaDeviceCanAccessPeer(&access_i_j, device_, target_device);
+        cudaDeviceCanAccessPeer(&access_j_i, target_device, device_);
+        if (access_i_j && access_j_i) {
+            access_book.push_back(1);
+        }else{
+            access_book.push_back(0);
+        }
+
     }
 
 
@@ -188,6 +212,16 @@ class ShardTensor
                    sizeof(int64_t) * offset_list_.size(),
                    cudaMemcpyHostToDevice);
         cudaCheckError();
+
+        // copy device access book
+        int64_t *access_book_device;
+        cudaMalloc((void **)&access_book_device,
+                   sizeof(int) * access_book.size());
+        cudaMemcpy(access_book_device, &access_book[0],
+                   sizeof(int) * access_book.size(),
+                   cudaMemcpyHostToDevice);
+        cudaCheckError();
+
         /*
         std::cout << "LOG >>> "
                   << " offset_size " << offset_list_.size() << " Offset Values "
@@ -204,7 +238,7 @@ class ShardTensor
         quiver_tensor_gather<<<numBlocks, blockSize, 0, stream>>>(
             buffers_device, offset_device, offset_list_.size(),
             indices.data_ptr<int64_t>(), indices.numel(), res.data_ptr<float>(),
-            stride(0));
+            stride(0), access_book_device);
         cudaCheckError();
         return res;
     }
@@ -254,6 +288,7 @@ class ShardTensor
     std::vector<int64_t> offset_list_;
     std::vector<float *> dev_ptrs_;
     std::vector<int> tensor_devices_;
+    std::vector<int> access_book;
     std::vector<std::vector<int>> tensor_shapes_;
     int device_;
     int device_count_;

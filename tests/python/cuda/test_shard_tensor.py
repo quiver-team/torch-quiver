@@ -195,6 +195,7 @@ def test_py_shard_tensor_basic():
     indices = torch.from_numpy(host_indice).type(torch.long)
     shard_tensor_config = ShardTensorConfig({0: '100M', 1: "100M"})
     shard_tensor = PyShardTensor(0, shard_tensor_config)
+    shard_tensor.from_cpu_tensor(tensor)
     start = time.time()
     feature = shard_tensor[indices]
     torch.cuda.synchronize()

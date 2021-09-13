@@ -195,7 +195,6 @@ class ShardTensor
         torch::zeros((100,100),torch::KF32);
         */
 
-        cudaSetDevice(device_);
         auto stream = at::cuda::getCurrentCUDAStream();
         std::vector<int64_t> res_shape(shape_);
         res_shape[0] = indices.numel();

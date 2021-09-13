@@ -195,7 +195,7 @@ class ShardTensor
         torch::zeros((100,100),torch::KF32);
         */
         int current_device = 0;
-        cudaGetDevice(&current_device)
+        cudaGetDevice(&current_device);
         auto stream = at::cuda::getCurrentCUDAStream();
 
         std::vector<int64_t> res_shape(shape_);
@@ -302,10 +302,18 @@ class ShardTensor
     std::vector<int> tensor_devices_;
     std::vector<int> access_book;
     std::vector<std::vector<int>> tensor_shapes_;
+    std::vector<int64_t> shape_;
     int device_;
     int device_count_;
-    std::vector<int64_t> shape_;
     bool inited_;
+
+    // Device Data
+    //bool device_inited_;
+    //float **buffers_device;
+    //int64_t *offset_device;
+    //int *access_book_device;
+    //int *access_book_device;
+
 };
 
 void init_p2p(){

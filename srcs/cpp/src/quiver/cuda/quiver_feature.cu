@@ -194,8 +194,10 @@ class ShardTensor
         indice_length, const float* res, const int item_byte_size){
         torch::zeros((100,100),torch::KF32);
         */
-
+        int current_device = 0;
+        cudaGetDevice(&current_device)
         auto stream = at::cuda::getCurrentCUDAStream();
+
         std::vector<int64_t> res_shape(shape_);
         res_shape[0] = indices.numel();
         // decide Tensor
@@ -241,11 +243,14 @@ class ShardTensor
                                            quiver_tensor_gather);
         // std::cout<<"LOG >>> "<<" numBlocks "<< numBlocks <<" blockSize
         // "<<blockSize<<std::endl;
-
+        int ignore_access_book = 0;
+        if(current_device != device_){
+            ignore_access_book = 1;
+        }
         quiver_tensor_gather<<<numBlocks, blockSize, 0, stream>>>(
             buffers_device, offset_device, offset_list_.size(),
             indices.data_ptr<int64_t>(), indices.numel(), res.data_ptr<float>(),
-            stride(0), access_book_device);
+            stride(0), access_book_device, ignore_access_book);
         cudaCheckError();
         return res;
     }

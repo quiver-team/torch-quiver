@@ -210,5 +210,5 @@ if __name__ == "__main__":
     qv.init_p2p()
     #test_shard_tensor_item()
     #test_shard_tensor_intra_process()
-    #test_shard_tensor_ipc()
-    test_py_shard_tensor_basic()
+    test_shard_tensor_ipc()
+    #test_py_shard_tensor_basic()

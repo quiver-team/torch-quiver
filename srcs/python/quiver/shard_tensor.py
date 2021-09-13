@@ -1,25 +1,66 @@
 import torch_quiver as torch_qv
 import torch
+import random
 from typing import List
 
+
+def color_mat(access_book):
+    device_count = access_book.shape[0]
+    device2numa = [-1] * device_count
+    numa2device = {0: [], 1: []}
+    current_numa = 0
+    for src_device in range(device_count):
+        if(device2numa[src_device] == -1):
+            device2numa[src_device] = current_numa
+            numa2device[device2numa[src_device]].append(src_device)
+            current_numa += 1
+            for dst_device in range(device_count):
+                if(dst_device != src_device and access_book[src_device, dst_device] == 1):
+                    device2numa[dst_device] = device2numa[src_device]
+                    numa2device[device2numa[src_device]].append(dst_device)
+        
+    
+    return device2numa, numa2device
+            
+    
 class Topo:
     
     Numa2Device = {}
     Device2Numa = {}
     
     def __init__(self, device_list: List[int]) -> None:
-        pass
+        access_book = torch.zeros((len(device_list), len(device_list)))
+        for src_index, src_device in enumerate(device_list):
+            for dst_index, dst_device in enumerate(device_list):
+                if torch._C._cuda_canDeviceAccessPeer(src_device, dst_device) and torch._C._cuda_canDeviceAccessPeer(dst_device, src_device):
+                    access_book[src_index][dst_index] = 1
+                    access_book[dst_index][src_index] = 1
+        self.Device2Numa, self.Numa2Device = color_mat(access_book)
+        
     
-    def get_numa_node(self, device_id):
-        return 1
+    def get_numa_node(self, device_id: int):
+        return self.Device2Numa[device_id]
     
     def random_pick_device_from_numa(self, numa_id):
-        return 1
+        return random.choice(self.Numa2Device[numa_id])
 
 class ShardTensorConfig:
     device_memory_budget = {}
     tensor_offset_device = []
     tensor_offset_numa = []
+    
+    def __init__(self, device_memory_budget):
+        self.device_memory_budget = device_memory_budget
+    
+    def reorder_device(self, device_order):
+        tmp_device_memory_budget = {}
+        for device in device_order:
+            tmp_device_memory_budget[device] = self.device_memory_budget[device]
+        self.device_memory_budget = tmp_device_memory_budget
+    
+    @getattr
+    def device_list(self):
+        return list(self.device_memory_budget.keys())
     
 
 class ShardTensor:
@@ -27,7 +68,9 @@ class ShardTensor:
         self.shard_tensor = torch_qv.ShardTensor(current_device)
         self.current_device = current_device
         self.shard_tensor_config = shard_tensor_config
-        self.topo = Topo()
+        self.topo = Topo(shard_tensor_config.device_list)
+        self.shard_tensor_config.reorder_device(self.topo.Numa2Device[0] + self.topo.Numa2Device[1])
+        
         # we assume there are at most 2 Numa Node
         self.current_numa = self.topo.get_numa_node(current_device)
         

@@ -57,7 +57,7 @@ class ShardTensor
     ShardTensor(int device) : device_(device), inited_(false), device_count_(0)
     {
 
-
+        offset_list_.push_back(0);
     }
 
     size_t get_tensor_bytes(torch::Tensor tensor){
@@ -135,14 +135,12 @@ class ShardTensor
                 shape_[index] = tensor_sizes[index];
             }
             inited_ = true;
-            offset_list_.push_back(0);
+
         }
         tensor_shapes_.push_back(get_tensor_shape(tensor));
 
-        if (device_count_ > 0) {
-            offset_list_.push_back(offset_list_[device_count_ - 1] +
-                                   tensor.sizes()[0]);
-        }
+        offset_list_.push_back(offset_list_[offset_list_.size() - 1] + tensor.sizes()[0]);
+        
         void *ptr = NULL;
         size_t data_size = get_tensor_bytes(tensor);
         tensor_devices_.push_back(target_device);
@@ -187,7 +185,6 @@ class ShardTensor
         device_count_ += 1;
 
     }
-
 
     torch::Tensor operator[](torch::Tensor &indices)
     {
@@ -237,10 +234,6 @@ class ShardTensor
                    sizeof(int) * access_book.size(),
                    cudaMemcpyHostToDevice);
         cudaCheckError();
-        
-
-        
-    
         
         int blockSize = 0;
         int numBlocks = 0;

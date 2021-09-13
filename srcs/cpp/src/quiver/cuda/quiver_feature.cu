@@ -214,7 +214,7 @@ class ShardTensor
         cudaCheckError();
 
         // copy device access book
-        int64_t *access_book_device;
+        int *access_book_device;
         cudaMalloc((void **)&access_book_device,
                    sizeof(int) * access_book.size());
         cudaMemcpy(access_book_device, &access_book[0],

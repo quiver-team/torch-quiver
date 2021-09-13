@@ -145,6 +145,7 @@ class ShardTensor:
             chosen_device = self.topo.random_pick_device_from_numa(1 - self.current_numa)
                         
             with torch.device(chosen_device):
+                request_nodes = request_nodes.to(chosen_device)
                 result = self.shard_tensor[request_nodes]
             result.to(self.current_device)
             feature[part_orders] = result

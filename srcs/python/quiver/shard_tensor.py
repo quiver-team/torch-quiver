@@ -135,13 +135,14 @@ class ShardTensor:
         # async
         feature = self.shard_tensor[nodes]
         # call request
-        chosen_device = self.topo.random_pick_device_from_numa(1 - self.current_numa)
+
         if self.current_numa == 0:
             request_nodes_mask = nodes[nodes >= self.shard_tensor_config.tensor_offset_numa[0]]
         else:
             request_nodes_mask = nodes[nodes < self.shard_tensor_config.tensor_offset_numa[0]]
         
         if request_nodes_mask.shape[0] > 0 :
+            chosen_device = self.topo.random_pick_device_from_numa(1 - self.current_numa)
             request_nodes = torch.masked_select(nodes, request_nodes_mask)
             part_orders = torch.masked_select(input_orders, request_nodes_mask)
             

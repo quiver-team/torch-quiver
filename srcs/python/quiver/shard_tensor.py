@@ -4,18 +4,20 @@ import random
 from typing import List
 
 
-def color_mat(access_book):
+def color_mat(access_book, device_list):
     device_count = access_book.shape[0]
     device2numa = [-1] * device_count
     numa2device = {0: [], 1: []}
     current_numa = 0
-    for src_device in range(device_count):
-        if(device2numa[src_device] == -1):
+    for src_device_idx in range(device_count):
+        if(device2numa[src_device_idx] == -1):
+            src_device = device_list[src_device_idx]
             device2numa[src_device] = current_numa
-            numa2device[device2numa[src_device]].append(src_device)
+            numa2device[current_numa].append(src_device)
             current_numa += 1
-            for dst_device in range(device_count):
-                if(dst_device != src_device and access_book[src_device, dst_device] == 1):
+            for dst_device_idx in range(device_count):
+                if(dst_device_idx != src_device_idx and access_book[src_device_idx, dst_device_idx] == 1):
+                    dst_device = device_list[dst_device_idx]
                     device2numa[dst_device] = device2numa[src_device]
                     numa2device[device2numa[src_device]].append(dst_device)
     
@@ -31,10 +33,10 @@ class Topo:
         access_book = torch.zeros((len(device_list), len(device_list)))
         for src_index, src_device in enumerate(device_list):
             for dst_index, dst_device in enumerate(device_list):
-                if src_device // 2 == dst_device // 2:
+                if torch_qv.can_device_access_peer(src_device, dst_device):
                     access_book[src_index][dst_index] = 1
                     access_book[dst_index][src_index] = 1
-        self.Device2Numa, self.Numa2Device = color_mat(access_book)
+        self.Device2Numa, self.Numa2Device = color_mat(access_book, device_list)
         
     
     def get_numa_node(self, device_id: int):
@@ -144,10 +146,9 @@ class ShardTensor:
         # ptr0, ptr1, ptr2, ptr3, ptr_cpu
         if request_nodes.shape[0] > 0 :
             chosen_device = self.topo.random_pick_device_from_numa(1 - self.current_numa)
-            print(f'choose {chosen_device}')
             # access ptr2, ptr3 on device 2 to collect data
             with torch.cuda.device(chosen_device):
-                request_nodes = request_nodes.to(chosen_device)
+                request_nodes = request_nodes.to(chosen_device, non_blocking=True)
                 result = self.shard_tensor[request_nodes]
             result = result.to(self.current_device)
             feature[part_orders] = result

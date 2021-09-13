@@ -357,9 +357,10 @@ void init_p2p(){
     }
 }
 bool can_device_access_peer(int src_device_index, int dst_device_index){
-    int access = 0;
-    cudaDeviceCanAccessPeer(&access, i, j);
-    return access == 1;
+    int access_i_j = 0, access_j_i = 0;
+    cudaDeviceCanAccessPeer(&access_i_j, src_device_index, dst_device_index);
+    cudaDeviceCanAccessPeer(&access_j_i, dst_device_index, src_device_index);
+    return (access_i_j == 1) && (access_j_i == 1);
 }
 
 }  // namespace quiver

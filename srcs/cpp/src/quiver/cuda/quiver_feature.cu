@@ -222,12 +222,12 @@ class ShardTensor
                    cudaMemcpyHostToDevice);
         cudaCheckError();
 
-        /*
+        
         std::cout << "LOG >>> "
                   << " offset_size " << offset_list_.size() << " Offset Values "
                   << offset_list_[0] << ", " << offset_list_[1] << " stride "
                   << stride(0) << std::endl;
-        */
+        
         int blockSize = 0;
         int numBlocks = 0;
         cudaOccupancyMaxPotentialBlockSize(&numBlocks, &blockSize,

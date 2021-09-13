@@ -179,8 +179,8 @@ def test_shard_tensor_ipc():
     
 
 def test_py_shard_tensor_basic():
-    NUM_ELEMENT = 10000
-    SAMPLE_SIZE = 800
+    NUM_ELEMENT = 1000000
+    SAMPLE_SIZE = 80000
     FEATURE_DIM = 600
     gc.disable()
     #########################
@@ -194,13 +194,16 @@ def test_py_shard_tensor_basic():
     host_indice = np.random.randint(0,2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
     indices = torch.from_numpy(host_indice).type(torch.long)
     indices = indices.to("cuda:0")
-    shard_tensor_config = ShardTensorConfig({0: '10M', 1: "10M"})
+    shard_tensor_config = ShardTensorConfig({0: '100M', 1: "100M"})
     shard_tensor = PyShardTensor(0, shard_tensor_config)
     shard_tensor.from_cpu_tensor(tensor)
     start = time.time()
     feature = shard_tensor[indices]
     torch.cuda.synchronize()
-    print(f"PyShard Tensor Feature Collection Consumed {time.time() - start}")
+    consumed_time = time.time() - start
+    print(
+        f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s")
+
     
 
 if __name__ == "__main__":

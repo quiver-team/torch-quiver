@@ -135,7 +135,7 @@ class ShardTensor:
         # async
         feature = self.shard_tensor[nodes]
         # call request
-
+        
         if self.current_numa == 0:
             request_nodes_mask = (nodes >= self.shard_tensor_config.tensor_offset_numa[0]) & (nodes < self.shard_tensor_config.tensor_offset_numa[1])
         else:
@@ -151,6 +151,16 @@ class ShardTensor:
             feature[part_orders] = result
         
         return feature
+    
+    @property
+    def shape(self):
+        return self.shard_tensor.shape()
+    
+    @property
+    def device(self):
+        return self.current_device
+    
+    
     
             
         

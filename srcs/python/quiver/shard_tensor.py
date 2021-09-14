@@ -89,13 +89,10 @@ class ShardTensor:
         self.topo = Topo(shard_tensor_config.device_list)
         self.shard_tensor_config.reorder_device(self.topo.Numa2Device[0] + self.topo.Numa2Device[1])
         
-        # we assume there are at most 2 Numa Node
+        # we assume there are at most 2 Numa Nodes
         self.current_numa = self.topo.get_numa_node(current_device)
         self.device_stream = {}
-        for device in shard_tensor_config.device_list:
-            stream = torch.cuda.Stream(device)
-            self.device_stream[device] = stream
-        
+
     
     def partition(self, tensor, memory_budget):
         """
@@ -136,10 +133,14 @@ class ShardTensor:
         
     def __getitem__(self, nodes):
 
-        input_orders = torch.arange(nodes.size(0), dtype=torch.long, device=nodes.device)
-        # async
-        feature = self.shard_tensor[nodes]
-        # call request
+        if self.device_stream.get(self.current_device, None) is None:
+            self.device_stream[self.current_device] = torch.cuda.Stream(self.current_device)
+
+        with torch.cuda.stream(self.device_stream[self.current_device]):
+            input_orders = torch.arange(nodes.size(0), dtype=torch.long, device=nodes.device)
+            # async
+            feature = self.shard_tensor[nodes]
+            # call request
         
         if self.current_numa == 0:
             request_nodes_mask = (nodes >= self.shard_tensor_config.tensor_offset_numa[0]) & (nodes < self.shard_tensor_config.tensor_offset_numa[1])
@@ -152,7 +153,9 @@ class ShardTensor:
             chosen_device = self.topo.random_pick_device_from_numa(1 - self.current_numa)
             # access ptr2, ptr3 on device 2 to collect data
             with torch.cuda.device(chosen_device):
-                with torch.cuda.stream(self.stream_list[chosen_device]):
+                if self.device_stream.get(chosen_device, None) is None:
+                    self.device_stream[chosen_device] = torch.cuda.Stream(chosen_device)
+                with torch.cuda.stream(self.device_stream[chosen_device]):
                     request_nodes = request_nodes.to(chosen_device, non_blocking=True)
                     result = self.shard_tensor[request_nodes]
             feature[part_orders] = result.to(self.current_device, non_blocking=True)
@@ -166,5 +169,12 @@ class ShardTensor:
     @property
     def device(self):
         return self.current_device
+    
+    def share_ipc(self):
+        pass
+
+    def new_from_share_ipc(self, ipc_handles):
+        pass
+
     
     

@@ -206,6 +206,8 @@ def test_py_shard_tensor_basic():
     torch.cuda.synchronize()
     consumed_time = time.time() - start
     feature = feature.cpu().numpy()
+    feature_gt = host_tensor[host_indice]
+    assert np.array_equal(feature_gt, feature)
     print(
         f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s")
 

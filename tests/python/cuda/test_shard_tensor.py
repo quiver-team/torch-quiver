@@ -192,15 +192,22 @@ def test_py_shard_tensor_basic():
     host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
     indices = torch.from_numpy(host_indice).type(torch.long)
     indices = indices.to("cuda:0")
-    shard_tensor_config = ShardTensorConfig(
-        {0: '500M', 1: "500M", 2: "500M", 3: "500M"})
+    shard_tensor_config = ShardTensorConfig({0:'2.2G', 1: "2.4G"})
     shard_tensor = PyShardTensor(0, shard_tensor_config)
     shard_tensor.from_cpu_tensor(tensor)
+
+    # warm up
+    start = time.time()
+    feature = shard_tensor[indices]
+    torch.cuda.synchronize()
+
     start = time.time()
     feature = shard_tensor[indices]
     torch.cuda.synchronize()
     consumed_time = time.time() - start
     feature = feature.cpu().numpy()
+    feature_gt = host_tensor[host_indice]
+    assert np.array_equal(feature_gt, feature)
     print(
         f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s")
 
@@ -209,6 +216,7 @@ def torch_child_proc(rank, ws, cpu_tensor, gpu_tensors, range_list, indices):
     shard_tensor = TorchShardTensor(
         rank, ws, cpu_tensor, gpu_tensors, range_list)
     feature = shard_tensor.collect(indices)
+    torch.cuda.synchronize(0)
     start = time.time()
     feature = shard_tensor.collect(indices)
     torch.cuda.synchronize(0)
@@ -255,5 +263,6 @@ def test_torch_shard_tensor():
 if __name__ == "__main__":
     mp.set_start_method("spawn")
     qv.init_p2p()
-    # test_py_shard_tensor_basic()
-    test_torch_shard_tensor()
+    #test_shard_tensor_intra_process()
+    test_py_shard_tensor_basic()
+    #test_torch_shard_tensor()

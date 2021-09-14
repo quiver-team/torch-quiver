@@ -197,8 +197,7 @@ class ShardTensor
         int current_device = 0;
         cudaGetDevice(&current_device);
         auto stream = at::cuda::getCurrentCUDAStream();
-        // auto stream = at::cuda::getStreamFromPool(false, current_device);
-
+        
         std::vector<int64_t> res_shape(shape_);
         res_shape[0] = indices.numel();
         // decide Tensor

@@ -91,6 +91,10 @@ class ShardTensor:
         
         # we assume there are at most 2 Numa Node
         self.current_numa = self.topo.get_numa_node(current_device)
+        self.device_stream = {}
+        for device in shard_tensor_config.device_list:
+            stream = torch.cuda.Stream(device)
+            self.device_stream[device] = stream
         
     
     def partition(self, tensor, memory_budget):
@@ -148,10 +152,10 @@ class ShardTensor:
             chosen_device = self.topo.random_pick_device_from_numa(1 - self.current_numa)
             # access ptr2, ptr3 on device 2 to collect data
             with torch.cuda.device(chosen_device):
-                request_nodes = request_nodes.to(chosen_device, non_blocking=True)
-                result = self.shard_tensor[request_nodes]
-            result = result.to(self.current_device)
-            feature[part_orders] = result
+                with torch.cuda.stream(self.stream_list[chosen_device]):
+                    request_nodes = request_nodes.to(chosen_device, non_blocking=True)
+                    result = self.shard_tensor[request_nodes]
+            feature[part_orders] = result.to(self.current_device, non_blocking=True)
         
         return feature
     
@@ -162,3 +166,5 @@ class ShardTensor:
     @property
     def device(self):
         return self.current_device
+    
+    

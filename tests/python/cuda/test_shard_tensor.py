@@ -240,6 +240,8 @@ def test_torch_shard_tensor():
         beg = range_list[rank]
         end = range_list[rank + 1]
         t = tensor[beg:end].clone()
+        if 0 != rank:
+            t = t.to(rank)
         gpu_tensors.append(t)
     cpu_beg = range_list[4]
     cpu_end = NUM_ELEMENT

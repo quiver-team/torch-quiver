@@ -1,6 +1,8 @@
 import torch
 import torch_quiver as qv
 
+import time
+
 class FeatureRequest:
     def __init__(self, src, dst, nodes):
         self.src = src
@@ -145,6 +147,7 @@ class TorchShardTensor:
     
 
     def collect(self, nodes):
+        t0 = time.time()
         torch.cuda.set_device(self.rank)
         nodes = nodes.to(self.rank)
         input_orders = torch.arange(nodes.size(
@@ -167,11 +170,14 @@ class TorchShardTensor:
         local_order = torch.cat([local_gpu_order, cpu_order])
         with torch.cuda.stream(self.stream_list[self.rank]):
             local_result = self.local_tensor[local_nodes]
+        t1 = time.time()
         remote_orders = []
         remote_results = []
         for rank in range(self.ws):
             if rank == self.rank:
                 continue
+            print(f'remote {rank}')
+            t_beg = time.time()
             beg_r = self.range_list[rank]
             end_r = self.range_list[rank + 1]
             beg_mask = torch.ge(nodes, beg_r)
@@ -181,10 +187,17 @@ class TorchShardTensor:
             part_orders = torch.masked_select(input_orders, mask)
             remote_orders.append(part_orders)
             torch.cuda.set_device(rank)
+            t_mid = time.time()
             with torch.cuda.stream(self.stream_list[rank]):
                 result = self.gpu_tensors[rank][part_nodes]
+                t_local = time.time()
                 result = result.to(self.rank, non_blocking=True)
                 remote_results.append(result)
+                t_move = time.time()
+            print(f'pre {t_mid - t_beg}')
+            print(f'collect {t_local - t_mid}')
+            print(f'move {t_move - t_local}')
+        t2 = time.time()
         for rank in range(self.ws):
             if rank == self.rank:
                 continue
@@ -196,4 +209,7 @@ class TorchShardTensor:
         total_results = torch.cat(remote_results)
         total_orders = torch.cat(remote_orders)
         total_results[total_orders] = total_results
+        print(f'local {t1 - t0}')
+        print(f'remote {t2 - t1}')
+        print(f'sync {time.time() - t2}')
         return total_results

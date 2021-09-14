@@ -158,6 +158,7 @@ class TorchShardTensor:
         end_mask = torch.lt(nodes, end_r)
         local_mask = torch.bitwise_and(beg_mask, end_mask)
         local_gpu_nodes = torch.masked_select(nodes, local_mask) - beg_r
+        print(f'local {len(local_gpu_nodes)}')
         local_gpu_order = torch.masked_select(input_orders, local_mask)
         beg_r = self.range_list[self.ws]
         end_r = self.range_list[self.ws + 1]

@@ -305,6 +305,8 @@ def test_torch_shard_tensor():
         beg = range_list[rank]
         end = range_list[rank + 1]
         t = tensor[beg:end].clone()
+        if 0 != rank:
+            t = t.to(rank)
         gpu_tensors.append(t)
     cpu_beg = range_list[4]
     cpu_end = NUM_ELEMENT
@@ -319,8 +321,8 @@ if __name__ == "__main__":
     mp.set_start_method("spawn")
     qv.init_p2p()
     #test_shard_tensor_intra_process()
-
     #test_py_shard_tensor_basic()
     test_py_shard_tensor_ipc()
 
     #test_torch_shard_tensor()
+    # test_py_shard_tensor_basic()

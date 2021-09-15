@@ -176,6 +176,36 @@ def test_shard_tensor_ipc():
     gc.enable()
 
 
+def test_normal_feature_collection():
+    NUM_ELEMENT = 1000000
+    SAMPLE_SIZE = 80000
+    FEATURE_DIM = 600
+    gc.disable()
+    #########################
+    # Init With Numpy
+    ########################
+    torch.cuda.set_device(0)
+
+    host_tensor = np.random.randint(
+        0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
+    tensor = torch.from_numpy(host_tensor).type(torch.float32)
+    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
+    indices = torch.from_numpy(host_indice).type(torch.long)
+    # warm up
+    res = tensor[indices].to(0)
+
+    start = time.time()
+    feature = tensor[indices]
+    feature = feature.to(0)
+    consumed_time = time.time() - start
+    feature = feature.cpu().numpy()
+    print(
+        f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s")
+
+
+
+
+
 def test_py_shard_tensor_basic():
     NUM_ELEMENT = 1000000
     SAMPLE_SIZE = 80000
@@ -192,7 +222,7 @@ def test_py_shard_tensor_basic():
     host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
     indices = torch.from_numpy(host_indice).type(torch.long)
     indices = indices.to("cuda:0")
-    shard_tensor_config = ShardTensorConfig({0: "0.9G", 1:"0.9G", 2:"0.9G", 3:"0.9G"})
+    shard_tensor_config = ShardTensorConfig({})
     shard_tensor = PyShardTensor(0, shard_tensor_config)
     shard_tensor.from_cpu_tensor(tensor)
 
@@ -250,7 +280,7 @@ def test_py_shard_tensor_ipc():
         0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
     tensor = torch.from_numpy(host_tensor).type(torch.float32)
     tensor.share_memory_()
-    shard_tensor_config = ShardTensorConfig({1: "2.4G", 3:"1G"})
+    shard_tensor_config = ShardTensorConfig({1: "2.3G", 2: "2.3G"})
     shard_tensor = PyShardTensor(0, shard_tensor_config)
     shard_tensor.from_cpu_tensor(tensor)
 
@@ -319,6 +349,7 @@ if __name__ == "__main__":
     qv.init_p2p()
     #test_shard_tensor_intra_process()
     #test_py_shard_tensor_basic()
+    #test_normal_feature_collection()
     test_py_shard_tensor_ipc()
 
     #test_torch_shard_tensor()

@@ -127,7 +127,7 @@ def run(rank, world_size, shard_tensor_ipc_handle, inter_proc_data: InterProcDat
     csr_mat = get_csr_from_coo(inter_proc_data.edge_index)
     sampler = AsyncCudaNeighborSampler(csr_indptr=csr_mat.indptr, csr_indices=csr_mat.indices, device=rank, copy=True)
 
-    train_loader = torch.utils.data.DataLoader(train_idx, batch_size=4096, shuffle=True, drop_last=True)
+    train_loader = torch.utils.data.DataLoader(train_idx, batch_size=2048, shuffle=True, drop_last=True)
     #train_loader = NeighborSampler(inter_proc_data.edge_index, node_idx=train_idx,
     #                               sizes=[15, 10, 5], batch_size=2048,
     #                               shuffle=True, num_workers=1)
@@ -193,7 +193,7 @@ if __name__ == '__main__':
     
     inter_proc_data.y = data.y
 
-    shard_tensor_config = ShardTensorConfig({0: "400M"})
+    shard_tensor_config = ShardTensorConfig({0: "200M", 1: "200M", 2: "200M", 3:"200M"})
     shard_tensor = PyShardTensor(0, shard_tensor_config)
     shard_tensor.from_cpu_tensor(data.x)
     ipc_handle = shard_tensor.share_ipc()

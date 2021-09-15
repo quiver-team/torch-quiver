@@ -101,6 +101,7 @@ def run(rank, world_size, x, inter_proc_data: InterProcData):
                     time_points.append(time.time() - start_time)
                     print(f"average time = {np.mean(np.array(time_points))}")
                 first = False
+    
 
 
             '''
@@ -115,6 +116,8 @@ def run(rank, world_size, x, inter_proc_data: InterProcData):
                 print(f"iter time = {time.time()  - start_time}")
             '''
             start_time = time.time()
+        time_points = []
+        first = True
 
     #    dist.barrier()
 
@@ -148,7 +151,7 @@ if __name__ == '__main__':
     inter_proc_data.y = data.y
 
     data.x.share_memory_()
-    world_size = torch.cuda.device_count()
+    world_size = 4 #torch.cuda.device_count()
     print('Let\'s use', world_size, 'GPUs!')
     mp.spawn(run, args=(world_size, data.x, inter_proc_data), nprocs=world_size, join=True)
 

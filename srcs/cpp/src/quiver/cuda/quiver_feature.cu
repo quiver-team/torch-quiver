@@ -98,14 +98,14 @@ class ShardTensor
             cudaDeviceCanAccessPeer(&access_j_i, item.device, device_);
             if ((access_i_j && access_j_i)|| device_ == item.device) {
                 access_book.push_back(1);
-                printf("%d <-> %d support peer access \n", device_, item.device);
+                //printf("%d <-> %d support peer access \n", device_, item.device);
             }else{
                 access_book.push_back(0);
-                printf("%d <-> %d dont support peer access \n", device_, item.device);
+                //printf("%d <-> %d dont support peer access \n", device_, item.device);
             }
         }else{
             access_book.push_back(1);
-            printf("%d <-> CPU support peer access \n", device_);
+            //printf("%d <-> CPU support peer access \n", device_);
         }
         // get dev_ptr that can be accessed from this process
         void *ptr = NULL;
@@ -114,7 +114,7 @@ class ShardTensor
             cudaSetDevice(item.device);
             cudaIpcOpenMemHandle(&ptr, item.mem_handle, cudaIpcMemLazyEnablePeerAccess);
             cudaSetDevice(device_);
-            printf("WARNING: Tensor from device %d can NOT be accessed in kernel launched on device %d \n", item.device, device_);
+            //printf("WARNING: Tensor from device %d can NOT be accessed in kernel launched on device %d \n", item.device, device_);
         }else{
             cudaIpcOpenMemHandle(&ptr, item.mem_handle, cudaIpcMemLazyEnablePeerAccess);
         }
@@ -150,7 +150,7 @@ class ShardTensor
         tensor_devices_.push_back(target_device);
         if(target_device >= 0){
             // if target_device >= 0, it means we use p2p 
-            printf("LOG >>> Malloc Data On Device %d With %ulld Bytes\n", target_device, data_size);
+            //printf("LOG >>> Malloc Data On Device %d With %ulld Bytes\n", target_device, data_size);
             cudaSetDevice(target_device);
             cudaMalloc(&ptr, data_size);
             cudaMemcpy(ptr, tensor.data_ptr<float>(), data_size, cudaMemcpyHostToDevice);
@@ -162,10 +162,10 @@ class ShardTensor
             cudaDeviceCanAccessPeer(&access_j_i, target_device, device_);
             if ((access_i_j && access_j_i) || device_ == target_device) {
                 access_book.push_back(1);
-                printf("%d <-> %d support peer access \n", device_, target_device);
+                //printf("%d <-> %d support peer access \n", device_, target_device);
             }else{
                 access_book.push_back(0);
-                printf("%d <-> %d dont support peer access \n", device_, target_device);
+                //printf("%d <-> %d dont support peer access \n", device_, target_device);
             }
         }else{
             cudaSetDevice(device_);
@@ -173,7 +173,7 @@ class ShardTensor
             cudaHostRegister(tensor.data_ptr<float>(), data_size, cudaHostRegisterMapped);
             cudaHostGetDevicePointer(&ptr, (void *)tensor.data_ptr<float>(), 0);
             access_book.push_back(1);
-            printf("%d <-> CPU support peer access \n", device_);
+            //printf("%d <-> CPU support peer access \n", device_);
         }
 
         dev_ptrs_.push_back((float*)ptr);
@@ -302,6 +302,7 @@ class ShardTensor
     std::vector<int> access_book;
     std::vector<std::vector<int>> tensor_shapes_;
     std::vector<int64_t> shape_;
+    int numa_broker_device;
     int device_;
     int device_count_;
     bool inited_;
@@ -334,10 +335,10 @@ void init_p2p(){
         for (int j = i + 1; j < numGPUs; j++) {
             int access_i_j = 0;
             int access_j_i = 0;
-            printf("Enable P2P Access Between %d <---> %d \n", i, j);
             cudaDeviceCanAccessPeer(&access_i_j, i, j);
             cudaDeviceCanAccessPeer(&access_j_i, j, i);
             if (access_i_j && access_j_i) {
+                printf("Enable P2P Access Between %d <---> %d \n", i, j);
                 cudaSetDevice(i);
                 cudaDeviceEnablePeerAccess(j, 0);
                 cudaCheckError();

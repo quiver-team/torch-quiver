@@ -192,7 +192,7 @@ def test_py_shard_tensor_basic():
     host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
     indices = torch.from_numpy(host_indice).type(torch.long)
     indices = indices.to("cuda:0")
-    shard_tensor_config = ShardTensorConfig({0:'0.9G', 1:"0.9G", 2: "0.3G"})
+    shard_tensor_config = ShardTensorConfig({0: "0.9G", 1:"0.9G", 2:"0.9G", 3:"0.9G"})
     shard_tensor = PyShardTensor(0, shard_tensor_config)
     shard_tensor.from_cpu_tensor(tensor)
 
@@ -215,18 +215,16 @@ def pyshard_tensor_ipc_child_proc(rank, ipc_handle, tensor):
 
     NUM_ELEMENT = 1000000
     SAMPLE_SIZE = 80000
-    FEATURE_DIM = 600
     torch.cuda.set_device(rank)
-    print(ipc_handle[2].tensor_offset_numa)
     new_shard_tensor = PyShardTensor.new_from_share_ipc(ipc_handle)
 
     host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
     indices = torch.from_numpy(host_indice).type(torch.long)
     device_indices = indices.to(rank)
 
-    ##############################
+    ###############################
     # Calculate From New Tensor
-    ##############################
+    ###############################
     feature = new_shard_tensor[device_indices]
 
     start = time.time()
@@ -234,14 +232,13 @@ def pyshard_tensor_ipc_child_proc(rank, ipc_handle, tensor):
     consumed_time = time.time() - start
     feature = feature.cpu().numpy()
     feature_gt = tensor[indices].numpy()
-    print("Array Equal: ", np.array_equal(feature, feature_gt))
+    print("Correctness Check : ", np.array_equal(feature, feature_gt))
 
     print(
         f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s")
     
 def test_py_shard_tensor_ipc():
     NUM_ELEMENT = 1000000
-    SAMPLE_SIZE = 80000
     FEATURE_DIM = 600
     gc.disable()
     #########################
@@ -253,7 +250,7 @@ def test_py_shard_tensor_ipc():
         0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
     tensor = torch.from_numpy(host_tensor).type(torch.float32)
     tensor.share_memory_()
-    shard_tensor_config = ShardTensorConfig({0:"0.9G", 1: "0.9G", 2:"3.9G"})
+    shard_tensor_config = ShardTensorConfig({1: "2.4G", 3:"1G"})
     shard_tensor = PyShardTensor(0, shard_tensor_config)
     shard_tensor.from_cpu_tensor(tensor)
 

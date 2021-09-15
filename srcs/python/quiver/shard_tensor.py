@@ -6,12 +6,13 @@ from typing import List
 
 def color_mat(access_book, device_list):
     device_count = access_book.shape[0]
-    device2numa = [-1] * device_count
+
+    device2numa = dict.fromkeys(device_list, -1)
     numa2device = {0: [], 1: []}
     current_numa = 0
     for src_device_idx in range(device_count):
-        if(device2numa[src_device_idx] == -1):
-            src_device = device_list[src_device_idx]
+        src_device = device_list[src_device_idx]
+        if(device2numa[src_device] == -1):
             device2numa[src_device] = current_numa
             numa2device[current_numa].append(src_device)
             current_numa += 1
@@ -45,12 +46,25 @@ class Topo:
     def random_pick_device_from_numa(self, numa_id):
         return random.choice(self.Numa2Device[numa_id])
 
+class Offset:
+    def __init__(self, start, end):
+        self.start_ = start
+        self.end_ = end
+    
+    @property
+    def start(self):
+        return self.start_
+    
+    @property
+    def end(self):
+        return self.end_
+
 class ShardTensorConfig:
     
     def __init__(self, device_memory_budget, tensor_offset_numa=None, tensor_offset_device=None):
         if tensor_offset_numa is None:
-            self.tensor_offset_device = []
-            self.tensor_offset_numa = []
+            self.tensor_offset_device = {}
+            self.tensor_offset_numa = {}
         else:
             self.tensor_offset_device = tensor_offset_device
             self.tensor_offset_numa = tensor_offset_numa
@@ -118,32 +132,36 @@ class ShardTensor:
     
     def from_cpu_tensor(self, tensor):
         # 我们假设device按照NUMA顺序已经排序
-        offset = 0
+        cur_pos = 0
         size = 0
         numa_size = [0, 0]
         # 首先给GPU分配数据
         for  device_id, memory_budget in self.shard_tensor_config.device_memory_budget.items():
             size = self.partition(tensor, memory_budget)
-            self.shard_tensor.append(tensor[offset: offset + size], device_id)
-            offset += size
+            size  = min(size, tensor.shape[0] - cur_pos)
+            self.shard_tensor.append(tensor[cur_pos: cur_pos + size], device_id)
+            device_offset = Offset(cur_pos, cur_pos + size)
+            self.shard_tensor_config.tensor_offset_device[device_id] = device_offset
+            
+            cur_pos += size
             numa_node = self.topo.get_numa_node(device_id)
             numa_size[numa_node] += size
             print(f"LOG >>> Assign {int(100 * size * 1.0 / tensor.shape[0])}% data to {device_id}")
-            if offset > tensor.shape[0]:
+            if cur_pos > tensor.shape[0]:
                 break
-        if offset < tensor.shape[0]:
+        if cur_pos < tensor.shape[0]:
             # 接着继续给CPU分配数据
-            self.cpu_tensor = tensor[offset:].clone()
+            self.cpu_tensor = tensor[cur_pos:].clone()
             self.cpu_tensor.share_memory_()
             self.shard_tensor.append(self.cpu_tensor, -1)
-            print(f"LOG >>> Assign {100 - int(100 * offset * 1.0 / tensor.shape[0])}% data to CPU")
+            print(f"LOG >>> Assign {100 - int(100 * cur_pos * 1.0 / tensor.shape[0])}% data to CPU")
             
         # init config 
-        self.shard_tensor_config.tensor_offset_numa.append(numa_size[0])
-        self.shard_tensor_config.tensor_offset_numa.append(numa_size[0] + numa_size[1])
+        self.shard_tensor_config.tensor_offset_numa[0] = Offset(0, numa_size[0])
+        self.shard_tensor_config.tensor_offset_numa[1] = Offset(numa_size[0], numa_size[0] + numa_size[1])
     
         
-    def __getitem__(self, nodes):
+    def old_collect(self, nodes):
 
         if self.device_stream.get(self.current_device, None) is None:
             self.device_stream[self.current_device] = torch.cuda.Stream(self.current_device)
@@ -154,11 +172,8 @@ class ShardTensor:
         input_orders = torch.arange(nodes.size(0), dtype=torch.long, device = self.current_device)
 
         # call request
-        
-        if self.current_numa == 0:
-            request_nodes_mask = (nodes >= self.shard_tensor_config.tensor_offset_numa[0]) & (nodes < self.shard_tensor_config.tensor_offset_numa[1])
-        else:
-            request_nodes_mask = nodes < self.shard_tensor_config.tensor_offset_numa[0]
+
+        request_nodes_mask = (nodes >= self.shard_tensor_config.tensor_offset_numa[1 - self.current_numa ].start) & (nodes < self.shard_tensor_config.tensor_offset_numa[1 - self.current_numa ].end)
         request_nodes = torch.masked_select(nodes, request_nodes_mask)
         part_orders = torch.masked_select(input_orders, request_nodes_mask)
 
@@ -177,6 +192,55 @@ class ShardTensor:
             feature[part_orders] = result.to(self.current_device, non_blocking=True)
         self.device_stream[self.current_device].synchronize()
         return feature
+    
+    def collect_device(self, input_orders, nodes, inter_device, wait_streams, wait_results):
+        request_nodes_mask = (nodes >= self.shard_tensor_config.tensor_offset_device[inter_device].start) & (nodes < self.shard_tensor_config.tensor_offset_device[inter_device].end)
+        request_nodes = torch.masked_select(nodes, request_nodes_mask)
+        part_orders = torch.masked_select(input_orders, request_nodes_mask)
+        with torch.cuda.device(inter_device):
+            if self.device_stream.get(inter_device, None) is None:
+                self.device_stream[inter_device] = torch.cuda.Stream(inter_device)
+            with torch.cuda.stream(self.device_stream[inter_device]):
+                request_nodes = request_nodes.to(inter_device, non_blocking=True)
+                result = self.shard_tensor[request_nodes]
+                result = result.to(self.current_device, non_blocking=True)
+
+        wait_streams.append(self.device_stream[inter_device])
+        wait_results.append((part_orders, result))
+
+    def __getitem__(self, nodes):
+
+        if self.device_stream.get(self.current_device, None) is None:
+            self.device_stream[self.current_device] = torch.cuda.Stream(self.current_device)
+
+        with torch.cuda.stream(self.device_stream[self.current_device]):
+            feature = self.shard_tensor[nodes]
+        
+        input_orders = torch.arange(nodes.size(0), dtype=torch.long, device = self.current_device)
+
+        # call inter request, we unfold for loop 
+        inter_numa_devices = self.topo.Numa2Device[1 - self.current_numa]
+        wait_streams = []
+        wait_results = []
+
+
+        if(len(inter_numa_devices) > 0):
+            inter_device = inter_numa_devices[0]
+            if self.shard_tensor_config.tensor_offset_device.get(inter_device, None) is not None:
+                self.collect_device(input_orders, nodes, inter_device, wait_streams, wait_results)
+        
+        if(len(inter_numa_devices) > 1):
+            inter_device = inter_numa_devices[1]
+            if self.shard_tensor_config.tensor_offset_device.get(inter_device, None) is not None:
+                self.collect_device(input_orders, nodes, inter_device, wait_streams, wait_results)
+        
+        for stream, result  in zip(wait_streams, wait_results):
+            stream.synchronize()
+            feature[result[0]] = result[1]
+
+        self.device_stream[self.current_device].synchronize()
+        return feature
+    
     
     @property
     def shape(self):

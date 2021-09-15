@@ -125,17 +125,12 @@ def run(rank, world_size, shard_tensor_ipc_handle, inter_proc_data: InterProcDat
     train_idx = inter_proc_data.train_idx
 
     csr_mat = get_csr_from_coo(inter_proc_data.edge_index)
-    sampler = AsyncCudaNeighborSampler(csr_indptr=csr_mat.indptr, csr_indices=csr_mat.indices, device=rank, copy=False)
+    sampler = AsyncCudaNeighborSampler(csr_indptr=csr_mat.indptr, csr_indices=csr_mat.indices, device=rank, copy=True)
 
-    #train_loader = torch.utils.data.DataLoader(train_idx, batch_size=4096, shuffle=True, drop_last=True)
-    train_loader = NeighborSampler(inter_proc_data.edge_index, node_idx=train_idx,
-                                   sizes=[15, 10, 5], batch_size=4096,
-                                   shuffle=True, num_workers=1)
-
-    if rank == 0:
-        subgraph_loader = NeighborSampler(inter_proc_data.edge_index, node_idx=None,
-                                          sizes=[-1], batch_size=2048,
-                                          shuffle=False, num_workers=6)
+    train_loader = torch.utils.data.DataLoader(train_idx, batch_size=4096, shuffle=True, drop_last=True)
+    #train_loader = NeighborSampler(inter_proc_data.edge_index, node_idx=train_idx,
+    #                               sizes=[15, 10, 5], batch_size=2048,
+    #                               shuffle=True, num_workers=1)
 
     torch.manual_seed(12345)
     model = SAGE(inter_proc_data.num_features, 256, inter_proc_data.num_classes, num_layers=3).to(rank)
@@ -148,9 +143,9 @@ def run(rank, world_size, shard_tensor_ipc_handle, inter_proc_data: InterProcDat
     for epoch in range(1, 21):
         model.train()
         start_time = time.time()
-        #for seeds in train_loader:
-        #    n_id, batch_size, adjs = sample(sampler, rank, seeds, [15, 10, 5])
-        for batch_size, n_id, adjs in train_loader:
+        for seeds in train_loader:
+            n_id, batch_size, adjs = sample(sampler, rank, seeds, [15, 10, 5])
+        #for batch_size, n_id, adjs in train_loader:
             if rank == 0:
                 print(f"data time = {time.time()  - start_time}")
             feature = x[n_id]
@@ -198,12 +193,12 @@ if __name__ == '__main__':
     
     inter_proc_data.y = data.y
 
-    shard_tensor_config = ShardTensorConfig({})
+    shard_tensor_config = ShardTensorConfig({0: "400M"})
     shard_tensor = PyShardTensor(0, shard_tensor_config)
     shard_tensor.from_cpu_tensor(data.x)
     ipc_handle = shard_tensor.share_ipc()
 
-    world_size = 1 #torch.cuda.device_count()
+    world_size = 2 #torch.cuda.device_count()
     print('Let\'s use', world_size, 'GPUs!')
     mp.spawn(run, args=(world_size, ipc_handle, inter_proc_data), nprocs=world_size, join=True)
     #run(0, world_size, shard_tensor, inter_proc_data)

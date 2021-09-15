@@ -192,7 +192,7 @@ def test_py_shard_tensor_basic():
     host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
     indices = torch.from_numpy(host_indice).type(torch.long)
     indices = indices.to("cuda:0")
-    shard_tensor_config = ShardTensorConfig({0:'2.2G', 1: "2.4G"})
+    shard_tensor_config = ShardTensorConfig({0:'0.9G', 1:"0.9G", 2: "0.3G"})
     shard_tensor = PyShardTensor(0, shard_tensor_config)
     shard_tensor.from_cpu_tensor(tensor)
 
@@ -211,6 +211,60 @@ def test_py_shard_tensor_basic():
     print(
         f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s")
 
+def pyshard_tensor_ipc_child_proc(rank, ipc_handle, tensor):
+
+    NUM_ELEMENT = 1000000
+    SAMPLE_SIZE = 80000
+    FEATURE_DIM = 600
+    torch.cuda.set_device(rank)
+    print(ipc_handle[2].tensor_offset_numa)
+    new_shard_tensor = PyShardTensor.new_from_share_ipc(ipc_handle)
+
+    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
+    indices = torch.from_numpy(host_indice).type(torch.long)
+    device_indices = indices.to(rank)
+
+    ##############################
+    # Calculate From New Tensor
+    ##############################
+    feature = new_shard_tensor[device_indices]
+
+    start = time.time()
+    feature = new_shard_tensor[device_indices]
+    consumed_time = time.time() - start
+    feature = feature.cpu().numpy()
+    feature_gt = tensor[indices].numpy()
+    print("Array Equal: ", np.array_equal(feature, feature_gt))
+
+    print(
+        f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s")
+    
+def test_py_shard_tensor_ipc():
+    NUM_ELEMENT = 1000000
+    SAMPLE_SIZE = 80000
+    FEATURE_DIM = 600
+    gc.disable()
+    #########################
+    # Init With Numpy
+    ########################
+    torch.cuda.set_device(0)
+
+    host_tensor = np.random.randint(
+        0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
+    tensor = torch.from_numpy(host_tensor).type(torch.float32)
+    tensor.share_memory_()
+    shard_tensor_config = ShardTensorConfig({0:"0.9G", 1: "0.9G", 2:"3.9G"})
+    shard_tensor = PyShardTensor(0, shard_tensor_config)
+    shard_tensor.from_cpu_tensor(tensor)
+
+    ##########################
+    # Create IPC Handle
+    #########################
+    ipc_handle = shard_tensor.share_ipc()
+    process = mp.Process(target=pyshard_tensor_ipc_child_proc, args=(1, ipc_handle, tensor))
+    process.start()
+    process.join()
+
 
 def torch_child_proc(rank, ws, cpu_tensor, gpu_tensors, range_list, indices):
     shard_tensor = TorchShardTensor(
@@ -226,6 +280,8 @@ def torch_child_proc(rank, ws, cpu_tensor, gpu_tensors, range_list, indices):
         f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s")
 
 
+
+
 def test_torch_shard_tensor():
     NUM_ELEMENT = 1000000
     SAMPLE_SIZE = 80000
@@ -238,6 +294,7 @@ def test_torch_shard_tensor():
     host_tensor = np.random.randint(
         0, high=10, size=(NUM_ELEMENT, FEATURE_DIM))
     tensor = torch.from_numpy(host_tensor).type(torch.float32)
+  
     host_indice = np.random.randint(0, NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
     indices = torch.from_numpy(host_indice).type(torch.long)
     indices = indices.to("cuda:0")
@@ -262,5 +319,8 @@ if __name__ == "__main__":
     mp.set_start_method("spawn")
     qv.init_p2p()
     #test_shard_tensor_intra_process()
-    test_py_shard_tensor_basic()
+
+    #test_py_shard_tensor_basic()
+    test_py_shard_tensor_ipc()
+
     #test_torch_shard_tensor()

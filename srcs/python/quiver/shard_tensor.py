@@ -46,12 +46,17 @@ class Topo:
         return random.choice(self.Numa2Device[numa_id])
 
 class ShardTensorConfig:
-    device_memory_budget = {}
-    tensor_offset_device = []
-    tensor_offset_numa = []
     
-    def __init__(self, device_memory_budget):
+    def __init__(self, device_memory_budget, tensor_offset_numa=None, tensor_offset_device=None):
+        if tensor_offset_numa is None:
+            self.tensor_offset_device = []
+            self.tensor_offset_numa = []
+        else:
+            self.tensor_offset_device = tensor_offset_device
+            self.tensor_offset_numa = tensor_offset_numa
+
         self.device_memory_budget = device_memory_budget
+        self.device_list_ = None
         for device in device_memory_budget:
             if isinstance(self.device_memory_budget[device], int):
                 continue
@@ -70,15 +75,15 @@ class ShardTensorConfig:
                 raise Exception("memory budget input is not valid")
             print(f"LOG >>> Memory Budge On {device} is {self.device_memory_budget[device] // 1024 // 1024}MB")
     
-    def reorder_device(self, device_order):
-        tmp_device_memory_budget = {}
-        for device in device_order:
-            tmp_device_memory_budget[device] = self.device_memory_budget[device]
-        self.device_memory_budget = tmp_device_memory_budget
-    
     @property
     def device_list(self):
-        return list(self.device_memory_budget.keys())
+        if self.device_list_ is None:
+            self.device_list_ = list(self.device_memory_budget.keys())
+        return self.device_list_
+    
+    @device_list.setter
+    def device_list(self, device_list):
+        self.device_list_ = device_list
     
 
 class ShardTensor:
@@ -86,8 +91,10 @@ class ShardTensor:
         self.shard_tensor = torch_qv.ShardTensor(current_device)
         self.current_device = current_device
         self.shard_tensor_config = shard_tensor_config
-        self.topo = Topo(shard_tensor_config.device_list)
-        self.shard_tensor_config.reorder_device(self.topo.Numa2Device[0] + self.topo.Numa2Device[1])
+        device_list = shard_tensor_config.device_list
+        device_list = device_list if current_device in device_list else device_list + [current_device]
+        self.topo = Topo(device_list)
+        self.shard_tensor_config.device_list = self.topo.Numa2Device[0] + self.topo.Numa2Device[1]
         
         # we assume there are at most 2 Numa Nodes
         self.current_numa = self.topo.get_numa_node(current_device)
@@ -126,7 +133,7 @@ class ShardTensor:
                 break
         if offset < tensor.shape[0]:
             # 接着继续给CPU分配数据
-            self.cpu_tensor = tensor[offset:]
+            self.cpu_tensor = tensor[offset:].clone()
             self.cpu_tensor.share_memory_()
             self.shard_tensor.append(self.cpu_tensor, -1)
             print(f"LOG >>> Assign {100 - int(100 * offset * 1.0 / tensor.shape[0])}% data to CPU")
@@ -142,10 +149,11 @@ class ShardTensor:
             self.device_stream[self.current_device] = torch.cuda.Stream(self.current_device)
 
         with torch.cuda.stream(self.device_stream[self.current_device]):
-            input_orders = torch.arange(nodes.size(0), dtype=torch.long, device=nodes.device)
-            # async
             feature = self.shard_tensor[nodes]
-            # call request
+        
+        input_orders = torch.arange(nodes.size(0), dtype=torch.long, device = self.current_device)
+
+        # call request
         
         if self.current_numa == 0:
             request_nodes_mask = (nodes >= self.shard_tensor_config.tensor_offset_numa[0]) & (nodes < self.shard_tensor_config.tensor_offset_numa[1])
@@ -153,6 +161,8 @@ class ShardTensor:
             request_nodes_mask = nodes < self.shard_tensor_config.tensor_offset_numa[0]
         request_nodes = torch.masked_select(nodes, request_nodes_mask)
         part_orders = torch.masked_select(input_orders, request_nodes_mask)
+
+        
         # ptr0, ptr1, ptr2, ptr3, ptr_cpu
         if request_nodes.shape[0] > 0 :
             chosen_device = self.topo.random_pick_device_from_numa(1 - self.current_numa)
@@ -163,8 +173,9 @@ class ShardTensor:
                 with torch.cuda.stream(self.device_stream[chosen_device]):
                     request_nodes = request_nodes.to(chosen_device, non_blocking=True)
                     result = self.shard_tensor[request_nodes]
+            self.device_stream[chosen_device].synchronize()
             feature[part_orders] = result.to(self.current_device, non_blocking=True)
-        
+        self.device_stream[self.current_device].synchronize()
         return feature
     
     @property
@@ -183,9 +194,12 @@ class ShardTensor:
 
     def from_ipc_handle(self, gpu_ipc_list, cpu_tensor):
         for gpu_ipc in gpu_ipc_list:
-            self.shard_tensor.append(gpu_ipc)
-        self.cpu_tensor = cpu_tensor
-        self.shard_tensor.append(cpu_tensor, -1)
+            gpu_item = torch_qv.ShardTensorItem()
+            gpu_item.from_ipc(gpu_ipc)
+            self.shard_tensor.append(gpu_item)
+        if cpu_tensor is not None:
+            self.cpu_tensor = cpu_tensor
+            self.shard_tensor.append(cpu_tensor, -1)
 
     @classmethod
     def new_from_share_ipc(cls, ipc_handles):

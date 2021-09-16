@@ -74,8 +74,7 @@ class SAGE(torch.nn.Module):
 def run(rank, world_size, x, inter_proc_data: InterProcData):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
-    #torch.cuda.set_device(rank)
-    #dist.init_process_group('nccl', rank=rank, world_size=world_size)
+    dist.init_process_group('nccl', rank=rank, world_size=world_size)
 
     train_idx = inter_proc_data.train_idx
 
@@ -86,45 +85,42 @@ def run(rank, world_size, x, inter_proc_data: InterProcData):
 
     torch.manual_seed(12345)
     model = SAGE(inter_proc_data.num_features, 256, inter_proc_data.num_classes, num_layers=3).to(rank)
-    #model = DistributedDataParallel(model, device_ids=[rank])
+    model = DistributedDataParallel(model, device_ids=[rank])
     optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
     y = inter_proc_data.y.squeeze().to(rank)
     time_points = []
+    iter_points = []
     first = True
     for epoch in range(1, 21):
         model.train()
         start_time = time.time()
+        iter_step = 0
         for batch_size, n_id, adjs in train_loader:
             feature = x[n_id].to(rank)
-            if rank == 0:
-                if not first:
-                    time_points.append(time.time() - start_time)
-                    print(f"average time = {np.mean(np.array(time_points))}")
-                first = False
+            time_points.append(time.time()  - start_time)
+            iter_step += 1
+            if rank == 0 and iter_step % 20 == 0:
+                print(f"average data time = {np.mean(np.array(time_points[1:]))}")
     
-
-
-            '''
             adjs = [adj.to(rank) for adj in adjs]
 
             optimizer.zero_grad()
-            out = model(x[n_id], adjs)
+            out = model(feature, adjs)
             loss = F.nll_loss(out, y[n_id[:batch_size]])
             loss.backward()
             optimizer.step()
-            if rank == 0:
-                print(f"iter time = {time.time()  - start_time}")
-            '''
+            if rank == 0 and iter_step > 10:
+                iter_points.append(time.time()  - start_time)
+                print(f"average iter time = {np.mean(np.array(iter_points[10:]))}")
+    
+
             start_time = time.time()
-        time_points = []
-        first = True
 
-    #    dist.barrier()
+        iter_points.clear()
+        time_points.clear()
+        dist.barrier()
+        exit()
 
-        #if rank == 0:
-        #    print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}')
-
-    #    dist.barrier()
 
     dist.destroy_process_group()
 
@@ -151,7 +147,6 @@ if __name__ == '__main__':
     inter_proc_data.y = data.y
 
     data.x.share_memory_()
-    world_size = 4 #torch.cuda.device_count()
+    world_size = 2 
     print('Let\'s use', world_size, 'GPUs!')
     mp.spawn(run, args=(world_size, data.x, inter_proc_data), nprocs=world_size, join=True)
-

@@ -14,9 +14,14 @@ import tqdm
 import os.path as osp
 import sklearn.linear_model as lm
 import sklearn.metrics as skm
+from quiver.shard_tensor import ShardTensor as PyShardTensor
+from quiver.shard_tensor import ShardTensorConfig
 
-GPU_FEATURE = True
-GPU_SAMPLE = 2
+
+# 0: CPU, 1: GPU, 2: ShardTensor
+GPU_FEATURE = 2
+# 0: CPU, 1: GPU, 2: ZeroCopy
+GPU_SAMPLE = 1
 
 class SAGE(nn.Module):
     def __init__(self, in_feats, n_hidden, n_classes, n_layers, activation, dropout):
@@ -123,11 +128,11 @@ def load_reddit():
     g.ndata['labels'] = g.ndata['label']
     return g, data.num_classes
 
-def load_ogb(name, root = "/home/dalong/data"):
+def load_ogb(name, root=None):
     from ogb.nodeproppred import DglNodePropPredDataset
 
     print('load', name)
-    data = DglNodePropPredDataset(name=name, root=root)
+    data = DglNodePropPredDataset(name=name)
     print('finish loading', name)
     splitted_idx = data.get_idx_split()
     graph, labels = data[0]
@@ -195,6 +200,7 @@ def run(proc_id, n_gpus, args, devices, data):
     # Start up distributed training, if enabled.
     dev_id = devices[proc_id]
     th.cuda.set_device(dev_id)
+    print('ready')
     if n_gpus > 1:
         dist_init_method = 'tcp://{master_ip}:{master_port}'.format(
             master_ip='127.0.0.1', master_port='12345')
@@ -209,11 +215,14 @@ def run(proc_id, n_gpus, args, devices, data):
     val_g = train_g
     test_g = train_g
 
-    if GPU_FEATURE:
+    if GPU_FEATURE == 1:
         train_nfeat = train_nfeat.to(dev_id)
-        train_labels = train_labels.to(dev_id)
-
-    in_feats = train_nfeat.shape[1]
+        # train_labels = train_labels.to(dev_id)
+    if GPU_FEATURE == 2:
+        train_nfeat = PyShardTensor.new_from_share_ipc(train_nfeat)
+        in_feats = 100
+    else:
+        in_feats = train_nfeat.shape[1]
 
     train_mask = train_g.ndata['train_mask']
     val_mask = val_g.ndata['val_mask']
@@ -232,7 +241,7 @@ def run(proc_id, n_gpus, args, devices, data):
         train_nid,
         sampler,
         use_ddp=False,
-        device=dev_id if GPU_SAMPLE > 0 else None,
+        device=dev_id,
         batch_size=args.batch_size,
         shuffle=True,
         drop_last=False,
@@ -313,7 +322,7 @@ def run(proc_id, n_gpus, args, devices, data):
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser("multi-gpu training")
-    argparser.add_argument('--gpu', type=str, default='0',
+    argparser.add_argument('--gpu', type=str, default='0,1,2,3',
                            help="Comma separated list of GPU device IDs.")
     argparser.add_argument('--dataset', type=str, default='ogbn-products')
     argparser.add_argument('--num-epochs', type=int, default=20)
@@ -368,8 +377,16 @@ if __name__ == '__main__':
     else:
         train_g = val_g = test_g = g
 
-    # Pack data
-    data = n_classes, g, train_nfeat, train_labels
+    if GPU_FEATURE == 2:
+        NUM_ELEMENT = train_nfeat.size(0)
+        # distributed feature on GPUs and CPU
+        shard_tensor_config = ShardTensorConfig({0: "180M", 1: "180M", 2: "180M", 3: "180M"})
+        shard_tensor = PyShardTensor(0, shard_tensor_config)
+        shard_tensor.from_cpu_tensor(train_nfeat)
+        ipc_handle = shard_tensor.share_ipc()
+        data = n_classes, g, ipc_handle, train_labels
+    else:
+        data = n_classes, g, train_nfeat, train_labels
 
     if n_gpus == 1:
         run(0, n_gpus, args, devices, data)

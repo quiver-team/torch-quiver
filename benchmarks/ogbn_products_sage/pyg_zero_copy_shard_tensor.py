@@ -16,10 +16,10 @@ from torch_geometric.datasets import Reddit
 from torch_geometric.data import NeighborSampler
 import time
 from quiver.shard_tensor import ShardTensor as PyShardTensor
-from quiver.shard_tensor import ShardTensorConfig
+from quiver.shard_tensor import ShardTensorConfig, DeviceCollectionJob
 
 from ogb.nodeproppred import PygNodePropPredDataset, Evaluator
-
+import random
 from typing import List, NamedTuple, Optional, Tuple
 
 
@@ -41,6 +41,40 @@ class Adj(NamedTuple):
     def to(self, *args, **kwargs):
         return Adj(self.edge_index.to(*args, **kwargs),
                    self.e_id.to(*args, **kwargs), self.size)
+
+class NodeDataset(torch.utils.data.IterableDataset):
+    def __init__(self, nodes, batch_size, tensor_offset_device):
+        super().__init__()
+        self.tensor_offset_device = tensor_offset_device
+        self.nodes = nodes
+        self.batch_size = batch_size
+    
+    def next(self):
+        start = 0
+        input_orders = torch.arange(self.batch_size, dtype=torch.long)
+        
+        while start < len(self.nodes):
+            if len(self.nodes) - start < self.batch_size :
+                break
+            nodes = self.nodes[start: start + self.batch_size]
+            dispatch_book = {}
+            for device in self.tensor_offset_device:
+                request_nodes_mask = (nodes >= self.tensor_offset_device[device].start) & (nodes < self.tensor_offset_device[device].end)
+                if(request_nodes_mask.shape[0] > 0):
+                    request_nodes = torch.masked_select(nodes, request_nodes_mask)
+                    part_orders = torch.masked_select(input_orders, request_nodes_mask)
+                    dispatch_book[device] = DeviceCollectionJob(part_orders, request_nodes)
+            yield nodes, dispatch_book
+            start += self.batch_size
+    
+    def __len__(self):
+        return len(self.nodes) // self.batch_size
+
+    
+    def __iter__(self):
+        random.shuffle(self.nodes)
+        return self.next()
+
 
 class SAGE(torch.nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels,
@@ -116,35 +150,43 @@ def sample(sampler, device, input_nodes, sizes):
         nodes = frontier
 
     return nodes, batch_size, adjs[::-1]
+
+def fake_collate(x):
+    return x
+
 def run(rank, world_size, shard_tensor_ipc_handle, inter_proc_data: InterProcData):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
     dist.init_process_group('nccl', rank=rank, world_size=world_size)
 
     train_idx = inter_proc_data.train_idx
+    y = inter_proc_data.y.squeeze().to(rank)
+    x = PyShardTensor.new_from_share_ipc(shard_tensor_ipc_handle)
+    
 
     csr_mat = get_csr_from_coo(inter_proc_data.edge_index)
     sampler = AsyncCudaNeighborSampler(csr_indptr=csr_mat.indptr, csr_indices=csr_mat.indices, device=rank, copy=True)
+    batch_size = 2048
+    train_dataset = NodeDataset(batch_size=batch_size, nodes=train_idx, tensor_offset_device=x.shard_tensor_config.tensor_offset_device)
 
-    train_loader = torch.utils.data.DataLoader(train_idx, batch_size=2048, shuffle=True, drop_last=True)
-   
+    train_loader = torch.utils.data.DataLoader(train_dataset, num_workers=2, collate_fn = fake_collate, pin_memory=True)
 
     torch.manual_seed(12345)
     model = SAGE(inter_proc_data.num_features, 256, inter_proc_data.num_classes, num_layers=3).to(rank)
     model = DistributedDataParallel(model, device_ids=[rank])
     optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
 
-    y = inter_proc_data.y.squeeze().to(rank)
-    x = PyShardTensor.new_from_share_ipc(shard_tensor_ipc_handle)
+  
     time_points = []
     iter_points = []
 
     for epoch in range(1, 21):
         model.train()
         start_time = time.time()
-        for iter_step, seeds in enumerate(train_loader):
+        for iter_step, data in enumerate(train_loader):
+            seeds, dispatch_book = data[0]
             n_id, batch_size, adjs = sample(sampler, rank, seeds, [15, 10, 5])
-            feature = x[n_id]
+            feature = x.collect(n_id, dispatch_book)
             time_points.append(time.time()  - start_time)
             if rank == 0 and iter_step % 20 == 0:
                 print(f"average data time = {np.mean(np.array(time_points[20:]))}")
@@ -159,19 +201,17 @@ def run(rank, world_size, shard_tensor_ipc_handle, inter_proc_data: InterProcDat
             optimizer.step()
             if rank == 0 and iter_step > 10:
                 iter_points.append(time.time()  - start_time)
-                print(f"average iter time = {np.mean(np.array(iter_points[10:]))}")
+                print(f"average iter time = {np.mean(np.array(iter_points[10:]))}，throughput = {world_size * batch_size / np.mean(np.array(iter_points[10:])) } samples/second")
             
             start_time = time.time()
         time_points.clear()
         iter_points.clear()
 
-        dist.barrier()
-        exit()
 
         #if rank == 0:
         #    print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}')
 
-    #    dist.barrier()
+        dist.barrier()
 
     dist.destroy_process_group()
 
@@ -197,7 +237,7 @@ if __name__ == '__main__':
     
     inter_proc_data.y = data.y
 
-    shard_tensor_config = ShardTensorConfig({0:"200M", 1: "200M"})
+    shard_tensor_config = ShardTensorConfig({})
 
     shard_tensor = PyShardTensor(0, shard_tensor_config)
 

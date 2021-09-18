@@ -9,7 +9,7 @@ import torch.multiprocessing as mp
 import gc
 
 from quiver.shard_tensor import ShardTensor as PyShardTensor
-from quiver.shard_tensor import ShardTensorConfig
+from quiver.shard_tensor import ShardTensorConfig, DeviceCollectionJob
 from quiver.async_feature import TorchShardTensor
 
 
@@ -221,19 +221,15 @@ def test_py_shard_tensor_basic():
     tensor = torch.from_numpy(host_tensor).type(torch.float32)
     host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
     indices = torch.from_numpy(host_indice).type(torch.long)
-    indices = indices.to("cuda:0")
-    shard_tensor_config = ShardTensorConfig({})
+    indices = indices.to(0)
+    shard_tensor_config = ShardTensorConfig({1:"200M"})
     shard_tensor = PyShardTensor(0, shard_tensor_config)
     shard_tensor.from_cpu_tensor(tensor)
 
-    # warm up
-    start = time.time()
-    feature = shard_tensor[indices]
-    torch.cuda.synchronize()
+    
 
     start = time.time()
     feature = shard_tensor[indices]
-    torch.cuda.synchronize()
     consumed_time = time.time() - start
     feature = feature.cpu().numpy()
     feature_gt = host_tensor[host_indice]
@@ -252,13 +248,35 @@ def pyshard_tensor_ipc_child_proc(rank, ipc_handle, tensor):
     indices = torch.from_numpy(host_indice).type(torch.long)
     device_indices = indices.to(rank)
 
+    sorted_indices, sorted_order = torch.sort(device_indices)
+
+    offset_array = new_shard_tensor.shard_tensor_config.offset_array
+    print(f"check offset_array {offset_array}")
+    offset_array = torch.as_tensor(offset_array, dtype=torch.int32, device=rank)
+
+
+    offsets = torch.searchsorted(sorted_indices, offset_array, right=True)
+    device_list = new_shard_tensor.shard_tensor_config.device_memory_budget.keys()
+    dispatch_book = {}
+    start = 0
+    end = 0
+    for device, offset in zip(device_list, offsets):
+        end = offset
+        dispatch_book[device] = DeviceCollectionJob(sorted_order[start:end], sorted_indices[start:end])
+        start = offset
+        print(f"{device}: {start} -> {end}")
+
+    
+
     ###############################
     # Calculate From New Tensor
     ###############################
     feature = new_shard_tensor[device_indices]
+    print(f"{'#' * 40}")
 
     start = time.time()
-    feature = new_shard_tensor[device_indices]
+    feature = new_shard_tensor.collect(device_indices)
+    torch.cuda.synchronize()
     consumed_time = time.time() - start
     feature = feature.cpu().numpy()
     feature_gt = tensor[indices].numpy()
@@ -274,21 +292,22 @@ def test_py_shard_tensor_ipc():
     #########################
     # Init With Numpy
     ########################
-    torch.cuda.set_device(0)
+    current_device = 2
+    torch.cuda.set_device(current_device)
 
     host_tensor = np.random.randint(
         0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
     tensor = torch.from_numpy(host_tensor).type(torch.float32)
     tensor.share_memory_()
-    shard_tensor_config = ShardTensorConfig({1: "2.3G", 2: "2.3G"})
-    shard_tensor = PyShardTensor(0, shard_tensor_config)
+    shard_tensor_config = ShardTensorConfig({2:"0.9G"})
+    shard_tensor = PyShardTensor(current_device, shard_tensor_config)
     shard_tensor.from_cpu_tensor(tensor)
 
     ##########################
     # Create IPC Handle
     #########################
     ipc_handle = shard_tensor.share_ipc()
-    process = mp.Process(target=pyshard_tensor_ipc_child_proc, args=(1, ipc_handle, tensor))
+    process = mp.Process(target=pyshard_tensor_ipc_child_proc, args=(3, ipc_handle, tensor))
     process.start()
     process.join()
 
@@ -343,6 +362,37 @@ def test_torch_shard_tensor():
     proc.start()
     proc.join()
 
+def test():
+    NUM_ELEMENT = 1000000
+    SAMPLE_SIZE = 80000
+    FEATURE_DIM = 600
+    rank = 0
+    torch.cuda.set_device(rank)
+    host_tensor = np.random.randint(
+        0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
+    tensor = torch.from_numpy(host_tensor).type(torch.float32)
+    tensor.share_memory_()
+    shard_tensor_config = ShardTensorConfig({0:"0.9G", 1:"1.1G", 2:"1.2G", 3:"1.2G"})
+    shard_tensor = PyShardTensor(rank, shard_tensor_config)
+    shard_tensor.from_cpu_tensor(tensor)
+
+    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
+    indices = torch.from_numpy(host_indice).type(torch.long)
+    device_indices = indices.to(rank)
+
+    feature = shard_tensor.collect(device_indices)
+
+    
+    start = time.time()
+    feature = shard_tensor.collect(device_indices)
+    consumed_time = time.time() - start
+    feature = feature.cpu().numpy()
+
+    print(
+        f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s")
+
+
+
 
 if __name__ == "__main__":
     mp.set_start_method("spawn")
@@ -350,7 +400,7 @@ if __name__ == "__main__":
     #test_shard_tensor_intra_process()
     #test_py_shard_tensor_basic()
     #test_normal_feature_collection()
-    test_py_shard_tensor_ipc()
-
+    #test_py_shard_tensor_ipc()
+    test()
     #test_torch_shard_tensor()
     # test_py_shard_tensor_basic()

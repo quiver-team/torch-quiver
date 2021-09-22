@@ -145,11 +145,11 @@ class ShardTensor:
     
     def __getitem__(self, nodes):
         dispatch_book = {}
-        print(f"check shard_tensor device list ", self.shard_tensor_config.device_list)
+        # print(f"check shard_tensor device list ", self.shard_tensor_config.device_list)
         if len(self.shard_tensor_config.device_list)> 0 :
             start_time = time.time()
             sorted_nodes, sorted_order = torch.sort(nodes)
-            offsets = torch.searchsorted(sorted_nodes, self.offset_array, right=True)
+            offsets = torch.searchsorted(sorted_nodes, self.offset_array, right=False)
             #equals = sorted_nodes[offsets] == self.offset_array
             #print(equals)
             device_list = self.shard_tensor_config.device_memory_budget.keys()
@@ -162,10 +162,12 @@ class ShardTensor:
                     index += 1
                     continue
                 end = offset# + 1 if equals[index] else offset
+                # print(device)
+                # print(f"min {torch.min(sorted_nodes[start:end])}, max {torch.max(sorted_nodes[start:end])}")
                 dispatch_book[device] = DeviceCollectionJob(sorted_order[start:end], sorted_nodes[start:end])
                 start = end
                 index += 1
-            print(f"preprocess time = {time.time() - start_time}")
+            # print(f"preprocess time = {time.time() - start_time}")
 
         if self.device_stream.get(self.current_device, None) is None:
             self.device_stream[self.current_device] = torch.cuda.Stream(self.current_device)

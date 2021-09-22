@@ -21,7 +21,7 @@ from quiver.shard_tensor import ShardTensorConfig
 # 0: CPU, 1: GPU, 2: ShardTensor
 GPU_FEATURE = 2
 # 0: CPU, 1: GPU, 2: ZeroCopy
-GPU_SAMPLE = 1
+GPU_SAMPLE = 2
 
 class SAGE(nn.Module):
     def __init__(self, in_feats, n_hidden, n_classes, n_layers, activation, dropout):
@@ -132,7 +132,7 @@ def load_ogb(name, root=None):
     from ogb.nodeproppred import DglNodePropPredDataset
 
     print('load', name)
-    data = DglNodePropPredDataset(name=name)
+    data = DglNodePropPredDataset(name=name, root="/home/guest/local_quiver/dataset")
     print('finish loading', name)
     splitted_idx = data.get_idx_split()
     graph, labels = data[0]
@@ -322,7 +322,7 @@ def run(proc_id, n_gpus, args, devices, data):
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser("multi-gpu training")
-    argparser.add_argument('--gpu', type=str, default='0,1,2,3',
+    argparser.add_argument('--gpu', type=str, default='0',
                            help="Comma separated list of GPU device IDs.")
     argparser.add_argument('--dataset', type=str, default='ogbn-products')
     argparser.add_argument('--num-epochs', type=int, default=20)
@@ -380,7 +380,7 @@ if __name__ == '__main__':
     if GPU_FEATURE == 2:
         NUM_ELEMENT = train_nfeat.size(0)
         # distributed feature on GPUs and CPU
-        shard_tensor_config = ShardTensorConfig({0: "180M", 1: "180M", 2: "180M", 3: "180M"})
+        shard_tensor_config = ShardTensorConfig({0: "200M", 1: "200M"})
         shard_tensor = PyShardTensor(0, shard_tensor_config)
         shard_tensor.from_cpu_tensor(train_nfeat)
         ipc_handle = shard_tensor.share_ipc()
@@ -388,14 +388,11 @@ if __name__ == '__main__':
     else:
         data = n_classes, g, train_nfeat, train_labels
 
-    if n_gpus == 1:
-        run(0, n_gpus, args, devices, data)
-    else:
-        mp.set_start_method('spawn')
-        procs = []
-        for proc_id in range(n_gpus):
-            p = mp.Process(target=run, args=(proc_id, n_gpus, args, devices, data))
-            p.start()
-            procs.append(p)
-        for p in procs:
-            p.join()
+    mp.set_start_method('spawn')
+    procs = []
+    for proc_id in range(n_gpus):
+        p = mp.Process(target=run, args=(proc_id, n_gpus, args, devices, data))
+        p.start()
+        procs.append(p)
+    for p in procs:
+        p.join()

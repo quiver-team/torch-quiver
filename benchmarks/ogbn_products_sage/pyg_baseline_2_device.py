@@ -77,13 +77,15 @@ def run(rank, world_size, x, inter_proc_data: InterProcData):
     dist.init_process_group('nccl', rank=rank, world_size=world_size)
 
     train_idx = inter_proc_data.train_idx
-
+    
+    batch_size = 1024
 
     train_loader = NeighborSampler(inter_proc_data.edge_index, node_idx=train_idx,
-                                   sizes=[15, 10, 5], batch_size=2048,
+                                   sizes=[15, 10, 5], batch_size=batch_size,
                                    shuffle=True, num_workers=8)
 
     torch.manual_seed(12345)
+
     model = SAGE(inter_proc_data.num_features, 256, inter_proc_data.num_classes, num_layers=3).to(rank)
     model = DistributedDataParallel(model, device_ids=[rank])
     optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
@@ -111,7 +113,7 @@ def run(rank, world_size, x, inter_proc_data: InterProcData):
             optimizer.step()
             if rank == 0 and iter_step > 10:
                 iter_points.append(time.time()  - start_time)
-                print(f"average iter time = {np.mean(np.array(iter_points[10:]))}")
+                print(f"average iter time = {np.mean(np.array(iter_points[10:]))}, throughput = {world_size * batch_size  / np.mean(np.array(iter_points[10:]))}")
     
 
             start_time = time.time()

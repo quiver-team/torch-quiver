@@ -4,49 +4,6 @@ import random
 from typing import List
 import time
 
-
-def color_mat(access_book, device_list):
-    device_count = access_book.shape[0]
-
-    device2numa = dict.fromkeys(device_list, -1)
-    numa2device = {0: [], 1: []}
-    current_numa = 0
-    for src_device_idx in range(device_count):
-        src_device = device_list[src_device_idx]
-        if(device2numa[src_device] == -1):
-            device2numa[src_device] = current_numa
-            numa2device[current_numa].append(src_device)
-            current_numa += 1
-            for dst_device_idx in range(device_count):
-                if(dst_device_idx != src_device_idx and access_book[src_device_idx, dst_device_idx] == 1):
-                    dst_device = device_list[dst_device_idx]
-                    device2numa[dst_device] = device2numa[src_device]
-                    numa2device[device2numa[src_device]].append(dst_device)
-    
-    return device2numa, numa2device
-            
-    
-class Topo:
-    
-    Numa2Device = {}
-    Device2Numa = {}
-    
-    def __init__(self, device_list: List[int]) -> None:
-        access_book = torch.zeros((len(device_list), len(device_list)))
-        for src_index, src_device in enumerate(device_list):
-            for dst_index, dst_device in enumerate(device_list):
-                if torch_qv.can_device_access_peer(src_device, dst_device):
-                    access_book[src_index][dst_index] = 1
-                    access_book[dst_index][src_index] = 1
-        self.Device2Numa, self.Numa2Device = color_mat(access_book, device_list)
-        
-    
-    def get_numa_node(self, device_id: int):
-        return self.Device2Numa[device_id]
-    
-    def random_pick_device_from_numa(self, numa_id):
-        return random.choice(self.Numa2Device[numa_id])
-
 class Offset:
     def __init__(self, start, end):
         self.start_ = start
@@ -77,14 +34,12 @@ class DeviceCollectionJob:
 
 class ShardTensorConfig:
     
-    def __init__(self, device_memory_budget, tensor_offset_numa=None, tensor_offset_device=None):
+    def __init__(self, device_memory_budget, tensor_offset_device=None):
         self.offset_array_ = []
-        if tensor_offset_numa is None:
+        if tensor_offset_device is None:
             self.tensor_offset_device = {}
-            self.tensor_offset_numa = {}
         else:
             self.tensor_offset_device = tensor_offset_device
-            self.tensor_offset_numa = tensor_offset_numa
 
         self.device_memory_budget = device_memory_budget
         self.device_list_ = None
@@ -130,13 +85,6 @@ class ShardTensor:
         self.shard_tensor = torch_qv.ShardTensor(current_device)
         self.current_device = current_device
         self.shard_tensor_config = shard_tensor_config
-        device_list = shard_tensor_config.device_list
-        device_list = device_list if current_device in device_list else device_list + [current_device]
-        self.topo = Topo(device_list)
-        self.shard_tensor_config.device_list = self.topo.Numa2Device[0] + self.topo.Numa2Device[1]
-        
-        # we assume there are at most 2 Numa Nodes
-        self.current_numa = self.topo.get_numa_node(current_device)
         self.device_stream = {}
 
         # cpu part
@@ -150,18 +98,16 @@ class ShardTensor:
             memory_budget: memory size in bytes
             
         """
-        # 暂时先假设为float tensor
+        # FIXME we assume it is Float tensor
         element_size = tensor.stride(0) * 4
         return memory_budget // element_size
     
     
     def from_cpu_tensor(self, tensor):
-        # 我们假设device按照NUMA顺序已经排序
         cur_pos = 0
         size = 0
-        numa_size = [0, 0]
         offset_array = []
-        # 首先给GPU分配数据
+        # allocate for GPU
         for  device_id, memory_budget in self.shard_tensor_config.device_memory_budget.items():
             size = self.partition(tensor, memory_budget)
             size  = min(size, tensor.shape[0] - cur_pos)
@@ -170,39 +116,21 @@ class ShardTensor:
             self.shard_tensor_config.tensor_offset_device[device_id] = device_offset
             cur_pos += size
             offset_array.append(cur_pos)
-            numa_node = self.topo.get_numa_node(device_id)
-            numa_size[numa_node] += size
             print(f"LOG >>> Assign {int(100 * size * 1.0 / tensor.shape[0])}% data to {device_id}")
             if cur_pos > tensor.shape[0]:
                 break
         if cur_pos < tensor.shape[0]:
-            # 接着继续给CPU分配数据
+            # allocate for CPU
             self.cpu_tensor = tensor[cur_pos:].clone()
             self.cpu_tensor.share_memory_()
             self.shard_tensor.append(self.cpu_tensor, -1)
             print(f"LOG >>> Assign {100 - int(100 * cur_pos * 1.0 / tensor.shape[0])}% data to CPU")
             
         # init config 
-        self.shard_tensor_config.tensor_offset_numa[0] = Offset(0, numa_size[0])
-        self.shard_tensor_config.tensor_offset_numa[1] = Offset(numa_size[0], numa_size[0] + numa_size[1])
         self.shard_tensor_config.offset_array = offset_array
         self.offset_array = self.shard_tensor_config.offset_array.to(self.current_device)
-
-    def collect_device(self, input_orders, nodes, inter_device, wait_streams, wait_results):
-        request_nodes_mask = (nodes >= self.shard_tensor_config.tensor_offset_device[inter_device].start) & (nodes < self.shard_tensor_config.tensor_offset_device[inter_device].end)
-        request_nodes = torch.masked_select(nodes, request_nodes_mask)
-        part_orders = torch.masked_select(input_orders, request_nodes_mask)
-        with torch.cuda.device(inter_device):
-            if self.device_stream.get(inter_device, None) is None:
-                self.device_stream[inter_device] = torch.cuda.Stream(inter_device)
-            with torch.cuda.stream(self.device_stream[inter_device]):
-                request_nodes = request_nodes.to(inter_device, non_blocking=True)
-                result = self.shard_tensor[request_nodes]
-                result = result.to(self.current_device, non_blocking=True)
-        wait_streams.append(self.device_stream[inter_device])
-        wait_results.append((part_orders, result))
     
-    def collect_devicev2(self, part_orders, request_nodes, inter_device, wait_streams, wait_results):
+    def collect_device(self, part_orders, request_nodes, inter_device, wait_streams, wait_results):
 
         
         with torch.cuda.device(inter_device):
@@ -214,55 +142,30 @@ class ShardTensor:
                 result = result.to(self.current_device, non_blocking=True)
         wait_streams.append(self.device_stream[inter_device])
         wait_results.append((part_orders, result))
-
+    
     def __getitem__(self, nodes):
-
-
-        if self.device_stream.get(self.current_device, None) is None:
-            self.device_stream[self.current_device] = torch.cuda.Stream(self.current_device)
-
-        with torch.cuda.stream(self.device_stream[self.current_device]):
-            feature = self.shard_tensor[nodes]
-        
-        input_orders = torch.arange(nodes.size(0), dtype=torch.long, device = self.current_device)
-
-        # call inter request, we unfold for loop 
-        inter_numa_devices = self.topo.Numa2Device[1 - self.current_numa]
-        intra_numa_devices = self.topo.Numa2Device[self.current_numa]
-        wait_streams = []
-        wait_results = []
-        for device in inter_numa_devices:
-            if self.shard_tensor_config.tensor_offset_device.get(device, None) is not None:
-                self.collect_device(input_orders, nodes, device, wait_streams, wait_results)
-        
-        for device in intra_numa_devices:
-            if device == self.current_device:
-                continue
-            if self.shard_tensor_config.tensor_offset_device.get(device, None) is not None:
-                self.collect_device(input_orders, nodes, device, wait_streams, wait_results)
-
-        for stream, result  in zip(wait_streams, wait_results):
-            stream.synchronize()
-            feature[result[0]] = result[1]
-        self.device_stream[self.current_device].synchronize()
-
-        return feature
-    
-    def collect(self, nodes):
         dispatch_book = {}
-        start_time = time.time()
-        sorted_nodes, sorted_order = torch.sort(nodes)
-        offsets = torch.searchsorted(sorted_nodes, self.offset_array, right=True)
-        device_list = self.shard_tensor_config.device_memory_budget.keys()
-        start = 0
-        end = 0
-        for device, offset in zip(device_list, offsets):
-            if device == self.current_device:
-                start = offset
-                continue
-            dispatch_book[device] = DeviceCollectionJob(sorted_order[start:end], sorted_nodes[start:end])
-            start = offset
-        print(f"preprocess time = {time.time() - start_time}")
+        print(f"check shard_tensor device list ", self.shard_tensor_config.device_list)
+        if len(self.shard_tensor_config.device_list)> 0 :
+            start_time = time.time()
+            sorted_nodes, sorted_order = torch.sort(nodes)
+            offsets = torch.searchsorted(sorted_nodes, self.offset_array, right=True)
+            #equals = sorted_nodes[offsets] == self.offset_array
+            #print(equals)
+            device_list = self.shard_tensor_config.device_memory_budget.keys()
+            start = 0
+            end = 0
+            index = 0
+            for device, offset in zip(device_list, offsets):
+                if device == self.current_device:
+                    start = offset
+                    index += 1
+                    continue
+                end = offset# + 1 if equals[index] else offset
+                dispatch_book[device] = DeviceCollectionJob(sorted_order[start:end], sorted_nodes[start:end])
+                start = end
+                index += 1
+            print(f"preprocess time = {time.time() - start_time}")
 
         if self.device_stream.get(self.current_device, None) is None:
             self.device_stream[self.current_device] = torch.cuda.Stream(self.current_device)
@@ -275,7 +178,7 @@ class ShardTensor:
         for device in dispatch_book:
             if device == self.current_device:
                 continue
-            self.collect_devicev2(dispatch_book[device].part_orders, dispatch_book[device].request_nodes, device, wait_streams, wait_results)
+            self.collect_device(dispatch_book[device].part_orders, dispatch_book[device].request_nodes, device, wait_streams, wait_results)
         
         for stream, result  in zip(wait_streams, wait_results):
             stream.synchronize()
@@ -309,6 +212,7 @@ class ShardTensor:
         if cpu_tensor is not None:
             self.cpu_tensor = cpu_tensor
             self.shard_tensor.append(cpu_tensor, -1)
+        self.offset_array = self.shard_tensor_config.offset_array.to(self.current_device)
 
     @classmethod
     def new_from_share_ipc(cls, ipc_handles):

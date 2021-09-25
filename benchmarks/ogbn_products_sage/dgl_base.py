@@ -16,12 +16,14 @@ import sklearn.linear_model as lm
 import sklearn.metrics as skm
 from quiver.shard_tensor import ShardTensor as PyShardTensor
 from quiver.shard_tensor import ShardTensorConfig
+from shuffle import split
+import torch_quiver as torch_qv
 
 
 # 0: CPU, 1: GPU, 2: ShardTensor
 GPU_FEATURE = 2
 # 0: CPU, 1: GPU, 2: ZeroCopy
-GPU_SAMPLE = 1
+GPU_SAMPLE = 2
 
 class SAGE(nn.Module):
     def __init__(self, in_feats, n_hidden, n_classes, n_layers, activation, dropout):
@@ -132,7 +134,7 @@ def load_ogb(name, root=None):
     from ogb.nodeproppred import DglNodePropPredDataset
 
     print('load', name)
-    data = DglNodePropPredDataset(name=name)
+    data = DglNodePropPredDataset(name=name, root="/home/guest/local_quiver/dataset")
     print('finish loading', name)
     splitted_idx = data.get_idx_split()
     graph, labels = data[0]
@@ -219,7 +221,11 @@ def run(proc_id, n_gpus, args, devices, data):
         train_nfeat = train_nfeat.to(dev_id)
         # train_labels = train_labels.to(dev_id)
     if GPU_FEATURE == 2:
-        train_nfeat = PyShardTensor.new_from_share_ipc(train_nfeat)
+        shards, prev_order, new_order = train_nfeat
+        train_nfeat = torch_qv.ShardTensor(dev_id)
+        train_nfeat.append(shards[0], dev_id)
+        train_nfeat.append(shards[1], -1)
+        new_order = new_order.to(dev_id)
         in_feats = 100
     else:
         in_feats = train_nfeat.shape[1]
@@ -269,6 +275,8 @@ def run(proc_id, n_gpus, args, devices, data):
         for step, (input_nodes, seeds, blocks) in enumerate(dataloader):
             t1 = time.time()
             # Load the input features as well as output labels
+            if GPU_FEATURE == 2:
+                input_nodes = new_order[input_nodes]
             batch_inputs, batch_labels = load_subtensor(train_nfeat, train_labels,
                                                         seeds, input_nodes, dev_id)
             blocks = [block.int().to(dev_id) for block in blocks]
@@ -329,7 +337,7 @@ if __name__ == '__main__':
     argparser.add_argument('--num-hidden', type=int, default=256)
     argparser.add_argument('--num-layers', type=int, default=3)
     argparser.add_argument('--fan-out', type=str, default='15,10,5')
-    argparser.add_argument('--batch-size', type=int, default=512)
+    argparser.add_argument('--batch-size', type=int, default=1024)
     argparser.add_argument('--log-every', type=int, default=20)
     argparser.add_argument('--eval-every', type=int, default=5)
     argparser.add_argument('--lr', type=float, default=0.003)
@@ -380,22 +388,17 @@ if __name__ == '__main__':
     if GPU_FEATURE == 2:
         NUM_ELEMENT = train_nfeat.size(0)
         # distributed feature on GPUs and CPU
-        shard_tensor_config = ShardTensorConfig({0: "180M", 1: "180M", 2: "180M", 3: "180M"})
-        shard_tensor = PyShardTensor(0, shard_tensor_config)
-        shard_tensor.from_cpu_tensor(train_nfeat)
-        ipc_handle = shard_tensor.share_ipc()
-        data = n_classes, g, ipc_handle, train_labels
+        ratio = [0.2, 0.8]
+        shard_tensor = split(ratio)
+        data = n_classes, g, shard_tensor, train_labels
     else:
         data = n_classes, g, train_nfeat, train_labels
 
-    if n_gpus == 1:
-        run(0, n_gpus, args, devices, data)
-    else:
-        mp.set_start_method('spawn')
-        procs = []
-        for proc_id in range(n_gpus):
-            p = mp.Process(target=run, args=(proc_id, n_gpus, args, devices, data))
-            p.start()
-            procs.append(p)
-        for p in procs:
-            p.join()
+    mp.set_start_method('spawn')
+    procs = []
+    for proc_id in range(n_gpus):
+        p = mp.Process(target=run, args=(proc_id, n_gpus, args, devices, data))
+        p.start()
+        procs.append(p)
+    for p in procs:
+        p.join()

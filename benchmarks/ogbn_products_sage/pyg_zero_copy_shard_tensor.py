@@ -21,7 +21,24 @@ from quiver.shard_tensor import ShardTensorConfig, DeviceCollectionJob
 from ogb.nodeproppred import PygNodePropPredDataset, Evaluator
 import random
 from typing import List, NamedTuple, Optional, Tuple
+from torch.utils.tensorboard import SummaryWriter 
 
+
+REINDEX = True
+
+def reindex_by_config(adj_csr, graph_feature, gpu_portion):
+    degree = adj_csr.indptr[1:] - adj_csr.indptr[:-1]
+    degree = torch.from_numpy(degree)
+    node_count = degree.shape[0]
+    _, prev_order = torch.sort(degree, descending=True)
+    total_range = torch.arange(node_count, dtype=torch.long)
+    perm_range = torch.randperm(int(node_count * gpu_portion))
+
+    new_order = torch.zeros_like(prev_order)
+    prev_order[: int(node_count * gpu_portion)] = prev_order[perm_range]
+    new_order[prev_order] = total_range
+    graph_feature = graph_feature[prev_order]
+    return graph_feature, new_order
 
 class InterProcData:
     edge_index = None
@@ -31,6 +48,7 @@ class InterProcData:
     y = None
     num_features = None
     num_classes = None
+    new_order = None
 
 
 class Adj(NamedTuple):
@@ -161,15 +179,18 @@ def run(rank, world_size, shard_tensor_ipc_handle, inter_proc_data: InterProcDat
 
     train_idx = inter_proc_data.train_idx
     y = inter_proc_data.y.squeeze().to(rank)
-    x = PyShardTensor.new_from_share_ipc(shard_tensor_ipc_handle)
+
+    new_order = inter_proc_data.new_order.to(rank)
     
 
     csr_mat = get_csr_from_coo(inter_proc_data.edge_index)
     sampler = AsyncCudaNeighborSampler(csr_indptr=csr_mat.indptr, csr_indices=csr_mat.indices, device=rank, copy=True)
+    x = PyShardTensor.new_from_share_ipc(shard_tensor_ipc_handle, rank)
     batch_size = 2048
-    train_dataset = NodeDataset(batch_size=batch_size, nodes=train_idx, tensor_offset_device=x.shard_tensor_config.tensor_offset_device)
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, num_workers=2, collate_fn = fake_collate, pin_memory=True)
+    train_loader = torch.utils.data.DataLoader(train_idx, batch_size=batch_size, pin_memory=True)
+    writer = SummaryWriter(f'{rank}_pyg_log')
+
 
     torch.manual_seed(12345)
     model = SAGE(inter_proc_data.num_features, 256, inter_proc_data.num_classes, num_layers=3).to(rank)
@@ -183,25 +204,28 @@ def run(rank, world_size, shard_tensor_ipc_handle, inter_proc_data: InterProcDat
     for epoch in range(1, 21):
         model.train()
         start_time = time.time()
-        for iter_step, data in enumerate(train_loader):
-            seeds, dispatch_book = data[0]
+        for iter_step, seeds in enumerate(train_loader):
+            start = time.time()
             n_id, batch_size, adjs = sample(sampler, rank, seeds, [15, 10, 5])
-            feature = x.collect(n_id, dispatch_book)
-            time_points.append(time.time()  - start_time)
-            if rank == 0 and iter_step % 20 == 0:
-                print(f"average data time = {np.mean(np.array(time_points[20:]))}")
-                
-        
-            adjs = [adj.to(rank) for adj in adjs]
+            writer.add_scalar(f"{rank}_sample", time.time() - start, iter_step)
+            start = time.time()
+            new_n_id = new_order[n_id]
+            
+            feature = x[new_n_id]
+            writer.add_scalar(f"{rank}_feature", time.time() - start, iter_step)
 
+
+            adjs = [adj.to(rank) for adj in adjs]
+            start = time.time()
             optimizer.zero_grad()
             out = model(feature, adjs)
             loss = F.nll_loss(out, y[n_id[:batch_size]])
             loss.backward()
             optimizer.step()
+            writer.add_scalar(f"{rank}_train", time.time() - start, iter_step)
             if rank == 0 and iter_step > 10:
                 iter_points.append(time.time()  - start_time)
-                print(f"average iter time = {np.mean(np.array(iter_points[10:]))}，throughput = {world_size * batch_size / np.mean(np.array(iter_points[10:])) } samples/second")
+                writer.add_scalar(f"{rank}_throughput", world_size * batch_size / np.mean(np.array(iter_points[10:])), iter_step)
             
             start_time = time.time()
         time_points.clear()
@@ -237,12 +261,21 @@ if __name__ == '__main__':
     
     inter_proc_data.y = data.y
 
-    shard_tensor_config = ShardTensorConfig({})
+    shard_tensor_config = ShardTensorConfig({0:"200M"})
 
     shard_tensor = PyShardTensor(0, shard_tensor_config)
+    csr_mat = get_csr_from_coo(inter_proc_data.edge_index)
+    if REINDEX:
+        feature, new_order = reindex_by_config(csr_mat, data.x, 0)
+    else:
+        feature = data.x
+        node_count = csr_mat.indptr.shape[0] - 1 
+        new_order = torch.arange(node_count, dtype=torch.long)
+    
+    inter_proc_data.new_order = new_order
 
     shard_tensor.from_cpu_tensor(data.x)
     ipc_handle = shard_tensor.share_ipc()
-    world_size = 2
+    world_size = 1
     print('Let\'s use', world_size, 'GPUs!')
     mp.spawn(run, args=(world_size, ipc_handle, inter_proc_data), nprocs=world_size, join=True)

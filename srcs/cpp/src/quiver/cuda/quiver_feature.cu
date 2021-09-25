@@ -94,7 +94,7 @@ class ShardTensor
         // Check accessbility
         if(item.device >= 0){
             // TODO
-            /*
+            
             int access_i_j, access_j_i;
             cudaDeviceCanAccessPeer(&access_i_j, device_, item.device);
             cudaDeviceCanAccessPeer(&access_j_i, item.device, device_);
@@ -105,12 +105,7 @@ class ShardTensor
                 access_book.push_back(0);
                 //printf("%d <-> %d dont support peer access \n", device_, item.device);
             }
-            */
-            if(item.device == device_){
-                access_book.push_back(1);
-            }else{
-                access_book.push_back(0);
-            }
+            
         }else{
             access_book.push_back(1);
             //printf("%d <-> CPU support peer access \n", device_);
@@ -165,7 +160,7 @@ class ShardTensor
             cudaSetDevice(device_);
 
             // decide access book
-            /*
+            
             int access_i_j, access_j_i;
             cudaDeviceCanAccessPeer(&access_i_j, device_, target_device);
             cudaDeviceCanAccessPeer(&access_j_i, target_device, device_);
@@ -176,12 +171,7 @@ class ShardTensor
                 access_book.push_back(0);
                 //printf("%d <-> %d dont support peer access \n", device_, target_device);
             }
-            */
-            if(target_device == device_){
-                access_book.push_back(1);
-            }else{
-                access_book.push_back(0);
-            }
+        
         }else{
             cudaSetDevice(device_);
             // if target_device < 0, it means we use Zero-Copy 

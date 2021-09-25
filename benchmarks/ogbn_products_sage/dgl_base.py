@@ -330,7 +330,7 @@ def run(proc_id, n_gpus, args, devices, data):
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser("multi-gpu training")
-    argparser.add_argument('--gpu', type=str, default='0,1,2,3',
+    argparser.add_argument('--gpu', type=str, default='0',
                            help="Comma separated list of GPU device IDs.")
     argparser.add_argument('--dataset', type=str, default='ogbn-products')
     argparser.add_argument('--num-epochs', type=int, default=20)

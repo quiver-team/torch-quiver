@@ -388,7 +388,7 @@ if __name__ == '__main__':
     if GPU_FEATURE == 2:
         NUM_ELEMENT = train_nfeat.size(0)
         # distributed feature on GPUs and CPU
-        ratio = [0.2, 0.8]
+        ratio = [0.15, 0.85]
         shard_tensor = split(ratio)
         data = n_classes, g, shard_tensor, train_labels
     else:

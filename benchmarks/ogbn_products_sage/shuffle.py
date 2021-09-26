@@ -35,15 +35,16 @@ def split(ratio):
     new_order = torch.zeros_like(prev_order)
     new_order[prev_order] = total_range
     new_order.share_memory_()
-    last_num = int(ratio[-1] * total_num)
-    cpu_tensor = data.x[prev_order[last_num:]].share_memory_()
     index = 0
     res = []
     for i in range(len(ratio) - 1):
         num = int(ratio[i]*total_num)
         gpu_tensor = data.x[prev_order[index:index+num]].share_memory_()
         res.append(gpu_tensor)
+        index += num
+    cpu_tensor = data.x[prev_order[index:]].clone().share_memory_()
     res.append(cpu_tensor)
+    print(f"gpu {gpu_tensor.size(0)} cpu {cpu_tensor.size(0)}")
     return res, prev_order, new_order
 
 

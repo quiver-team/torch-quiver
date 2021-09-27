@@ -90,6 +90,11 @@ class ShardTensor:
         # cpu part
         self.cpu_tensor = None
 
+        # current stream
+        self.current_stream = torch.cuda.Stream(self.current_device)
+
+
+
     
     def partition(self, tensor, memory_budget):
         """
@@ -132,35 +137,45 @@ class ShardTensor:
     
     def collect_device(self, part_orders, request_nodes, inter_device, wait_streams, wait_results):
 
-        # print(f"device {inter_device} req {len(request_nodes)}")
-        t0 = time.time()
-        with torch.cuda.device(self.current_device):
-            request_nodes = request_nodes.to(inter_device, non_blocking=True)
-        torch.cuda.synchronize(self.current_device)
-        t1 = time.time()
-        # print(f"{inter_device} prepare {t1 - t0}")
+        if len(wait_results) > 0:
+            with torch.cuda.stream(self.current_stream):
+                wait_streams[-1].synchronize()
+                wait_results[-1][1] = wait_results[-1][1].to(self.current_device)
+
+       
         with torch.cuda.device(inter_device):
-            # if self.device_stream.get(inter_device, None) is None:
-            #     self.device_stream[inter_device] = torch.cuda.Stream(inter_device)
-            # with torch.cuda.stream(self.device_stream[inter_device]):
-            result = self.shard_tensor[request_nodes]
-        torch.cuda.synchronize(inter_device)
-        t2 = time.time()
-        # print(f"{inter_device} collect {t2 - t1}")
-            
-        # wait_streams.append(self.device_stream[inter_device])
-        wait_streams.append(None)
-        wait_results.append((part_orders, result))
+            if self.device_stream.get(inter_device, None) is None:
+                self.device_stream[inter_device] = torch.cuda.Stream(inter_device)
+            with torch.cuda.stream(self.device_stream[inter_device]):
+                request_nodes = request_nodes.to(inter_device)
+                result = self.shard_tensor[request_nodes]
+        wait_streams.append(self.device_stream[inter_device])
+        wait_results.append([part_orders, result])
+
     
     def __getitem__(self, nodes):
+        
+        #start_time = time.time()
+        if self.device_stream.get(self.current_device, None) is None:
+            self.device_stream[self.current_device] = torch.cuda.Stream(self.current_device)
+        
+        if len(self.shard_tensor_config.device_list)> 0:
+            with torch.cuda.stream(self.current_stream):
+                sorted_nodes, sorted_order = torch.sort(nodes)
+                offsets = torch.searchsorted(sorted_nodes, self.offset_array)
+        #print(f"after sort launch {time.time() - start_time}")
+
+
+        with torch.cuda.stream(self.device_stream[self.current_device]):
+            feature = self.shard_tensor[nodes]
+        
+        #print(f"after local collect launch {time.time() - start_time}")
+        
+
         dispatch_book = {}
-        # print(f"check shard_tensor device list ", self.shard_tensor_config.device_list)
         if len(self.shard_tensor_config.device_list)> 0 :
-            start_time = time.time()
-            sorted_nodes, sorted_order = torch.sort(nodes)
-            offsets = torch.searchsorted(sorted_nodes, self.offset_array, right=False)
-            #equals = sorted_nodes[offsets] == self.offset_array
-            #print(equals)
+            self.current_stream.synchronize()
+
             device_list = self.shard_tensor_config.device_memory_budget.keys()
             start = 0
             end = 0
@@ -170,38 +185,40 @@ class ShardTensor:
                     start = offset
                     index += 1
                     continue
-                end = offset# + 1 if equals[index] else offset
-                # print(device)
-                # print(f"min {torch.min(sorted_nodes[start:end])}, max {torch.max(sorted_nodes[start:end])}")
+                end = offset
                 dispatch_book[device] = DeviceCollectionJob(sorted_order[start:end], sorted_nodes[start:end])
                 start = end
                 index += 1
-            # print(f"preprocess time = {time.time() - start_time}")
 
-        if self.device_stream.get(self.current_device, None) is None:
-            self.device_stream[self.current_device] = torch.cuda.Stream(self.current_device)
-
-        with torch.cuda.stream(self.device_stream[self.current_device]):
-            feature = self.shard_tensor[nodes]
         
         wait_streams = []
         wait_results = []
-        for device in dispatch_book:
-            if device == self.current_device:
-                continue
-            self.collect_device(dispatch_book[device].part_orders, dispatch_book[device].request_nodes, device, wait_streams, wait_results)
-        t0 = time.time()
-        for stream, result  in zip(wait_streams, wait_results):
-            # stream.synchronize()
-            reorder, nodes = result
-            # with torch.cuda.stream(self.device_stream[self.current_device]):
-            nodes = nodes.to(self.current_device, non_blocking=True)
-            feature[reorder] = nodes
+        device_list = list(dispatch_book.keys())
         
-        # self.device_stream[self.current_device].synchronize()
-        torch.cuda.synchronize(self.current_device)
-        t1 = time.time()
-        # print(f"{self.current_device} local {t1 - t0}")
+        if len(device_list) > 0:
+            device = device_list.pop()
+            self.collect_device(dispatch_book[device].part_orders, dispatch_book[device].request_nodes, device, wait_streams, wait_results)
+            #print(f"after device {device} collection kernel launch {time.time() - start_time}")
+        
+        if len(device_list) > 0:
+            device = device_list.pop()
+            self.collect_device(dispatch_book[device].part_orders, dispatch_book[device].request_nodes, device, wait_streams, wait_results)
+            #print(f"after device {device} collection kernel launch {time.time() - start_time}")
+        
+        if len(device_list) > 0:
+            device = device_list.pop()
+            self.collect_device(dispatch_book[device].part_orders, dispatch_book[device].request_nodes, device, wait_streams, wait_results)
+            #print(f"after device {device} collection kernel launch {time.time() - start_time}")
+        
+        if len(wait_streams) > 0:
+            self.current_stream.synchronize()
+            wait_streams[-1].synchronize()
+            wait_results[-1][1] = wait_results[-1][1].to(self.current_device)
+            for result  in wait_results:
+                feature[result[0]] = result[1]
+            
+        self.device_stream[self.current_device].synchronize()
+        #print(f"after all synchronize {time.time() - start_time}")
 
         return feature
     

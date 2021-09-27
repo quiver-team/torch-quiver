@@ -161,15 +161,14 @@ def run(rank, world_size, shard_tensor_ipc_handle, inter_proc_data: InterProcDat
 
     train_idx = inter_proc_data.train_idx
     y = inter_proc_data.y.squeeze().to(rank)
-    x = PyShardTensor.new_from_share_ipc(shard_tensor_ipc_handle)
     
 
     csr_mat = get_csr_from_coo(inter_proc_data.edge_index)
     sampler = AsyncCudaNeighborSampler(csr_indptr=csr_mat.indptr, csr_indices=csr_mat.indices, device=rank, copy=True)
+    x = PyShardTensor.new_from_share_ipc(shard_tensor_ipc_handle)
     batch_size = 2048
-    train_dataset = NodeDataset(batch_size=batch_size, nodes=train_idx, tensor_offset_device=x.shard_tensor_config.tensor_offset_device)
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, num_workers=2, collate_fn = fake_collate, pin_memory=True)
+    train_loader = torch.utils.data.DataLoader(train_idx, batch_size=batch_size, pin_memory=True)
 
     torch.manual_seed(12345)
     model = SAGE(inter_proc_data.num_features, 256, inter_proc_data.num_classes, num_layers=3).to(rank)
@@ -183,22 +182,32 @@ def run(rank, world_size, shard_tensor_ipc_handle, inter_proc_data: InterProcDat
     for epoch in range(1, 21):
         model.train()
         start_time = time.time()
-        for iter_step, data in enumerate(train_loader):
-            seeds, dispatch_book = data[0]
+        for iter_step, seeds in enumerate(train_loader):
+            start = time.time()
             n_id, batch_size, adjs = sample(sampler, rank, seeds, [15, 10, 5])
-            feature = x.collect(n_id, dispatch_book)
+            if rank == 0:
+                print(f"sample time = {time.time() - start}")
+            start = time.time()
+            feature = x[n_id]
+            if rank == 0:
+                
+                print(f"feature time = {time.time() - start}")
+
             time_points.append(time.time()  - start_time)
             if rank == 0 and iter_step % 20 == 0:
                 print(f"average data time = {np.mean(np.array(time_points[20:]))}")
                 
-        
-            adjs = [adj.to(rank) for adj in adjs]
 
+            adjs = [adj.to(rank) for adj in adjs]
+            start = time.time()
             optimizer.zero_grad()
             out = model(feature, adjs)
             loss = F.nll_loss(out, y[n_id[:batch_size]])
             loss.backward()
             optimizer.step()
+            if rank == 0:
+                
+                print(f"training time = {time.time() - start}")
             if rank == 0 and iter_step > 10:
                 iter_points.append(time.time()  - start_time)
                 print(f"average iter time = {np.mean(np.array(iter_points[10:]))}，throughput = {world_size * batch_size / np.mean(np.array(iter_points[10:])) } samples/second")
@@ -237,12 +246,12 @@ if __name__ == '__main__':
     
     inter_proc_data.y = data.y
 
-    shard_tensor_config = ShardTensorConfig({})
+    shard_tensor_config = ShardTensorConfig({0:"200M"})
 
     shard_tensor = PyShardTensor(0, shard_tensor_config)
 
     shard_tensor.from_cpu_tensor(data.x)
     ipc_handle = shard_tensor.share_ipc()
-    world_size = 2
+    world_size = 1
     print('Let\'s use', world_size, 'GPUs!')
     mp.spawn(run, args=(world_size, ipc_handle, inter_proc_data), nprocs=world_size, join=True)

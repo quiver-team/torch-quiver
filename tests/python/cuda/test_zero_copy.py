@@ -5,6 +5,8 @@ import torch_quiver as qv
 import time
 from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
 from scipy.sparse import csr_matrix
+import os
+import os.path as osp
 
 def get_csr_from_coo(edge_index):
     src = edge_index[0].numpy()
@@ -90,6 +92,7 @@ def test_neighbor_sampler_with_real_graph():
     n_id, count = quiver.sample_neighbor(0, cuda_seeds, neighbor_size)
     print(f"Zero-Copy sampling method consumed {time.time() - start}, sampled res length = {n_id.shape}")
     
+    
     ##########################
     # DMA Sampling
     ##########################
@@ -113,10 +116,44 @@ def test_neighbor_sampler_with_real_graph():
     n_id3, count3 = quiver.sample_neighbor(seeds, neighbor_size)
     print(f"CPU sampling method consumed {time.time() - start}, sampled res length = {n_id3.shape}")
     
+
+def test_zero_copy_sampling_gpu_utilization():
+    print(f"{'*' * 10} TEST WITH REAL GRAPH {'*' * 10}")
+    home = os.getenv('HOME')
+    data_dir = osp.join(home, '.pyg')
+    root = osp.join(data_dir, 'data', 'products')
+    dataset = PygNodePropPredDataset('ogbn-products', root)
+    data = dataset[0]
+    edge_index = data.edge_index
+    seeds_size = 128 * 15 * 10
+    neighbor_size = 5
+    
+    csr_mat = get_csr_from_coo(edge_index)
+    print(f"mean degree of graph = {np.mean(csr_mat.indptr[1:] - csr_mat.indptr[:-1])}")
+    graph_size = csr_mat.indptr.shape[0] - 1
+    seeds = np.arange(graph_size)
+    np.random.shuffle(seeds)
+    seeds =seeds[:seeds_size]
+    
+    ###########################
+    # Zero-Copy Sampling
+    ############################
+    rowptr = torch.from_numpy(csr_mat.indptr).type(torch.long)
+    colptr = torch.from_numpy(csr_mat.indices).type(torch.long)
+    edge_ids = torch.LongTensor([1])
+    quiver = qv.new_quiver_from_csr_array(rowptr, colptr, edge_ids, 0, True, False)
+    seeds = torch.from_numpy(seeds).type(torch.long)
+    cuda_seeds = seeds.cuda()
+    start = time.time()
+    while True:
+        n_id, count = quiver.sample_neighbor(0, cuda_seeds, neighbor_size)
+    #print(f"Zero-Copy sampling method consumed {time.time() - start}, sampled res length = {n_id.shape}")
     
     
     
-test_neighbor_sampler_with_fake_graph()
-test_neighbor_sampler_with_real_graph()
+    
+#test_neighbor_sampler_with_fake_graph()
+#test_neighbor_sampler_with_real_graph()
+test_zero_copy_sampling_gpu_utilization()
     
     

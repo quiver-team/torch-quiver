@@ -151,6 +151,7 @@ class ShardTensor:
                 result = self.shard_tensor[request_nodes]
         wait_streams.append(self.device_stream[inter_device])
         wait_results.append([part_orders, result])
+
     
     def __getitem__(self, nodes):
         
@@ -174,6 +175,7 @@ class ShardTensor:
         dispatch_book = {}
         if len(self.shard_tensor_config.device_list)> 0 :
             self.current_stream.synchronize()
+
             device_list = self.shard_tensor_config.device_memory_budget.keys()
             start = 0
             end = 0
@@ -187,7 +189,7 @@ class ShardTensor:
                 dispatch_book[device] = DeviceCollectionJob(sorted_order[start:end], sorted_nodes[start:end])
                 start = end
                 index += 1
-        #print(f"after preprocess time = {time.time() - start_time}")
+
         
         wait_streams = []
         wait_results = []
@@ -217,7 +219,6 @@ class ShardTensor:
             
         self.device_stream[self.current_device].synchronize()
         #print(f"after all synchronize {time.time() - start_time}")
-        
 
         return feature
     

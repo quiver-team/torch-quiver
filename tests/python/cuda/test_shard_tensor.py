@@ -9,7 +9,7 @@ import torch.multiprocessing as mp
 import gc
 
 from quiver.shard_tensor import ShardTensor as PyShardTensor
-from quiver.shard_tensor import ShardTensorConfig, DeviceCollectionJob
+from quiver.shard_tensor import ShardTensorConfig
 from quiver.async_feature import TorchShardTensor
 
 def test_normal_feature_collection():
@@ -75,7 +75,7 @@ def pyshard_tensor_ipc_child_proc(rank, ipc_handle, tensor):
     NUM_ELEMENT = 1000000
     SAMPLE_SIZE = 80000
     torch.cuda.set_device(rank)
-    new_shard_tensor = PyShardTensor.new_from_share_ipc(ipc_handle)
+    new_shard_tensor = PyShardTensor.new_from_share_ipc(ipc_handle, rank)
 
     host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
     indices = torch.from_numpy(host_indice).type(torch.long)
@@ -112,7 +112,12 @@ def test_py_shard_tensor_ipc():
         0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
     tensor = torch.from_numpy(host_tensor).type(torch.float32)
     tensor.share_memory_()
-    shard_tensor_config = ShardTensorConfig({0:"1.1G", 1:"0.9G", 2:"1.1G", 3:"1.1G"})
+    # 所有数据均在CPU
+    #shard_tensor_config = ShardTensorConfig({})
+    # 20%数据在GPU0，80%的数据在CPU
+    # 20%的数据在GPU0， 20%的数据在GPU3，60%的数据在CPU
+    shard_tensor_config = ShardTensorConfig({0:"0.9G", 3:"0.9G", 2:"0.9G"})
+
     shard_tensor = PyShardTensor(current_device, shard_tensor_config)
     shard_tensor.from_cpu_tensor(tensor)
 
@@ -245,10 +250,11 @@ def test_feature_collection_gpu_utlization():
 
 if __name__ == "__main__":
     mp.set_start_method("spawn")
+    qv.init_p2p()
     #test_py_shard_tensor_basic()
     #test_normal_feature_collection()
     #basic_test()
-    #test_py_shard_tensor_ipc()
+    test_py_shard_tensor_ipc()
     #test_torch_shard_tensor()
     # test_py_shard_tensor_basic()
-    test_feature_collection_gpu_utlization()
+    #test_feature_collection_gpu_utlization()

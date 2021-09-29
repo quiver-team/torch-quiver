@@ -65,7 +65,9 @@ def test_neighbor_sampler_with_fake_graph():
     
 def test_neighbor_sampler_with_real_graph():
     print(f"{'*' * 10} TEST WITH REAL GRAPH {'*' * 10}")
-    root = "/home/dalong/data/"
+    home = os.getenv('HOME')
+    data_dir = osp.join(home, '.pyg')
+    root = osp.join(data_dir, 'data', 'products')
     dataset = PygNodePropPredDataset('ogbn-products', root)
     data = dataset[0]
     edge_index = data.edge_index
@@ -153,7 +155,7 @@ def test_zero_copy_sampling_gpu_utilization():
     
     
 #test_neighbor_sampler_with_fake_graph()
-#test_neighbor_sampler_with_real_graph()
-test_zero_copy_sampling_gpu_utilization()
+test_neighbor_sampler_with_real_graph()
+#test_zero_copy_sampling_gpu_utilization()
     
     

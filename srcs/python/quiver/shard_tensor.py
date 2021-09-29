@@ -191,6 +191,9 @@ class ShardTensor:
         wait_streams.append(self.device_stream[inter_device])
         wait_results.append((part_orders, result))
 
+
+
+    
     def __getitem__(self, nodes):
 
         if self.device_stream.get(self.current_device, None) is None:
@@ -204,6 +207,7 @@ class ShardTensor:
 
         # call inter request, we unfold for loop 
         inter_numa_devices = self.topo.Numa2Device[1 - self.current_numa]
+
         wait_streams = []
         wait_results = []
 
@@ -223,6 +227,7 @@ class ShardTensor:
         for stream, result  in zip(wait_streams, wait_results):
             stream.synchronize()
             feature[result[0]] = result[1]
+
 
         self.device_stream[self.current_device].synchronize()
         return feature

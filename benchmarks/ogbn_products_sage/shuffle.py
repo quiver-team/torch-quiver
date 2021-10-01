@@ -4,7 +4,6 @@ import os
 import os.path as osp
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
 
 
 def get_csr_from_coo(edge_index):
@@ -17,11 +16,8 @@ def get_csr_from_coo(edge_index):
     return csr_mat
 
 
-def split(ratio):
-    home = os.getenv('HOME')
-    data_dir = osp.join(home, '.pyg')
-    root = osp.join(data_dir, 'data', 'products')
-    dataset = PygNodePropPredDataset('ogbn-products', root)
+def split(ratio, name, root):
+    dataset = PygNodePropPredDataset(name, root)
     data = dataset[0]
     csr = get_csr_from_coo(data.edge_index)
     indptr = csr.indptr
@@ -29,22 +25,23 @@ def split(ratio):
     sub = torch.LongTensor(indptr[1:])
     deg = sub - prev
     sorted_deg, prev_order = torch.sort(deg, descending=True)
-    prev_order.share_memory_()
     total_num = data.x.shape[0]
     total_range = torch.arange(total_num, dtype=torch.long)
+    if isinstance(ratio, float):
+        perm_range = torch.randperm(int(total_num * ratio))
+        prev_order[:int(total_num * ratio)] = prev_order[perm_range]
     new_order = torch.zeros_like(prev_order)
     new_order[prev_order] = total_range
-    new_order.share_memory_()
     index = 0
     res = []
-    for i in range(len(ratio) - 1):
-        num = int(ratio[i]*total_num)
-        gpu_tensor = data.x[prev_order[index:index+num]].share_memory_()
-        res.append(gpu_tensor)
-        index += num
-    cpu_tensor = data.x[prev_order[index:]].clone().share_memory_()
-    res.append(cpu_tensor)
-    print(f"gpu {gpu_tensor.size(0)} cpu {cpu_tensor.size(0)}")
+    if isinstance(ratio, list):
+        for i in range(len(ratio) - 1):
+            num = int(ratio[i]*total_num)
+            gpu_tensor = data.x[prev_order[index:index+num]].share_memory_()
+            res.append(gpu_tensor)
+            index += num
+        cpu_tensor = data.x[prev_order[index:]].clone().share_memory_()
+        res.append(cpu_tensor)
     return res, prev_order, new_order
 
 

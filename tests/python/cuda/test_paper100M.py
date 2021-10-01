@@ -12,27 +12,40 @@ from quiver.shard_tensor import ShardTensor as PyShardTensor
 from quiver.shard_tensor import ShardTensorConfig
 from quiver.async_feature import TorchShardTensor
 from torch_geometric.utils import to_undirected, dropout_adj
+from scipy.sparse import csr_matrix
 
 
+# data_root = "/home/zy/papers/ogbn_papers100M/raw/"
+# label = np.load(osp.join(data_root, "node-label.npz"))
+# data = np.load(osp.join(data_root, "data.npz"))
 
-data_root = "/home/zy/papers/ogbn_papers100M/raw/"
-data = np.load(osp.join(data_root, "data.npz"))
+def get_csr_from_coo(edge_index):
+    src = edge_index[0]
+    dst = edge_index[1]
+    node_count = max(np.max(src), np.max(dst))
+    data = np.zeros(dst.shape, dtype=np.int32)
+    csr_mat = csr_matrix(
+        (data, (edge_index[0], edge_index[1])))
+    return csr_mat
 
 def process_topo():
     edge_index = data["edge_index"]
     print("LOG>>> Load Finished")
-    edge_index = torch.from_numpy(edge_index)
     num_nodes = data["num_nodes_list"][0]
 
     print("LOG>>> Begin Process")
 
-    edge_index = to_undirected(edge_index, num_nodes=num_nodes)
+    # edge_index = to_undirected(edge_index, num_nodes=num_nodes)
+    csr_mat = get_csr_from_coo(edge_index)
+    indptr = csr_mat.indptr
+    indices = csr_mat.indices
+    indptr = torch.from_numpy(indptr).type(torch.long)
+    indices = torch.from_numpy(indices).type(torch.long)
     
     print("LOG>>> Begin Save")
 
-
-
-    np.save("paper100m_undirected", edge_index)
+    torch.save(indptr, "/home/zy/papers/ogbn_papers100M/csr/indptr.pt")
+    torch.save(indices, "/home/zy/papers/ogbn_papers100M/csr/indices.pt")
 
 def pyshard_tensor_ipc_child_proc(rank, ipc_handle, tensor):
 
@@ -64,16 +77,30 @@ def pyshard_tensor_ipc_child_proc(rank, ipc_handle, tensor):
     
 
 def process_feature():
+    print("LOG>>> Load Finished")
     NUM_ELEMENT = data["num_nodes_list"][0]
-    SAMPLE_SIZE = 80000
+
+    nid_feat = data["node_feat"]
+    tensor = torch.from_numpy(nid_feat).type(torch.float)
+    print("LOG>>> Begin Process")
+    torch.save(tensor, "/home/zy/papers/ogbn_papers100M/feat/feature.pt")
+
+def process_label():
+    print("LOG>>> Load Finished")
+    node_label = label["node_label"]
+    torch.save(node_label, "/home/zy/papers/ogbn_papers100M/label/label.pt")
+
+def feature_test():
+    SAMPLE_SIZE = 100000
+    NUM_ELEMENT = 111059956
     
     host_indice = np.random.randint(0, NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
     indices = torch.from_numpy(host_indice).type(torch.long)
     device_indices = indices.to(0)
 
-    nid_feat = data["node_feat"]
-    tensor = torch.from_numpy(nid_feat)
-    shard_tensor_config = ShardTensorConfig({0:"20G", 1:"20G"})
+    print("LOG>>> Begin Process")
+    tensor = torch.load("/home/zy/papers/ogbn_papers100M/feat/feature.pt")
+    shard_tensor_config = ShardTensorConfig({0:"11G", 1:"11G"})
     shard_tensor = PyShardTensor(0, shard_tensor_config)
 
     shard_tensor.from_cpu_tensor(tensor)
@@ -84,7 +111,7 @@ def process_feature():
 
 
     start = time.time()
-    feature = new_shard_tensor[device_indices]
+    feature = shard_tensor[device_indices]
     consumed_time = time.time() - start
     feature = feature.cpu().numpy()
     feature_gt = tensor[indices].numpy()
@@ -93,10 +120,9 @@ def process_feature():
 
     print(
         f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s, consumed {consumed_time}s")
-    
 
-
-#process_topo()
+# process_topo()
 qv.init_p2p()
-process_feature()
-
+# process_feature()
+# process_label()
+feature_test()

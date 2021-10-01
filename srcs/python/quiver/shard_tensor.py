@@ -164,9 +164,9 @@ class ShardTensor:
         if cur_pos < tensor.shape[0]:
             # 接着继续给CPU分配数据
             self.cpu_tensor = tensor[cur_pos:].clone()
-            self.cpu_tensor.share_memory_()
             self.shard_tensor.append(self.cpu_tensor, -1)
             print(f"LOG >>> Assign {100 - int(100 * cur_pos * 1.0 / tensor.shape[0])}% data to CPU")
+            del tensor
             
         # init config 
         self.shard_tensor_config.tensor_offset_numa[0] = Offset(0, numa_size[0])
@@ -242,6 +242,7 @@ class ShardTensor:
         return self.current_device
     
     def share_ipc(self):
+        self.cpu_tensor.share_memory_()
         items = self.shard_tensor.share_ipc()
         gpu_part_ipc_list = [item.share_ipc() for item in items]
 

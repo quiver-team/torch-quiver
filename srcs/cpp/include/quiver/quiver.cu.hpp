@@ -152,25 +152,20 @@ class quiver<T, CUDA>
     const thrust::device_vector<W> edge_weight_;         // optional
     const thrust::device_vector<W> bucket_edge_weight_;  // optional
 
-    
     // Zero-Map Mode Parameters Begin
-    const T* row_ptr_mapped_;
-    const T* col_idx_mapped_;
-    const T* edge_idx_mapped;
-    const W* edge_weight_mapped_;
-    const W* bucket_edge_weight_mapped_;
+    const T *row_ptr_mapped_;
+    const T *col_idx_mapped_;
+    const T *edge_idx_mapped;
+    const W *edge_weight_mapped_;
+    const W *bucket_edge_weight_mapped_;
     int node_count_;
     int edge_count_;
     // Zero-Map Mode Parameters End
-    
+
     // Quiver Mode
     QuiverMode quiver_mode;
-    
-
 
     const sample_option opt_;
-
-
 
     quiver(thrust::device_vector<T> row_ptr, thrust::device_vector<T> col_idx,
            thrust::device_vector<T> edge_idx)
@@ -182,28 +177,29 @@ class quiver<T, CUDA>
     {
     }
 
-    quiver(thrust::device_vector<T> row_ptr, thrust::device_vector<T> col_idx,
-           thrust::device_vector<T> edge_idx,
-           thrust::device_vector<W> edge_weight,
-           thrust::device_vector<W> bucket_edge_weight)
-        : row_ptr_(std::move(row_ptr)),
-          col_idx_(std::move(col_idx)),
-          edge_idx_(std::move(edge_idx)),
-          edge_weight_(std::move(edge_weight)),
-          bucket_edge_weight_(std::move(bucket_edge_weight)),
-          opt_(true, !edge_idx.empty(), true),
-          quiver_mode(DMA)
+    // quiver(thrust::device_vector<T> row_ptr, thrust::device_vector<T>
+    // col_idx,
+    //        thrust::device_vector<T> edge_idx,
+    //        thrust::device_vector<W> edge_weight,
+    //        thrust::device_vector<W> bucket_edge_weight)
+    //     : row_ptr_(std::move(row_ptr)),
+    //       col_idx_(std::move(col_idx)),
+    //       edge_idx_(std::move(edge_idx)),
+    //       edge_weight_(std::move(edge_weight)),
+    //       bucket_edge_weight_(std::move(bucket_edge_weight)),
+    //       opt_(true, !edge_idx.empty(), true),
+    //       quiver_mode(DMA)
+    // {
+    // }
+    quiver(T *row_ptr, T *col_idx, T *edge_idx, T node_count, T edge_count)
+        : row_ptr_mapped_(std::move(row_ptr)),
+          col_idx_mapped_(std::move(col_idx)),
+          edge_idx_mapped(std::move(edge_idx)),
+          node_count_(node_count),
+          edge_count_(edge_count),
+          opt_(false, edge_idx != nullptr, false),
+          quiver_mode(ZERO_COPY)
     {
-    }
-    quiver(T* row_ptr, T* col_idx, T* edge_idx, T node_count, T edge_count)
-    : row_ptr_mapped_(std::move(row_ptr)),
-      col_idx_mapped_(std::move(col_idx)),
-      edge_idx_mapped(std::move(edge_idx)),
-      node_count_(node_count),
-      edge_count_(edge_count),
-      opt_(true, edge_idx != nullptr, true),
-      quiver_mode(ZERO_COPY)
-    {     
     }
 
   public:
@@ -229,58 +225,56 @@ class quiver<T, CUDA>
         return self(row_ptr, col_idx, edge_idx);
     }
 
-    static self New(T n, thrust::device_vector<T> row_idx,
-                    thrust::device_vector<T> col_idx,
-                    thrust::device_vector<T> edge_idx,
-                    thrust::device_vector<W> edge_weight)
-    {
-        if (!edge_idx.empty()) {
-            thrust::device_vector<thrust::tuple<T, T, T, W>> edges(
-                row_idx.size());
-            zip(row_idx, col_idx, edge_idx, edge_weight, edges);
-            thrust::sort(edges.begin(), edges.end());
-            unzip(edges, row_idx, col_idx, edge_idx, edge_weight);
-        } else {
-            thrust::device_vector<thrust::tuple<T, T, W>> edges(row_idx.size());
-            zip(row_idx, col_idx, edge_weight, edges);
-            thrust::sort(edges.begin(), edges.end());
-            unzip(edges, row_idx, col_idx, edge_weight);
-        }
+    // static self New(T n, thrust::device_vector<T> row_idx,
+    //                 thrust::device_vector<T> col_idx,
+    //                 thrust::device_vector<T> edge_idx,
+    //                 thrust::device_vector<W> edge_weight)
+    // {
+    //     if (!edge_idx.empty()) {
+    //         thrust::device_vector<thrust::tuple<T, T, T, W>> edges(
+    //             row_idx.size());
+    //         zip(row_idx, col_idx, edge_idx, edge_weight, edges);
+    //         thrust::sort(edges.begin(), edges.end());
+    //         unzip(edges, row_idx, col_idx, edge_idx, edge_weight);
+    //     } else {
+    //         thrust::device_vector<thrust::tuple<T, T, W>>
+    //         edges(row_idx.size()); zip(row_idx, col_idx, edge_weight, edges);
+    //         thrust::sort(edges.begin(), edges.end());
+    //         unzip(edges, row_idx, col_idx, edge_weight);
+    //     }
 
-        thrust::device_vector<T> row_ptr(n);
-        thrust::device_vector<T> row_ptr_next(row_idx.size());
-        thrust::device_vector<W> bucket_edge_weight(row_idx.size());
-        thrust::sequence(row_ptr.begin(), row_ptr.end());
-        thrust::sequence(row_ptr_next.begin(), row_ptr_next.end());
-        thrust::lower_bound(row_idx.begin(), row_idx.end(), row_ptr.begin(),
-                            row_ptr.end(), row_ptr.begin());
-        thrust::upper_bound(row_idx.begin(), row_idx.end(),
-                            row_ptr_next.begin(), row_ptr_next.end(),
-                            row_ptr_next.begin());
-        bucket_weight(row_ptr, row_ptr_next, edge_weight, bucket_edge_weight);
-        return self(row_ptr, col_idx, edge_idx, edge_weight,
-                    bucket_edge_weight);
-    }
-    static self New(T* row_idx, T* col_idx, T* edge_idx, T node_count, T edge_count)
+    //     thrust::device_vector<T> row_ptr(n);
+    //     thrust::device_vector<T> row_ptr_next(row_idx.size());
+    //     thrust::device_vector<W> bucket_edge_weight(row_idx.size());
+    //     thrust::sequence(row_ptr.begin(), row_ptr.end());
+    //     thrust::sequence(row_ptr_next.begin(), row_ptr_next.end());
+    //     thrust::lower_bound(row_idx.begin(), row_idx.end(), row_ptr.begin(),
+    //                         row_ptr.end(), row_ptr.begin());
+    //     thrust::upper_bound(row_idx.begin(), row_idx.end(),
+    //                         row_ptr_next.begin(), row_ptr_next.end(),
+    //                         row_ptr_next.begin());
+    //     bucket_weight(row_ptr, row_ptr_next, edge_weight,
+    //     bucket_edge_weight); return self(row_ptr, col_idx, edge_idx,
+    //     edge_weight,
+    //                 bucket_edge_weight);
+    // }
+    static self New(T *row_idx, T *col_idx, T *edge_idx, T node_count,
+                    T edge_count)
     {
         return self(row_idx, col_idx, edge_idx, node_count, edge_count);
     }
 
     virtual ~quiver() = default;
 
-    size_t size() const 
-    { 
-        if(quiver_mode == DMA){
-            return row_ptr_.size(); 
-        }
+    size_t size() const
+    {
+        if (quiver_mode == DMA) { return row_ptr_.size(); }
         return node_count_;
     }
 
-    size_t edge_counts() const 
-    { 
-        if(quiver_mode == DMA){
-            return col_idx_.size(); 
-        }
+    size_t edge_counts() const
+    {
+        if (quiver_mode == DMA) { return col_idx_.size(); }
         return edge_count_;
     }
 
@@ -293,14 +287,16 @@ class quiver<T, CUDA>
                 thrust::device_ptr<const T> input_end,
                 thrust::device_ptr<T> output_begin) const
     {
-        if(quiver_mode ==  DMA){
+        if (quiver_mode == DMA) {
             thrust::transform(
-                thrust::cuda::par.on(stream), input_begin, input_end, output_begin,
+                thrust::cuda::par.on(stream), input_begin, input_end,
+                output_begin,
                 get_adj_diff<T>(thrust::raw_pointer_cast(row_ptr_.data()),
                                 row_ptr_.size(), col_idx_.size()));
-        }else{
+        } else {
             thrust::transform(
-                thrust::cuda::par.on(stream), input_begin, input_end, output_begin,
+                thrust::cuda::par.on(stream), input_begin, input_end,
+                output_begin,
                 get_adj_diff<T>(row_ptr_mapped_, node_count_, edge_count_));
         }
     }
@@ -310,18 +306,16 @@ class quiver<T, CUDA>
                       thrust::device_ptr<const T> input_end,
                       thrust::device_ptr<T> output_begin) const
     {
-        if(quiver_mode == DMA){
+        if (quiver_mode == DMA) {
             async_transform(
                 kernal_option(stream), input_begin, input_end, output_begin,
                 get_adj_diff<T>(thrust::raw_pointer_cast(row_ptr_.data()),
                                 row_ptr_.size(), col_idx_.size()));
-        }else{
+        } else {
             async_transform(
                 kernal_option(stream), input_begin, input_end, output_begin,
                 get_adj_diff<T>(row_ptr_mapped_, node_count_, edge_count_));
-
         }
-
     }
 
     template <typename Iter>
@@ -337,7 +331,7 @@ class quiver<T, CUDA>
         auto end = thrust::make_zip_iterator(
             thrust::make_tuple(i + len, input_end, output_count_begin + len,
                                output_ptr_begin + len));
-        if(quiver_mode == DMA){
+        if (quiver_mode == DMA) {
             thrust::for_each(
                 thrust::cuda::par.on(stream), begin, end,
                 sample_functor<T, W>(
@@ -348,17 +342,15 @@ class quiver<T, CUDA>
                     col_idx_.size(), thrust::raw_pointer_cast(output_begin),
                     thrust::raw_pointer_cast(output_id_begin), opt_.weighted,
                     opt_.use_id));
-        }else{
+        } else {
             thrust::for_each(
                 thrust::cuda::par.on(stream), begin, end,
-                sample_functor<T, W>(
-                    row_ptr_mapped_, node_count_,
-                    col_idx_mapped_,
-                    edge_idx_mapped,
-                    bucket_edge_weight_mapped_,
-                    edge_count_, thrust::raw_pointer_cast(output_begin),
-                    thrust::raw_pointer_cast(output_id_begin), opt_.weighted,
-                    opt_.use_id));
+                sample_functor<T, W>(row_ptr_mapped_, node_count_,
+                                     col_idx_mapped_, edge_idx_mapped,
+                                     bucket_edge_weight_mapped_, edge_count_,
+                                     thrust::raw_pointer_cast(output_begin),
+                                     thrust::raw_pointer_cast(output_id_begin),
+                                     opt_.weighted, opt_.use_id));
         }
     }
 
@@ -369,17 +361,16 @@ class quiver<T, CUDA>
         constexpr int BLOCK_ROWS = 128 / WARP_SIZE;
         const dim3 block(WARP_SIZE, BLOCK_ROWS);
         const dim3 grid((input_size + block.y - 1) / block.y);
-        if(quiver_mode == DMA){
+        if (quiver_mode == DMA) {
             CSRRowWiseSampleKernel<T, BLOCK_ROWS><<<grid, block, 0, stream>>>(
                 0, k, input_size, input_begin,
                 thrust::raw_pointer_cast(row_ptr_.data()),
                 thrust::raw_pointer_cast(col_idx_.data()), output_ptr_begin,
                 output_count_begin, output_begin, output_idx);
-        }else{
+        } else {
             CSRRowWiseSampleKernel<T, BLOCK_ROWS><<<grid, block, 0, stream>>>(
-                0, k, input_size, input_begin,
-                row_ptr_mapped_, col_idx_mapped_, output_ptr_begin,
-                output_count_begin, output_begin, output_idx);
+                0, k, input_size, input_begin, row_ptr_mapped_, col_idx_mapped_,
+                output_ptr_begin, output_count_begin, output_begin, output_idx);
         }
     }
 
@@ -397,28 +388,25 @@ class quiver<T, CUDA>
         auto end = thrust::make_zip_iterator(
             thrust::make_tuple(i + len, input_end, output_count_begin + len,
                                output_ptr_begin + len));
-        if(quiver_mode == DMA){
+        if (quiver_mode == DMA) {
             async_for_each(
-            kernal_option(stream), begin, end,
-            sample_functor<T, W>(
-                thrust::raw_pointer_cast(row_ptr_.data()), row_ptr_.size(),
-                thrust::raw_pointer_cast(col_idx_.data()),
-                thrust::raw_pointer_cast(edge_idx_.data()),
-                thrust::raw_pointer_cast(bucket_edge_weight_.data()),
-                col_idx_.size(), thrust::raw_pointer_cast(output_begin),
-                thrust::raw_pointer_cast(output_id_begin), opt_.weighted));
-        }else{
+                kernal_option(stream), begin, end,
+                sample_functor<T, W>(
+                    thrust::raw_pointer_cast(row_ptr_.data()), row_ptr_.size(),
+                    thrust::raw_pointer_cast(col_idx_.data()),
+                    thrust::raw_pointer_cast(edge_idx_.data()),
+                    thrust::raw_pointer_cast(bucket_edge_weight_.data()),
+                    col_idx_.size(), thrust::raw_pointer_cast(output_begin),
+                    thrust::raw_pointer_cast(output_id_begin), opt_.weighted));
+        } else {
             async_for_each(
-            kernal_option(stream), begin, end,
-            sample_functor<T, W>(
-                row_ptr_mapped_, node_count_,
-                col_idx_mapped_,
-                edge_idx_mapped,
-                bucket_edge_weight_mapped_,
-                edge_count_, thrust::raw_pointer_cast(output_begin),
-                thrust::raw_pointer_cast(output_id_begin), opt_.weighted));
+                kernal_option(stream), begin, end,
+                sample_functor<T, W>(
+                    row_ptr_mapped_, node_count_, col_idx_mapped_,
+                    edge_idx_mapped, bucket_edge_weight_mapped_, edge_count_,
+                    thrust::raw_pointer_cast(output_begin),
+                    thrust::raw_pointer_cast(output_id_begin), opt_.weighted));
         }
-        
     }
 
 #ifdef QUIVER_TEST

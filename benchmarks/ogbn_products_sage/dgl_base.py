@@ -11,6 +11,7 @@ import math
 import argparse
 from torch.nn.parallel import DistributedDataParallel
 import tqdm
+import os
 import os.path as osp
 import sklearn.linear_model as lm
 import sklearn.metrics as skm
@@ -24,6 +25,8 @@ import torch_quiver as torch_qv
 GPU_FEATURE = 2
 # 0: CPU, 1: GPU, 2: ZeroCopy
 GPU_SAMPLE = 2
+# 0: Device, 1: NUMA
+CACHE_MODE = 1
 
 class SAGE(nn.Module):
     def __init__(self, in_feats, n_hidden, n_classes, n_layers, activation, dropout):
@@ -134,7 +137,9 @@ def load_ogb(name, root=None):
     from ogb.nodeproppred import DglNodePropPredDataset
 
     print('load', name)
-    data = DglNodePropPredDataset(name=name, root="/home/guest/local_quiver/dataset")
+    home = os.getenv('HOME')
+    root = osp.join(home, 'products')
+    data = DglNodePropPredDataset(name=name, root=root)
     print('finish loading', name)
     splitted_idx = data.get_idx_split()
     graph, labels = data[0]
@@ -214,6 +219,7 @@ def run(proc_id, n_gpus, args, devices, data):
 
     # Unpack data
     n_classes, train_g, train_nfeat, train_labels = data
+    train_g = train_g.formats(['csc'])
     val_g = train_g
     test_g = train_g
 
@@ -221,10 +227,14 @@ def run(proc_id, n_gpus, args, devices, data):
         train_nfeat = train_nfeat.to(dev_id)
         # train_labels = train_labels.to(dev_id)
     if GPU_FEATURE == 2:
-        shards, prev_order, new_order = train_nfeat
-        train_nfeat = torch_qv.ShardTensor(dev_id)
-        train_nfeat.append(shards[0], dev_id)
-        train_nfeat.append(shards[1], -1)
+        if CACHE_MODE == 1:
+            ipc_handle, new_order = train_nfeat
+            train_nfeat = PyShardTensor.new_from_share_ipc(ipc_handle, dev_id)
+        else:
+            shards, prev_order, new_order = train_nfeat
+            train_nfeat = torch_qv.ShardTensor(dev_id)
+            train_nfeat.append(shards[0], dev_id)
+            train_nfeat.append(shards[1], -1)
         new_order = new_order.to(dev_id)
         in_feats = 100
     else:
@@ -330,14 +340,14 @@ def run(proc_id, n_gpus, args, devices, data):
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser("multi-gpu training")
-    argparser.add_argument('--gpu', type=str, default='0',
+    argparser.add_argument('--gpu', type=str, default='0,1',
                            help="Comma separated list of GPU device IDs.")
     argparser.add_argument('--dataset', type=str, default='ogbn-products')
     argparser.add_argument('--num-epochs', type=int, default=20)
     argparser.add_argument('--num-hidden', type=int, default=256)
     argparser.add_argument('--num-layers', type=int, default=3)
     argparser.add_argument('--fan-out', type=str, default='15,10,5')
-    argparser.add_argument('--batch-size', type=int, default=1024)
+    argparser.add_argument('--batch-size', type=int, default=2048)
     argparser.add_argument('--log-every', type=int, default=20)
     argparser.add_argument('--eval-every', type=int, default=5)
     argparser.add_argument('--lr', type=float, default=0.003)
@@ -365,7 +375,7 @@ if __name__ == '__main__':
 
     # Construct graph
     g = dgl.as_heterograph(g)
-    g.create_formats_()
+    # g.create_formats_()
     train_nfeat = g.ndata.pop('features')
     train_labels = g.ndata.pop('labels')
     train_nfeat.share_memory_()
@@ -388,9 +398,21 @@ if __name__ == '__main__':
     if GPU_FEATURE == 2:
         NUM_ELEMENT = train_nfeat.size(0)
         # distributed feature on GPUs and CPU
-        ratio = [0.15, 0.85]
-        shard_tensor = split(ratio)
-        data = n_classes, g, shard_tensor, train_labels
+        home = os.getenv('HOME')
+        root = osp.join(home, 'products')
+        if CACHE_MODE == 1:
+            shard_tensor_config = ShardTensorConfig({0:"0.2G",1:"0.2G"})
+            shard_tensor = PyShardTensor(0, shard_tensor_config)
+            _, prev_order, new_order = split(0.42, "ogbn-products", root)
+            train_nfeat = train_nfeat[prev_order]
+            shard_tensor.from_cpu_tensor(train_nfeat)
+            ipc_handle = shard_tensor.share_ipc()
+            shard = ipc_handle, new_order
+            data = n_classes, g, shard, train_labels
+        else:
+            ratio = [0.15, 0.85]
+            shard_tensor = split(ratio, "ogbn-products", root)
+            data = n_classes, g, shard_tensor, train_labels
     else:
         data = n_classes, g, train_nfeat, train_labels
 

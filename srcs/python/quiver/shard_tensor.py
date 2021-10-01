@@ -138,7 +138,7 @@ class ShardTensor:
             
         """
         # 暂时先假设为float tensor
-        element_size = tensor.stride(0) * 4
+        element_size = tensor.shape[1] * 4
         return memory_budget // element_size
     
     

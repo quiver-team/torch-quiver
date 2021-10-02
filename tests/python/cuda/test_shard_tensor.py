@@ -116,10 +116,16 @@ def test_py_shard_tensor_ipc():
     #shard_tensor_config = ShardTensorConfig({})
     # 20%数据在GPU0，80%的数据在CPU
     # 20%的数据在GPU0， 20%的数据在GPU3，60%的数据在CPU
-    shard_tensor_config = ShardTensorConfig({0:"0.9G", 3:"0.9G", 2:"0.9G"})
+    shard_tensor_config = ShardTensorConfig({})
 
     shard_tensor = PyShardTensor(current_device, shard_tensor_config)
-    shard_tensor.from_cpu_tensor(tensor)
+    #shard_tensor.from_cpu_tensor(tensor)
+    shard_tensor.append(tensor[:400000], 0)
+    shard_tensor.append(tensor[400000:800000], 1)
+    shard_tensor.append(tensor[800000:1200000], 2)
+    shard_tensor.append(tensor[1200000:], -1)
+
+
 
     ##########################
     # Create IPC Handle

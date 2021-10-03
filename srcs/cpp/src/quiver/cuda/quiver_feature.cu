@@ -298,6 +298,14 @@ class ShardTensor
     }
 
     int device_count() const { return device_count_; }
+
+    void unregister(torch::Tensor& cpu_tensor){
+        
+        std::cout<<"begin unregister"<<std::endl;
+        cudaHostUnregister((void*)cpu_tensor.data_ptr<float>());
+        std::cout<<"end unregister"<<std::endl;
+
+    }
     
 
   private:
@@ -382,6 +390,8 @@ void register_cuda_quiver_feature(pybind11::module &m)
         .def(py::init<int>())
         .def("__getitem__", &quiver::ShardTensor::operator[],
              py::call_guard<py::gil_scoped_release>())
+        .def("unregister", &quiver::ShardTensor::unregister,
+            py::call_guard<py::gil_scoped_release>())
         .def("shape", &quiver::ShardTensor::shape,
              py::call_guard<py::gil_scoped_release>())
         .def("numel", &quiver::ShardTensor::numel,

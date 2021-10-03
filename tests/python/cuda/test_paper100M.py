@@ -88,7 +88,8 @@ def process_feature():
 def process_label():
     print("LOG>>> Load Finished")
     node_label = label["node_label"]
-    torch.save(node_label, "/home/zy/papers/ogbn_papers100M/label/label.pt")
+    tensor = torch.from_numpy(node_label).type(torch.float)
+    torch.save(tensor, "/home/zy/papers/ogbn_papers100M/label/label.pt")
 
 def feature_test():
     SAMPLE_SIZE = 100000
@@ -121,8 +122,23 @@ def feature_test():
     print(
         f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s, consumed {consumed_time}s")
 
+def sort_feature():
+    NUM_ELEMENT = 111059956
+    indptr = torch.load("/home/zy/papers/ogbn_papers100M/csr/indptr.pt")
+    feature = torch.load("/home/zy/papers/ogbn_papers100M/feat/feature.pt")
+    prev = torch.LongTensor(indptr[:-1])
+    sub = torch.LongTensor(indptr[1:])
+    deg = sub - prev
+    sorted_deg, prev_order = torch.sort(deg, descending=True)
+    total_num = NUM_ELEMENT
+    total_range = torch.arange(total_num, dtype=torch.long)
+    feature = feature[prev_order]
+    torch.save(feature, "/home/zy/papers/ogbn_papers100M/feat/sort_feature.pt")
+    torch.save(prev_order, "/home/zy/papers/ogbn_papers100M/feat/prev_order.pt")
+
 # process_topo()
-qv.init_p2p()
+# qv.init_p2p()
 # process_feature()
 # process_label()
-feature_test()
+# feature_test()
+sort_feature()

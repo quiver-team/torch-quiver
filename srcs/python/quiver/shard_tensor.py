@@ -145,6 +145,7 @@ class ShardTensor:
             if self.cpu_tensor is not None:
                 raise Exception("cpu tensor has been already appended")
             self.cpu_tensor = cpu_tensor.clone()
+            self.cpu_tensor.share_memory_()
             self.shard_tensor.append(cpu_tensor, -1)
             return
         if self.shard_tensor_config.device_memory_budget.get(device, None) is None:
@@ -189,6 +190,7 @@ class ShardTensor:
         if cur_pos < tensor.shape[0]:
             # allocate the rest of data on CPU
             self.cpu_tensor = tensor[cur_pos:].clone()
+            self.cpu_tensor.share_memory_()
             self.shard_tensor.append(self.cpu_tensor, -1)
             print(f"LOG >>> Assign {100 - int(100 * cur_pos * 1.0 / tensor.shape[0])}% data to CPU")
             del tensor
@@ -262,7 +264,6 @@ class ShardTensor:
         return self.current_device
     
     def share_ipc(self):
-        self.cpu_tensor.share_memory_()
         items = self.shard_tensor.share_ipc()
         gpu_part_ipc_list = [item.share_ipc() for item in items]
 
@@ -283,3 +284,6 @@ class ShardTensor:
          shard_tensor = cls(current_device, shard_tensor_config)
          shard_tensor.from_ipc_handle(gpu_part_ipc_list, cpu_tensor)
          return shard_tensor
+
+    def delete(self):
+        self.shard_tensor.unregister(self.cpu_tensor)

@@ -99,13 +99,17 @@ def feature_test():
     device_indices = indices.to(0)
 
     print("LOG>>> Begin Process")
-    tensor = torch.load("/home/zy/papers/ogbn_papers100M/feat/feature.pt")
-    shard_tensor_config = ShardTensorConfig({0:"11G", 1:"11G"})
+    tensor = torch.load("/home/zy/papers/ogbn_papers100M/feat/sort_feature.pt")
+
+    
+    shard_tensor_config = ShardTensorConfig({})
     shard_tensor = PyShardTensor(0, shard_tensor_config)
 
     shard_tensor.from_cpu_tensor(tensor)
+    
 
 
+    '''
     # warm up
     res = shard_tensor[device_indices]
 
@@ -113,13 +117,20 @@ def feature_test():
     start = time.time()
     feature = shard_tensor[device_indices]
     consumed_time = time.time() - start
-    feature = feature.cpu().numpy()
-    feature_gt = tensor[indices].numpy()
-    print("Correctness Check : ", np.array_equal(feature, feature_gt))
+    #feature = feature.cpu().numpy()
+
+    #feature_gt = tensor[indices].numpy()
+    
+    #print("test complete")
+    #print("Correctness Check : ", np.array_equal(feature, feature_gt))
 
 
-    print(
-        f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s, consumed {consumed_time}s")
+    #print(
+    #    f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s, consumed {consumed_time}s")
+    '''
+    print("begin delete")
+    shard_tensor.delete()
+    print("after delete")
 
 # process_topo()
 qv.init_p2p()

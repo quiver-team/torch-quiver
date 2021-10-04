@@ -21,7 +21,6 @@ from quiver.shard_tensor import ShardTensorConfig, DeviceCollectionJob
 from ogb.nodeproppred import PygNodePropPredDataset, Evaluator
 import random
 from typing import List, NamedTuple, Optional, Tuple
-from torch.utils.tensorboard import SummaryWriter 
 
 
 REINDEX = True
@@ -41,10 +40,8 @@ def reindex_by_config(adj_csr, graph_feature, gpu_portion):
     return graph_feature, new_order
 
 class InterProcData:
-    edge_index = None
+    csr = None
     train_idx = None
-    val_idx = None
-    test_idx = None
     y = None
     num_features = None
     num_classes = None
@@ -183,19 +180,21 @@ def run(rank, world_size, shard_tensor_ipc_handle, inter_proc_data: InterProcDat
     new_order = inter_proc_data.new_order.to(rank)
     
 
-    csr_mat = get_csr_from_coo(inter_proc_data.edge_index)
-    sampler = AsyncCudaNeighborSampler(csr_indptr=csr_mat.indptr, csr_indices=csr_mat.indices, device=rank, copy=True)
+    csr_indptr, csr_indices = inter_proc_data.csr
+    sampler = AsyncCudaNeighborSampler(csr_indptr=csr_indptr, csr_indices=csr_indices, device=rank, copy=False)
+    print('prepare sample')
     x = PyShardTensor.new_from_share_ipc(shard_tensor_ipc_handle, rank)
+    print('prepare feature')
     batch_size = 2048
 
-    train_loader = torch.utils.data.DataLoader(train_idx, batch_size=batch_size, pin_memory=True)
-    writer = SummaryWriter(f'{rank}_pyg_log')
+    train_loader = torch.utils.data.DataLoader(train_idx, batch_size=batch_size, pin_memory=True, shuffle=True)
 
 
     torch.manual_seed(12345)
     model = SAGE(inter_proc_data.num_features, 256, inter_proc_data.num_classes, num_layers=3).to(rank)
     model = DistributedDataParallel(model, device_ids=[rank])
     optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
+    print('prepare train')
 
   
     time_points = []
@@ -207,12 +206,14 @@ def run(rank, world_size, shard_tensor_ipc_handle, inter_proc_data: InterProcDat
         for iter_step, seeds in enumerate(train_loader):
             start = time.time()
             n_id, batch_size, adjs = sample(sampler, rank, seeds, [15, 10, 5])
-            writer.add_scalar(f"{rank}_sample", time.time() - start, iter_step)
+            if iter_step % 20 == 10:
+                print(f"{rank}_sample", time.time() - start, iter_step)
             start = time.time()
             new_n_id = new_order[n_id]
             
             feature = x[new_n_id]
-            writer.add_scalar(f"{rank}_feature", time.time() - start, iter_step)
+            if iter_step % 20 == 10:
+                print(f"{rank}_feature", time.time() - start, iter_step)
 
 
             adjs = [adj.to(rank) for adj in adjs]
@@ -222,10 +223,11 @@ def run(rank, world_size, shard_tensor_ipc_handle, inter_proc_data: InterProcDat
             loss = F.nll_loss(out, y[n_id[:batch_size]])
             loss.backward()
             optimizer.step()
-            writer.add_scalar(f"{rank}_train", time.time() - start, iter_step)
-            if rank == 0 and iter_step > 10:
+            if iter_step % 20 == 10:
+                print(f"{rank}_train", time.time() - start, iter_step)
+            if rank == 0 and iter_step > 10 and iter_step % 20 == 10:
                 iter_points.append(time.time()  - start_time)
-                writer.add_scalar(f"{rank}_throughput", world_size * batch_size / np.mean(np.array(iter_points[10:])), iter_step)
+                print(f"{rank}_throughput", world_size * batch_size / np.mean(np.array(iter_points[-10:])), iter_step)
             
             start_time = time.time()
         time_points.clear()
@@ -243,39 +245,53 @@ def run(rank, world_size, shard_tensor_ipc_handle, inter_proc_data: InterProcDat
 if __name__ == '__main__':
     torch.cuda.set_device(0)
     home = os.getenv('HOME')
-    data_dir = osp.join(home, '.pyg')
-    root = osp.join(data_dir, 'data', 'products')
-    dataset = PygNodePropPredDataset('ogbn-products', root)
-    
-    split_idx = dataset.get_idx_split()
-    train_idx = split_idx['train']
+    data_dir = osp.join(home, 'papers', 'ogbn_papers100M')
+    feat_root = osp.join(data_dir, 'feat', 'sort_feature.pt')
+    prev_root = osp.join(data_dir, 'feat', 'prev_order.pt')
+    indptr_root = osp.join(data_dir, 'csr', 'indptr.pt')
+    indices_root = osp.join(data_dir, 'csr', 'indices.pt')
+    label_root = osp.join(data_dir, 'label', 'label.pt')
+    feat = torch.load(feat_root)
+    print('load feature')
+    prev_order = torch.load(prev_root)
+    node_count = prev_order.shape[0]
+    gpu_portion = 0.4
+    total_range = torch.arange(node_count, dtype=torch.long)
+    perm_range = torch.randperm(int(node_count * gpu_portion))
+    new_order = torch.zeros_like(prev_order)
+    prev_order[: int(node_count * gpu_portion)] = prev_order[perm_range]
+    new_order[prev_order] = total_range
+    graph_feature = feat[prev_order]
+    print('reorder feature')
+    del feat
+    del prev_order
 
-    data = dataset[0]
+    indptr = torch.load(indptr_root).share_memory_()
+    indices = torch.load(indices_root).share_memory_()
+    label = torch.load(label_root).share_memory_()
+
+    train_idx = total_range
+
     inter_proc_data = InterProcData()
-    data.edge_index.share_memory_()
 
-    inter_proc_data.edge_index = data.edge_index
-    inter_proc_data.num_classes = dataset.num_classes
-    inter_proc_data.num_features = dataset.num_features
+    inter_proc_data.csr = indptr, indices
+    inter_proc_data.num_classes = 172
+    inter_proc_data.num_features = 128
     inter_proc_data.train_idx = train_idx
     
-    inter_proc_data.y = data.y
+    inter_proc_data.y = label
 
-    shard_tensor_config = ShardTensorConfig({0:"200M"})
+    shard_tensor_config = ShardTensorConfig({0:"11G"})
 
     shard_tensor = PyShardTensor(0, shard_tensor_config)
-    csr_mat = get_csr_from_coo(inter_proc_data.edge_index)
-    if REINDEX:
-        feature, new_order = reindex_by_config(csr_mat, data.x, 0)
-    else:
-        feature = data.x
-        node_count = csr_mat.indptr.shape[0] - 1 
-        new_order = torch.arange(node_count, dtype=torch.long)
     
     inter_proc_data.new_order = new_order
 
-    shard_tensor.from_cpu_tensor(data.x)
+    shard_tensor.from_cpu_tensor(graph_feature)
+    print('build shard tensor')
+    del graph_feature
     ipc_handle = shard_tensor.share_ipc()
+    print('share ipc')
     world_size = 1
     print('Let\'s use', world_size, 'GPUs!')
     mp.spawn(run, args=(world_size, ipc_handle, inter_proc_data), nprocs=world_size, join=True)

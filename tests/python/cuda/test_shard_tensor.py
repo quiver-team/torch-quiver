@@ -9,7 +9,7 @@ import torch.multiprocessing as mp
 import gc
 
 from quiver.shard_tensor import ShardTensor as PyShardTensor
-from quiver.shard_tensor import ShardTensorConfig, DeviceCollectionJob
+from quiver.shard_tensor import ShardTensorConfig
 from quiver.async_feature import TorchShardTensor
 
 def test_normal_feature_collection():
@@ -75,7 +75,7 @@ def pyshard_tensor_ipc_child_proc(rank, ipc_handle, tensor):
     NUM_ELEMENT = 1000000
     SAMPLE_SIZE = 80000
     torch.cuda.set_device(rank)
-    new_shard_tensor = PyShardTensor.new_from_share_ipc(ipc_handle)
+    new_shard_tensor = PyShardTensor.new_from_share_ipc(ipc_handle, rank)
 
     host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
     indices = torch.from_numpy(host_indice).type(torch.long)
@@ -87,7 +87,6 @@ def pyshard_tensor_ipc_child_proc(rank, ipc_handle, tensor):
     ###############################
     feature = new_shard_tensor[device_indices]
     print(f"{'#' * 40}")
-
     start = time.time()
     feature = new_shard_tensor[device_indices]
     consumed_time = time.time() - start
@@ -113,9 +112,20 @@ def test_py_shard_tensor_ipc():
         0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
     tensor = torch.from_numpy(host_tensor).type(torch.float32)
     tensor.share_memory_()
-    shard_tensor_config = ShardTensorConfig({0: "5.9G"})
+    # 所有数据均在CPU
+    #shard_tensor_config = ShardTensorConfig({})
+    # 20%数据在GPU0，80%的数据在CPU
+    # 20%的数据在GPU0， 20%的数据在GPU3，60%的数据在CPU
+    shard_tensor_config = ShardTensorConfig({0:"0.9G", 1:"0.9G"})
+
     shard_tensor = PyShardTensor(current_device, shard_tensor_config)
     shard_tensor.from_cpu_tensor(tensor)
+    #shard_tensor.append(tensor[:400000], 0)
+    ##shard_tensor.append(tensor[400000:800000], 1)
+    #shard_tensor.append(tensor[800000:1200000], 2)
+    #shard_tensor.append(tensor[1200000:], -1)
+
+
 
     ##########################
     # Create IPC Handle
@@ -176,11 +186,102 @@ def test_torch_shard_tensor():
     proc.start()
     proc.join()
 
+def basic_test():
+    NUM_ELEMENT = 1000000
+    SAMPLE_SIZE = 80000
+    FEATURE_DIM = 600
+    #########################
+    # Init With Numpy
+    ########################
+
+    src_device = 0
+    dst_device = 2
+
+    torch.cuda.set_device(src_device)
+
+    host_tensor = np.random.randint(
+        0, high=10, size=(NUM_ELEMENT, FEATURE_DIM))
+    tensor = torch.from_numpy(host_tensor).type(torch.float32)
+  
+    host_indice = np.random.randint(0, NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
+    indices = torch.from_numpy(host_indice).type(torch.long)
+
+    indices = indices.to(src_device)
+    tensor = tensor.to(dst_device)
+
+    # warm up
+    data = tensor[indices.to(dst_device, non_blocking=True)].to(src_device)
+    torch.cuda.synchronize(src_device)
+
+
+    # test 
+    start = time.time()
+    data = tensor[indices.to(dst_device, non_blocking=True)].to(src_device)
+    torch.cuda.synchronize(src_device)
+    consumed_time = time.time() - start
+
+    feature = data.cpu().numpy()
+    print(
+        f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s")
+
+
+def test_feature_collection_gpu_utlization():
+    NUM_ELEMENT = 1000000
+    FEATURE_DIM = 600
+    SAMPLE_SIZE = 80000
+
+    #########################
+    # Init With Numpy
+    ########################
+    current_device = 0
+    torch.cuda.set_device(current_device)
+
+    host_tensor = np.random.randint(
+        0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
+    tensor = torch.from_numpy(host_tensor).type(torch.float32)
+    shard_tensor_config = ShardTensorConfig({0:"0.9G", 1:"0.9G", 2:"0.9G", 3:"0.9G"})
+    shard_tensor = PyShardTensor(current_device, shard_tensor_config)
+    shard_tensor.from_cpu_tensor(tensor)
+    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
+    indices = torch.from_numpy(host_indice).type(torch.long)
+    device_indices = indices.to(current_device)
+
+    while True:
+        res = shard_tensor[device_indices]
+    
+
+def test_delete():
+
+    NUM_ELEMENT = 1000000
+    FEATURE_DIM = 512
+
+    #########################
+    # Init With Numpy
+    ########################
+    current_device = 0
+    torch.cuda.set_device(current_device)
+
+    host_tensor = np.random.randint(
+        0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
+    tensor = torch.from_numpy(host_tensor).type(torch.float32)
+    shard_tensor_config = ShardTensorConfig({})
+    shard_tensor = PyShardTensor(current_device, shard_tensor_config)
+    shard_tensor.from_cpu_tensor(tensor)
+
+    print(f"check delete")
+    shard_tensor.delete()
+
+    print("test complete")
+
 
 if __name__ == "__main__":
     mp.set_start_method("spawn")
+    qv.init_p2p()
+    test_delete()
     #test_py_shard_tensor_basic()
     #test_normal_feature_collection()
-    test_py_shard_tensor_ipc()
+    #basic_test()
+    #test_py_shard_tensor_ipc()
     #test_torch_shard_tensor()
     # test_py_shard_tensor_basic()
+    #test_feature_collection_gpu_utlization()

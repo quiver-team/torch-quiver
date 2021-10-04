@@ -29,11 +29,7 @@ IF(BUILD_TORCH_EXTENSION)
     INCLUDE(srcs/cmake/torch.cmake)
 ENDIF()
 
-FUNCTION(TARGET_ADD_SOURCE_PATTERN target)
-    FILE(GLOB SRCS ${ARGN})
-    TARGET_SOURCES(${target} PRIVATE ${SRCS})
-ENDFUNCTION()
-
+INCLUDE(srcs/cmake/common.cmake)
 INCLUDE(srcs/cmake/lib.cmake)
 
 IF(BUILD_TESTS)

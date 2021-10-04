@@ -43,7 +43,7 @@ add_cmake_flags() {
         add_cmake_flag CUDA_TOOLKIT_ROOT_DIR $CUDA_HOME
         add_cmake_flag CMAKE_CUDA_COMPILER $CUDA_HOME/bin/nvcc
     fi
-    # add_cmake_flag BUILD_TORCH_EXTENSION 1
+    add_cmake_flag BUILD_TORCH_EXTENSION 1
     add_cmake_flag BUILD_TESTS 1
     add_cmake_flag BUILD_BENCHMARKS 1
     add_cmake_flag CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH}

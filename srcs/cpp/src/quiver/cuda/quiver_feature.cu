@@ -18,6 +18,17 @@ namespace quiver
 {
 #define CHECK_CPU(x)                                                          \
 AT_ASSERTM(!x.device().is_cuda(), #x " must be CPU tensor")
+
+bool can_device_access_peer(int src_device_index, int dst_device_index){
+    if (src_device_index == dst_device_index) {
+        return true;
+    }
+    int access_i_j = 0, access_j_i = 0;
+    cudaDeviceCanAccessPeer(&access_i_j, src_device_index, dst_device_index);
+    cudaDeviceCanAccessPeer(&access_j_i, dst_device_index, src_device_index);
+    return (access_i_j == 1) && (access_j_i == 1);
+}
+
 class ShardTensorItem
 {
   public:
@@ -28,7 +39,7 @@ class ShardTensorItem
     int dtype;
     ShardTensorItem(int device_, cudaIpcMemHandle_t mem_handle_, std::vector<int> shape_):device(device_), mem_handle(mem_handle_), shape(shape_)
     {
-        
+
     }
     ShardTensorItem(){
 
@@ -61,7 +72,7 @@ class ShardTensor
     }
 
     size_t get_tensor_bytes(torch::Tensor tensor){
-        // assume it's float 
+        // assume it's float
         int dim = tensor.dim();
         size_t total_bytes = 4;
         for(int index = 0; index < dim; index++){
@@ -69,8 +80,9 @@ class ShardTensor
         }
         return total_bytes;
     }
+
     std::vector<int> get_tensor_shape(torch::Tensor tensor){
-        std::vector<int> shape; 
+        std::vector<int> shape;
         int dim = tensor.dim();
         for(int index = 0; index < dim; index++){
             shape.push_back(tensor.sizes()[index]);
@@ -94,18 +106,7 @@ class ShardTensor
         // Check accessbility
         if(item.device >= 0){
             // TODO
-            
-            int access_i_j, access_j_i;
-            cudaDeviceCanAccessPeer(&access_i_j, device_, item.device);
-            cudaDeviceCanAccessPeer(&access_j_i, item.device, device_);
-            if ((access_i_j && access_j_i)|| device_ == item.device) {
-                access_book.push_back(1);
-                //printf("%d <-> %d support peer access \n", device_, item.device);
-            }else{
-                access_book.push_back(0);
-                //printf("%d <-> %d dont support peer access \n", device_, item.device);
-            }
-            
+            access_book.push_back(can_device_access_peer(device_, item.device));
         }else{
             access_book.push_back(1);
             //printf("%d <-> CPU support peer access \n", device_);
@@ -147,12 +148,12 @@ class ShardTensor
         tensor_shapes_.push_back(get_tensor_shape(tensor));
 
         offset_list_.push_back(offset_list_[offset_list_.size() - 1] + tensor.sizes()[0]);
-        
+
         void *ptr = NULL;
         size_t data_size = get_tensor_bytes(tensor);
         tensor_devices_.push_back(target_device);
         if(target_device >= 0){
-            // if target_device >= 0, it means we use p2p 
+            // if target_device >= 0, it means we use p2p
             //printf("LOG >>> Malloc Data On Device %d With %ulld Bytes\n", target_device, data_size);
             cudaSetDevice(target_device);
             cudaMalloc(&ptr, data_size);
@@ -160,21 +161,10 @@ class ShardTensor
             cudaSetDevice(device_);
 
             // decide access book
-            
-            int access_i_j, access_j_i;
-            cudaDeviceCanAccessPeer(&access_i_j, device_, target_device);
-            cudaDeviceCanAccessPeer(&access_j_i, target_device, device_);
-            if ((access_i_j && access_j_i) || device_ == target_device) {
-                access_book.push_back(1);
-                //printf("%d <-> %d support peer access \n", device_, target_device);
-            }else{
-                access_book.push_back(0);
-                //printf("%d <-> %d dont support peer access \n", device_, target_device);
-            }
-        
+            access_book.push_back(can_device_access_peer(device_, target_device));
         }else{
             cudaSetDevice(device_);
-            // if target_device < 0, it means we use Zero-Copy 
+            // if target_device < 0, it means we use Zero-Copy
             cudaHostRegister(tensor.data_ptr<float>(), data_size, cudaHostRegisterMapped);
             cudaHostGetDevicePointer(&ptr, (void *)tensor.data_ptr<float>(), 0);
             access_book.push_back(1);
@@ -239,7 +229,7 @@ class ShardTensor
                 sizeof(int) * access_book.size(),
                 cudaMemcpyHostToDevice);
         cudaCheckError();
-    
+
         int blockSize = 0;
         int numBlocks = 0;
         cudaOccupancyMaxPotentialBlockSize(&numBlocks, &blockSize,
@@ -300,13 +290,13 @@ class ShardTensor
     int device_count() const { return device_count_; }
 
     void unregister(torch::Tensor& cpu_tensor){
-        
+
         std::cout<<"begin unregister"<<std::endl;
         cudaHostUnregister((void*)cpu_tensor.data_ptr<float>());
         std::cout<<"end unregister"<<std::endl;
 
     }
-    
+
 
   private:
     std::vector<int64_t> offset_list_;
@@ -344,13 +334,9 @@ void init_p2p(){
                 i);
             continue;
         }
-        
+
         for (int j = i + 1; j < numGPUs; j++) {
-            int access_i_j = 0;
-            int access_j_i = 0;
-            cudaDeviceCanAccessPeer(&access_i_j, i, j);
-            cudaDeviceCanAccessPeer(&access_j_i, j, i);
-            if (access_i_j && access_j_i) {
+            if (can_device_access_peer(i, j)) {
                 printf("Enable P2P Access Between %d <---> %d \n", i, j);
                 cudaSetDevice(i);
                 cudaDeviceEnablePeerAccess(j, 0);
@@ -362,28 +348,22 @@ void init_p2p(){
         }
     }
 }
-bool can_device_access_peer(int src_device_index, int dst_device_index){
-    int access_i_j = 0, access_j_i = 0;
-    cudaDeviceCanAccessPeer(&access_i_j, src_device_index, dst_device_index);
-    cudaDeviceCanAccessPeer(&access_j_i, dst_device_index, src_device_index);
-    return (access_i_j == 1) && (access_j_i == 1);
-}
-
 }  // namespace quiver
+
 void register_cuda_quiver_feature(pybind11::module &m)
 {
     m.def("init_p2p", &quiver::init_p2p,
             py::call_guard<py::gil_scoped_release>());
-    
+
     m.def("can_device_access_peer", &quiver::can_device_access_peer,
             py::call_guard<py::gil_scoped_release>());
-    
-    
+
+
     py::class_<quiver::ShardTensorItem>(m, "ShardTensorItem")
         .def(py::init<>())
         .def("share_ipc", &quiver::ShardTensorItem::share_ipc)
         .def("from_ipc", &quiver::ShardTensorItem::from_ipc);
-    
+
 
     py::class_<quiver::ShardTensor>(m, "ShardTensor")
         //.def(py::init<std::vector<torch::Tensor>, int>())
@@ -410,6 +390,4 @@ void register_cuda_quiver_feature(pybind11::module &m)
              py::call_guard<py::gil_scoped_release>())
         .def("share_ipc", &quiver::ShardTensor::share_ipc,
              py::call_guard<py::gil_scoped_release>());
-             
-            
 }

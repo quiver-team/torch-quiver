@@ -1,8 +1,9 @@
 ADD_LIBRARY(quiver SHARED)
-TARGET_ADD_SOURCE_PATTERN(quiver srcs/cpp/src//hybrid/*.cpp)
+TARGET_SOURCE_TREE(quiver srcs/cpp/src/*.cpp)
 
 IF(ENABLE_CUDA)
-    TARGET_ADD_SOURCE_PATTERN(quiver srcs/cpp/src/hybrid/sample/*.cu)
+    TARGET_SOURCE_TREE(quiver srcs/cpp/src/*.cu)
     TARGET_INCLUDE_DIRECTORIES(quiver PRIVATE ${CUDA_INCLUDE_DIRS})
     TARGET_LINK_LIBRARIES(quiver ${CUDA_LIBRARIES})
+    TARGET_COMPILE_OPTIONS(quiver PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-extended-lambda>)
 ENDIF()

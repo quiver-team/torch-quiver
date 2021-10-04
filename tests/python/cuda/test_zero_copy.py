@@ -2,11 +2,15 @@ import torch
 import numpy as np 
 import scipy.sparse as sp
 import torch_quiver as qv
+
 import time
 from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
 from scipy.sparse import csr_matrix
 import os
 import os.path as osp
+
+from quiver.sage_sampler import GraphSageSampler
+
 
 def get_csr_from_coo(edge_index):
     src = edge_index[0].numpy()

@@ -18,6 +18,7 @@ IF(ENABLE_CUDA)
     ENABLE_LANGUAGE(CUDA)
     INCLUDE_DIRECTORIES(${CUDA_TOOLKIT_ROOT_DIR}/include)
     LINK_DIRECTORIES(${CUDA_TOOLKIT_ROOT_DIR}/lib64)
+    TARGET_COMPILE_OPTIONS(torch_quiver PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-extended-lambda>)
 
     TARGET_SOURCES_GLOB(torch_quiver
                         ${CMAKE_SOURCE_DIR}/srcs/cpp/src/quiver/cuda/*.cpp)

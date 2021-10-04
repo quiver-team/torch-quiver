@@ -214,6 +214,7 @@ def run(proc_id, n_gpus, args, devices, data):
 
     # Unpack data
     n_classes, train_g, train_nfeat, train_labels = data
+    train_g = train_g.formats(['csc'])
     val_g = train_g
     test_g = train_g
 
@@ -337,7 +338,7 @@ if __name__ == '__main__':
     argparser.add_argument('--num-hidden', type=int, default=256)
     argparser.add_argument('--num-layers', type=int, default=3)
     argparser.add_argument('--fan-out', type=str, default='15,10,5')
-    argparser.add_argument('--batch-size', type=int, default=1024)
+    argparser.add_argument('--batch-size', type=int, default=2048)
     argparser.add_argument('--log-every', type=int, default=20)
     argparser.add_argument('--eval-every', type=int, default=5)
     argparser.add_argument('--lr', type=float, default=0.003)
@@ -365,7 +366,7 @@ if __name__ == '__main__':
 
     # Construct graph
     g = dgl.as_heterograph(g)
-    g.create_formats_()
+    # g.create_formats_()
     train_nfeat = g.ndata.pop('features')
     train_labels = g.ndata.pop('labels')
     train_nfeat.share_memory_()
@@ -388,16 +389,19 @@ if __name__ == '__main__':
     if GPU_FEATURE == 2:
         NUM_ELEMENT = train_nfeat.size(0)
         # distributed feature on GPUs and CPU
-        ratio = [0.15, 0.85]
-        shard_tensor = split(ratio)
-        data = n_classes, g, shard_tensor, train_labels
+        ratio0 = [0.15, 0.85]
+        shard_tensor0 = split(ratio0)
+        ratio1 = [0.4, 0.6]
+        shard_tensor1 = split(ratio1)
+        data0 = n_classes, g, shard_tensor0, train_labels
+        data1 = n_classes, g, shard_tensor1, train_labels
     else:
         data = n_classes, g, train_nfeat, train_labels
 
     mp.set_start_method('spawn')
     procs = []
     for proc_id in range(n_gpus):
-        p = mp.Process(target=run, args=(proc_id, n_gpus, args, devices, data))
+        p = mp.Process(target=run, args=(proc_id, n_gpus, args, devices, data0))
         p.start()
         procs.append(p)
     for p in procs:

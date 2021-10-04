@@ -219,6 +219,7 @@ def run(proc_id, n_gpus, args, devices, data):
 
     # Unpack data
     n_classes, train_g, train_nfeat, train_labels = data
+    train_g = train_g.formats(['csc'])
     val_g = train_g
     test_g = train_g
 
@@ -374,7 +375,7 @@ if __name__ == '__main__':
 
     # Construct graph
     g = dgl.as_heterograph(g)
-    g.create_formats_()
+    # g.create_formats_()
     train_nfeat = g.ndata.pop('features')
     train_labels = g.ndata.pop('labels')
     train_nfeat.share_memory_()
@@ -418,7 +419,7 @@ if __name__ == '__main__':
     mp.set_start_method('spawn')
     procs = []
     for proc_id in range(n_gpus):
-        p = mp.Process(target=run, args=(proc_id, n_gpus, args, devices, data))
+        p = mp.Process(target=run, args=(proc_id, n_gpus, args, devices, data0))
         p.start()
         procs.append(p)
     for p in procs:

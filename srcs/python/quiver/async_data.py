@@ -25,7 +25,8 @@ class SampleBuffer:
 
 
 class DataManager:
-    def __init__(self, device, feature, sample_device, feature_devices, feature_to_local, feature_rank):
+    def __init__(self, device, feature, sample_device, feature_devices,
+                 feature_to_local, feature_rank):
         self.device = device
         self.feature = feature
         self.sample_device = sample_device
@@ -39,8 +40,9 @@ class DataManager:
 
     def dispatch(self, nodes, ws):
         ranks = self.feature_rank(nodes)
-        input_orders = torch.arange(nodes.size(
-            0), dtype=torch.long, device=nodes.device)
+        input_orders = torch.arange(nodes.size(0),
+                                    dtype=torch.long,
+                                    device=nodes.device)
         reorder = torch.empty_like(input_orders)
         beg = 0
         res = []

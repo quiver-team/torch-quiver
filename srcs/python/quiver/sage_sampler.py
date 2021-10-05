@@ -19,8 +19,12 @@ class GraphStructure:
 
 
 class GraphSageSampler:
-
-    def __init__(self, graph: GraphStructure, sizes: List[int], device, num_nodes: Optional[int] = None, mode="UVA"):
+    def __init__(self,
+                 graph: GraphStructure,
+                 sizes: List[int],
+                 device,
+                 num_nodes: Optional[int] = None,
+                 mode="UVA"):
 
         self.sizes = sizes
 
@@ -30,8 +34,9 @@ class GraphSageSampler:
         if self.mode == "UVA":
             indptr, indices = graph.indptr, graph.indices
             edge_id = torch.zeros(1, dtype=torch.long)
-            self.quiver = qv.new_quiver_from_csr_array(
-                indptr, indices, edge_id, device, device_replicate)
+            self.quiver = qv.new_quiver_from_csr_array(indptr, indices,
+                                                       edge_id, device,
+                                                       device_replicate)
         else:
             edge_index = graph.edge_index
             edge_id = torch.zeros(1, dtype=torch.long)

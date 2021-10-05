@@ -17,9 +17,7 @@ from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
 from quiver.models.sage_model import SAGE
 import time
 
-
 from typing import List, NamedTuple, Optional, Tuple
-
 
 NUMA_SIZE = 2
 PER_NUMA = 2
@@ -70,13 +68,13 @@ class SingleProcess:
         self.comm.rank = rank
         self.train_idx = train_idx
         self.batch_size = batch_size
-        self.loader = AsyncCudaNeighborSampler(edge_index,
-                                               device=device)
+        self.loader = AsyncCudaNeighborSampler(edge_index, device=device)
         self.sizes = sizes
         num_features, num_hidden, num_classes, num_layers, y = train_data
         self.y = y
-        device = torch.device('cuda:' +
-                              str(self.comm.rank) if torch.cuda.is_available() else 'cpu')
+        device = torch.device(
+            'cuda:' +
+            str(self.comm.rank) if torch.cuda.is_available() else 'cpu')
         self.device = device
         feature_rank = rank % PER_NUMA + 1
         numa_rank = rank // PER_NUMA
@@ -101,8 +99,8 @@ class SingleProcess:
         self.optimizer = optimizer
         for peer in feature_peers:
             if peer != self.comm.rank:
-                resp = FeatureResponse(
-                    self.comm.rank, self.feature_rank, self.feature)
+                resp = FeatureResponse(self.comm.rank, self.feature_rank,
+                                       self.feature)
                 self.sync.response_queues[peer].put(resp)
         all_features = [None] * (len(feature_peers) + 1)
         all_features[0] = cpu_feature
@@ -115,8 +113,9 @@ class SingleProcess:
 
     def dispatch(self, nodes, ws):
         ranks = torch.fmod(nodes, ws)
-        input_orders = torch.arange(nodes.size(
-            0), dtype=torch.long, device=nodes.device)
+        input_orders = torch.arange(nodes.size(0),
+                                    dtype=torch.long,
+                                    device=nodes.device)
         reorder = torch.empty_like(input_orders)
         beg = 0
         res = []
@@ -155,8 +154,10 @@ class SingleProcess:
 
     def __call__(self, rank):
         self.prepare(rank, *self.args)
-        dataloader = torch.utils.data.DataLoader(
-            self.train_idx, batch_size=self.batch_size, shuffle=True, drop_last=True)
+        dataloader = torch.utils.data.DataLoader(self.train_idx,
+                                                 batch_size=self.batch_size,
+                                                 shuffle=True,
+                                                 drop_last=True)
         for i in range(self.num_epoch):
             count = 0
             cont = True
@@ -207,8 +208,8 @@ if __name__ == '__main__':
     sync = SyncManager(ws)
     per_numa_section = [1, 2, 2]
     per_numa_features = torch.split(x, per_numa_section, dim=0)
-    proc = SingleProcess(num_epoch, num_batch, sample_data,
-                         train_data, per_numa_features, sync, comm)
+    proc = SingleProcess(num_epoch, num_batch, sample_data, train_data,
+                         per_numa_features, sync, comm)
     procs = launch_multiprocess(proc, ws)
     time.sleep(50)
     for p in procs:

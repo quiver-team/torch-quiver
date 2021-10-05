@@ -19,7 +19,8 @@ class FeatureResponse:
 
 
 class FeatureConfig:
-    def __init__(self, rank, ws, cpu, gpu, request_queues, response_queues, cpu_split, to_local):
+    def __init__(self, rank, ws, cpu, gpu, request_queues, response_queues,
+                 cpu_split, to_local):
         self.rank = rank
         self.ws = ws
         self.cpu = cpu
@@ -46,8 +47,9 @@ class AsyncFeature:
         ws = self.config.ws
         beg = 0
         res = []
-        input_orders = torch.arange(nodes.size(
-            0), dtype=torch.long, device=nodes.device)
+        input_orders = torch.arange(nodes.size(0),
+                                    dtype=torch.long,
+                                    device=nodes.device)
         cpu_mask = torch.lt(nodes, self.config.cpu_split)
         gpu_mask = torch.ge(nodes, self.config.cpu_split)
         cpu_nodes = torch.masked_select(nodes, cpu_mask)
@@ -71,8 +73,9 @@ class AsyncFeature:
         ws = self.config.ws
         beg = 0
         res = []
-        input_orders = torch.arange(nodes.size(
-            0), dtype=torch.long, device=nodes.device)
+        input_orders = torch.arange(nodes.size(0),
+                                    dtype=torch.long,
+                                    device=nodes.device)
         # TODO: General split
         ranks = torch.fmod(nodes, ws)
         reorder = torch.empty_like(input_orders)
@@ -151,8 +154,9 @@ class TorchShardTensor:
         t0 = time.time()
         torch.cuda.set_device(self.rank)
         nodes = nodes.to(self.rank)
-        input_orders = torch.arange(nodes.size(
-            0), dtype=torch.long, device=torch.device(self.rank))
+        input_orders = torch.arange(nodes.size(0),
+                                    dtype=torch.long,
+                                    device=torch.device(self.rank))
         beg_r = self.range_list[self.rank]
         end_r = self.range_list[self.rank + 1]
         beg_mask = torch.ge(nodes, beg_r)

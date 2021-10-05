@@ -23,8 +23,8 @@ import random
 from typing import List, NamedTuple, Optional, Tuple
 import torch_quiver as qv
 
-
 REINDEX = True
+
 
 def reindex_by_config(adj_csr, graph_feature, gpu_portion):
     degree = adj_csr.indptr[1:] - adj_csr.indptr[:-1]
@@ -35,10 +35,11 @@ def reindex_by_config(adj_csr, graph_feature, gpu_portion):
     perm_range = torch.randperm(int(node_count * gpu_portion))
 
     new_order = torch.zeros_like(prev_order)
-    prev_order[: int(node_count * gpu_portion)] = prev_order[perm_range]
+    prev_order[:int(node_count * gpu_portion)] = prev_order[perm_range]
     new_order[prev_order] = total_range
     graph_feature = graph_feature[prev_order]
     return graph_feature, new_order
+
 
 class InterProcData:
     csr = None
@@ -58,42 +59,50 @@ class Adj(NamedTuple):
         return Adj(self.edge_index.to(*args, **kwargs),
                    self.e_id.to(*args, **kwargs), self.size)
 
+
 class NodeDataset(torch.utils.data.IterableDataset):
     def __init__(self, nodes, batch_size, tensor_offset_device):
         super().__init__()
         self.tensor_offset_device = tensor_offset_device
         self.nodes = nodes
         self.batch_size = batch_size
-    
+
     def next(self):
         start = 0
         input_orders = torch.arange(self.batch_size, dtype=torch.long)
-        
+
         while start < len(self.nodes):
-            if len(self.nodes) - start < self.batch_size :
+            if len(self.nodes) - start < self.batch_size:
                 break
-            nodes = self.nodes[start: start + self.batch_size]
+            nodes = self.nodes[start:start + self.batch_size]
             dispatch_book = {}
             for device in self.tensor_offset_device:
-                request_nodes_mask = (nodes >= self.tensor_offset_device[device].start) & (nodes < self.tensor_offset_device[device].end)
-                if(request_nodes_mask.shape[0] > 0):
-                    request_nodes = torch.masked_select(nodes, request_nodes_mask)
-                    part_orders = torch.masked_select(input_orders, request_nodes_mask)
-                    dispatch_book[device] = DeviceCollectionJob(part_orders, request_nodes)
+                request_nodes_mask = (
+                    nodes >= self.tensor_offset_device[device].start) & (
+                        nodes < self.tensor_offset_device[device].end)
+                if (request_nodes_mask.shape[0] > 0):
+                    request_nodes = torch.masked_select(
+                        nodes, request_nodes_mask)
+                    part_orders = torch.masked_select(input_orders,
+                                                      request_nodes_mask)
+                    dispatch_book[device] = DeviceCollectionJob(
+                        part_orders, request_nodes)
             yield nodes, dispatch_book
             start += self.batch_size
-    
+
     def __len__(self):
         return len(self.nodes) // self.batch_size
 
-    
     def __iter__(self):
         random.shuffle(self.nodes)
         return self.next()
 
 
 class SAGE(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels,
+    def __init__(self,
+                 in_channels,
+                 hidden_channels,
+                 out_channels,
                  num_layers=2):
         super(SAGE, self).__init__()
         self.num_layers = num_layers
@@ -137,6 +146,7 @@ class SAGE(torch.nn.Module):
 
         return x_all
 
+
 def get_csr_from_coo(edge_index):
     src = edge_index[0].numpy()
     dst = edge_index[1].numpy()
@@ -145,6 +155,7 @@ def get_csr_from_coo(edge_index):
     csr_mat = csr_matrix(
         (data, (edge_index[0].numpy(), edge_index[1].numpy())))
     return csr_mat
+
 
 def sample(sampler, device, input_nodes, sizes):
     nodes = input_nodes.to(device)
@@ -167,10 +178,13 @@ def sample(sampler, device, input_nodes, sizes):
 
     return nodes, batch_size, adjs[::-1]
 
+
 def fake_collate(x):
     return x
 
-def run(rank, world_size, shard_tensor_ipc_handle, inter_proc_data: InterProcData):
+
+def run(rank, world_size, shard_tensor_ipc_handle,
+        inter_proc_data: InterProcData):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
     dist.init_process_group('nccl', rank=rank, world_size=world_size)
@@ -179,26 +193,32 @@ def run(rank, world_size, shard_tensor_ipc_handle, inter_proc_data: InterProcDat
     y = inter_proc_data.y.squeeze().to(rank)
 
     new_order = inter_proc_data.new_order.to(rank)
-    
 
     csr_indptr, csr_indices = inter_proc_data.csr
-    sampler = AsyncCudaNeighborSampler(csr_indptr=csr_indptr, csr_indices=csr_indices, device=rank, copy=False)
+    sampler = AsyncCudaNeighborSampler(csr_indptr=csr_indptr,
+                                       csr_indices=csr_indices,
+                                       device=rank,
+                                       copy=False)
     print('prepare sample')
     x = qv.ShardTensor(rank)
     x.append(shard_tensor_ipc_handle, -1)
     print('prepare feature')
     batch_size = 2048
 
-    train_loader = torch.utils.data.DataLoader(train_idx, batch_size=batch_size, pin_memory=True, shuffle=True)
-
+    train_loader = torch.utils.data.DataLoader(train_idx,
+                                               batch_size=batch_size,
+                                               pin_memory=True,
+                                               shuffle=True)
 
     torch.manual_seed(12345)
-    model = SAGE(inter_proc_data.num_features, 256, inter_proc_data.num_classes, num_layers=3).to(rank)
+    model = SAGE(inter_proc_data.num_features,
+                 256,
+                 inter_proc_data.num_classes,
+                 num_layers=3).to(rank)
     model = DistributedDataParallel(model, device_ids=[rank])
     optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
     print('prepare train')
 
-  
     time_points = []
     iter_points = []
 
@@ -211,10 +231,9 @@ def run(rank, world_size, shard_tensor_ipc_handle, inter_proc_data: InterProcDat
             print(f"{rank}_sample", time.time() - start, iter_step)
             start = time.time()
             new_n_id = new_order[n_id]
-            
+
             feature = x[new_n_id]
             print(f"{rank}_feature", time.time() - start, iter_step)
-
 
             adjs = [adj.to(rank) for adj in adjs]
             start = time.time()
@@ -225,13 +244,14 @@ def run(rank, world_size, shard_tensor_ipc_handle, inter_proc_data: InterProcDat
             optimizer.step()
             iprint(f"{rank}_train", time.time() - start, iter_step)
             if rank == 0 and iter_step > 10 and iter_step % 20 == 10:
-                iter_points.append(time.time()  - start_time)
-                print(f"{rank}_throughput", world_size * batch_size / np.mean(np.array(iter_points[-10:])), iter_step)
-            
+                iter_points.append(time.time() - start_time)
+                print(
+                    f"{rank}_throughput", world_size * batch_size /
+                    np.mean(np.array(iter_points[-10:])), iter_step)
+
             start_time = time.time()
         time_points.clear()
         iter_points.clear()
-
 
         #if rank == 0:
         #    print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}')
@@ -279,13 +299,13 @@ if __name__ == '__main__':
     inter_proc_data.num_classes = 172
     inter_proc_data.num_features = 128
     inter_proc_data.train_idx = train_idx
-    
+
     inter_proc_data.y = label
 
-    shard_tensor_config = ShardTensorConfig({0:"11G"})
+    shard_tensor_config = ShardTensorConfig({0: "11G"})
 
     # shard_tensor = PyShardTensor(0, shard_tensor_config)
-    
+
     inter_proc_data.new_order = new_order
 
     # shard_tensor.from_cpu_tensor(graph_feature)
@@ -295,4 +315,7 @@ if __name__ == '__main__':
     print('share ipc')
     world_size = 1
     print('Let\'s use', world_size, 'GPUs!')
-    mp.spawn(run, args=(world_size, graph_feature, inter_proc_data), nprocs=world_size, join=True)
+    mp.spawn(run,
+             args=(world_size, graph_feature, inter_proc_data),
+             nprocs=world_size,
+             join=True)

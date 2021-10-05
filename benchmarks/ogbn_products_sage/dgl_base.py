@@ -20,7 +20,6 @@ from quiver.shard_tensor import ShardTensorConfig
 from shuffle import split
 import torch_quiver as torch_qv
 
-
 # 0: CPU, 1: GPU, 2: ShardTensor
 GPU_FEATURE = 2
 # 0: CPU, 1: GPU, 2: ZeroCopy
@@ -28,12 +27,15 @@ GPU_SAMPLE = 2
 # 0: Device, 1: NUMA
 CACHE_MODE = 1
 
+
 class SAGE(nn.Module):
-    def __init__(self, in_feats, n_hidden, n_classes, n_layers, activation, dropout):
+    def __init__(self, in_feats, n_hidden, n_classes, n_layers, activation,
+                 dropout):
         super().__init__()
         self.init(in_feats, n_hidden, n_classes, n_layers, activation, dropout)
 
-    def init(self, in_feats, n_hidden, n_classes, n_layers, activation, dropout):
+    def init(self, in_feats, n_hidden, n_classes, n_layers, activation,
+             dropout):
         self.n_layers = n_layers
         self.n_hidden = n_hidden
         self.n_classes = n_classes
@@ -72,7 +74,9 @@ class SAGE(nn.Module):
         # on each layer are of course splitted in batches.
         # TODO: can we standardize this?
         for l, layer in enumerate(self.layers):
-            y = th.zeros(g.num_nodes(), self.n_hidden if l != len(self.layers) - 1 else self.n_classes)
+            y = th.zeros(
+                g.num_nodes(),
+                self.n_hidden if l != len(self.layers) - 1 else self.n_classes)
 
             sampler = dgl.dataloading.MultiLayerFullNeighborSampler(1)
             dataloader = dgl.dataloading.NodeDataLoader(
@@ -98,6 +102,7 @@ class SAGE(nn.Module):
 
             x = y
         return y
+
 
 def compute_acc_unsupervised(emb, labels, train_nids, val_nids, test_nids):
     """
@@ -133,6 +138,7 @@ def load_reddit():
     g.ndata['labels'] = g.ndata['label']
     return g, data.num_classes
 
+
 def load_ogb(name, root=None):
     from ogb.nodeproppred import DglNodePropPredDataset
 
@@ -151,18 +157,20 @@ def load_ogb(name, root=None):
     num_labels = len(th.unique(labels[th.logical_not(th.isnan(labels))]))
 
     # Find the node IDs in the training, validation, and test set.
-    train_nid, val_nid, test_nid = splitted_idx['train'], splitted_idx['valid'], splitted_idx['test']
-    train_mask = th.zeros((graph.number_of_nodes(),), dtype=th.bool)
+    train_nid, val_nid, test_nid = splitted_idx['train'], splitted_idx[
+        'valid'], splitted_idx['test']
+    train_mask = th.zeros((graph.number_of_nodes(), ), dtype=th.bool)
     train_mask[train_nid] = True
-    val_mask = th.zeros((graph.number_of_nodes(),), dtype=th.bool)
+    val_mask = th.zeros((graph.number_of_nodes(), ), dtype=th.bool)
     val_mask[val_nid] = True
-    test_mask = th.zeros((graph.number_of_nodes(),), dtype=th.bool)
+    test_mask = th.zeros((graph.number_of_nodes(), ), dtype=th.bool)
     test_mask[test_nid] = True
     graph.ndata['train_mask'] = train_mask
     graph.ndata['val_mask'] = val_mask
     graph.ndata['test_mask'] = test_mask
     print('finish constructing', name)
     return graph, num_labels
+
 
 def inductive_split(g):
     """Split the graph into training graph, validation graph, and test graph by training
@@ -172,11 +180,13 @@ def inductive_split(g):
     test_g = g
     return train_g, val_g, test_g
 
+
 def compute_acc(pred, labels):
     """
     Compute the accuracy of prediction given the labels.
     """
     return (th.argmax(pred, dim=1) == labels).float().sum() / len(pred)
+
 
 def evaluate(model, g, nfeat, labels, val_nid, device):
     """
@@ -189,9 +199,11 @@ def evaluate(model, g, nfeat, labels, val_nid, device):
     """
     model.eval()
     with th.no_grad():
-        pred = model.inference(g, nfeat, device, args.batch_size, args.num_workers)
+        pred = model.inference(g, nfeat, device, args.batch_size,
+                               args.num_workers)
     model.train()
     return compute_acc(pred[val_nid], labels[val_nid])
+
 
 def load_subtensor(nfeat, labels, seeds, input_nodes, dev_id):
     """
@@ -201,7 +213,9 @@ def load_subtensor(nfeat, labels, seeds, input_nodes, dev_id):
     batch_labels = labels[seeds].to(dev_id)
     return batch_inputs, batch_labels
 
+
 #### Entry point
+
 
 def run(proc_id, n_gpus, args, devices, data):
     # Start up distributed training, if enabled.
@@ -215,7 +229,7 @@ def run(proc_id, n_gpus, args, devices, data):
         th.distributed.init_process_group(backend="nccl",
                                           init_method=dist_init_method,
                                           world_size=world_size,
-                                          rank=proc_id)    
+                                          rank=proc_id)
 
     # Unpack data
     n_classes, train_g, train_nfeat, train_labels = data
@@ -248,25 +262,28 @@ def run(proc_id, n_gpus, args, devices, data):
     test_nid = test_mask.nonzero().squeeze()
     # Create PyTorch DataLoader for constructing blocks
     sampler = dgl.dataloading.MultiLayerNeighborSampler(
-        [int(fanout) for fanout in args.fan_out.split(',')], zero_copy=GPU_SAMPLE==2)
+        [int(fanout) for fanout in args.fan_out.split(',')],
+        zero_copy=GPU_SAMPLE == 2)
     if GPU_SAMPLE == 1:
         train_g = train_g.to(dev_id)
         train_nid = train_nid.to(dev_id)
-    dataloader = dgl.dataloading.NodeDataLoader(
-        train_g,
-        train_nid,
-        sampler,
-        use_ddp=False,
-        device=dev_id,
-        batch_size=args.batch_size,
-        shuffle=True,
-        drop_last=False,
-        num_workers=args.num_workers)
+    dataloader = dgl.dataloading.NodeDataLoader(train_g,
+                                                train_nid,
+                                                sampler,
+                                                use_ddp=False,
+                                                device=dev_id,
+                                                batch_size=args.batch_size,
+                                                shuffle=True,
+                                                drop_last=False,
+                                                num_workers=args.num_workers)
     # Define model and optimizer
-    model = SAGE(in_feats, args.num_hidden, n_classes, args.num_layers, F.relu, args.dropout)
+    model = SAGE(in_feats, args.num_hidden, n_classes, args.num_layers, F.relu,
+                 args.dropout)
     model = model.to(dev_id)
     if n_gpus > 1:
-        model = DistributedDataParallel(model, device_ids=[dev_id], output_device=dev_id)
+        model = DistributedDataParallel(model,
+                                        device_ids=[dev_id],
+                                        output_device=dev_id)
     loss_fcn = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
@@ -287,8 +304,8 @@ def run(proc_id, n_gpus, args, devices, data):
             # Load the input features as well as output labels
             if GPU_FEATURE == 2:
                 input_nodes = new_order[input_nodes]
-            batch_inputs, batch_labels = load_subtensor(train_nfeat, train_labels,
-                                                        seeds, input_nodes, dev_id)
+            batch_inputs, batch_labels = load_subtensor(
+                train_nfeat, train_labels, seeds, input_nodes, dev_id)
             blocks = [block.int().to(dev_id) for block in blocks]
             t2 = time.time()
             # Compute loss and prediction
@@ -299,15 +316,19 @@ def run(proc_id, n_gpus, args, devices, data):
             optimizer.step()
             t3 = time.time()
             if proc_id == 0:
-                iter_tput.append(len(seeds) * n_gpus / (time.time() - tic_step))
+                iter_tput.append(
+                    len(seeds) * n_gpus / (time.time() - tic_step))
                 tic_step = time.time()
             if step % args.log_every == 0 and proc_id == 0:
                 print(f'sample took {t1 - t0}')
                 print(f'feature took {t2 - t1}')
                 print(f'train took {t3 - t2}')
                 acc = compute_acc(batch_pred, batch_labels)
-                print('Epoch {:05d} | Step {:05d} | Loss {:.4f} | Train Acc {:.4f} | Speed (samples/sec) {:.4f} | GPU {:.1f} MB'.format(
-                    epoch, step, loss.item(), acc.item(), np.mean(iter_tput[3:]), th.cuda.max_memory_allocated() / 1000000))
+                print(
+                    'Epoch {:05d} | Step {:05d} | Loss {:.4f} | Train Acc {:.4f} | Speed (samples/sec) {:.4f} | GPU {:.1f} MB'
+                    .format(epoch, step, loss.item(), acc.item(),
+                            np.mean(iter_tput[3:]),
+                            th.cuda.max_memory_allocated() / 1000000))
             t0 = time.time()
 
         # if n_gpus > 1:
@@ -332,15 +353,17 @@ def run(proc_id, n_gpus, args, devices, data):
         #         print('Eval Acc {:.4f}'.format(eval_acc))
         #         print('Test Acc: {:.4f}'.format(test_acc))
 
-
     if n_gpus > 1:
         th.distributed.barrier()
     if proc_id == 0:
         print('Avg epoch time: {}'.format(avg / (epoch - 4)))
 
+
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser("multi-gpu training")
-    argparser.add_argument('--gpu', type=str, default='0,1',
+    argparser.add_argument('--gpu',
+                           type=str,
+                           default='0,1',
                            help="Comma separated list of GPU device IDs.")
     argparser.add_argument('--dataset', type=str, default='ogbn-products')
     argparser.add_argument('--num-epochs', type=int, default=20)
@@ -352,17 +375,23 @@ if __name__ == '__main__':
     argparser.add_argument('--eval-every', type=int, default=5)
     argparser.add_argument('--lr', type=float, default=0.003)
     argparser.add_argument('--dropout', type=float, default=0.5)
-    argparser.add_argument('--num-workers', type=int, default=0,
-                           help="Number of sampling processes. Use 0 for no extra process.")
-    argparser.add_argument('--inductive', action='store_true',
+    argparser.add_argument(
+        '--num-workers',
+        type=int,
+        default=0,
+        help="Number of sampling processes. Use 0 for no extra process.")
+    argparser.add_argument('--inductive',
+                           action='store_true',
                            help="Inductive learning setting")
-    argparser.add_argument('--data-cpu', action='store_false',
-                           help="By default the script puts all node features and labels "
-                                "on GPU when using it to save time for data copy. This may "
-                                "be undesired if they cannot fit in GPU memory at once. "
-                                "This flag disables that.")
+    argparser.add_argument(
+        '--data-cpu',
+        action='store_false',
+        help="By default the script puts all node features and labels "
+        "on GPU when using it to save time for data copy. This may "
+        "be undesired if they cannot fit in GPU memory at once. "
+        "This flag disables that.")
     args = argparser.parse_args()
-    
+
     devices = list(map(int, args.gpu.split(',')))
     n_gpus = len(devices)
 
@@ -401,7 +430,7 @@ if __name__ == '__main__':
         home = os.getenv('HOME')
         root = osp.join(home, 'products')
         if CACHE_MODE == 1:
-            shard_tensor_config = ShardTensorConfig({0:"0.2G",1:"0.2G"})
+            shard_tensor_config = ShardTensorConfig({0: "0.2G", 1: "0.2G"})
             shard_tensor = PyShardTensor(0, shard_tensor_config)
             _, prev_order, new_order = split(0.42, "ogbn-products", root)
             train_nfeat = train_nfeat[prev_order]

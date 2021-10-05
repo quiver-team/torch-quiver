@@ -42,8 +42,11 @@ data = dataset[0]
 
 train_idx = split_idx['train']
 
-subgraph_loader = NeighborSampler(data.edge_index, node_idx=None, sizes=[-1],
-                                  batch_size=4096, shuffle=False,
+subgraph_loader = NeighborSampler(data.edge_index,
+                                  node_idx=None,
+                                  sizes=[-1],
+                                  batch_size=4096,
+                                  shuffle=False,
                                   num_workers=12)
 
 
@@ -135,13 +138,17 @@ def get_csr_from_coo(edge_index):
 
 
 csr_mat = get_csr_from_coo(data.edge_index)
-sampler = AsyncCudaNeighborSampler(
-    csr_indptr=csr_mat.indptr, csr_indices=csr_mat.indices, device=0, copy=True)
+sampler = AsyncCudaNeighborSampler(csr_indptr=csr_mat.indptr,
+                                   csr_indices=csr_mat.indices,
+                                   device=0,
+                                   copy=True)
 
 split_idx = dataset.get_idx_split()
 train_idx = split_idx['train']
-train_loader = torch.utils.data.DataLoader(
-    train_idx, batch_size=4096, shuffle=True, drop_last=True)
+train_loader = torch.utils.data.DataLoader(train_idx,
+                                           batch_size=4096,
+                                           shuffle=True,
+                                           drop_last=True)
 
 model = SAGE(dataset.num_features, 256, dataset.num_classes, num_layers=3)
 model = model.to(device)

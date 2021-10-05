@@ -32,9 +32,10 @@ for split in ['train', 'valid', 'test']:
     mask[splitted_idx[split]] = True
     data[f'{split}_mask'] = mask
 w.tick('load data')
-train_loader = RandomNodeCudaSampler(data, 5,  num_parts=10, shuffle=True)
+train_loader = RandomNodeCudaSampler(data, 5, num_parts=10, shuffle=True)
 test_loader = RandomNodeSampler(data, num_parts=5, num_workers=5)
 w.tick('create train_loader')
+
 
 class DeeperGCN(torch.nn.Module):
     def __init__(self, hidden_channels, num_layers):
@@ -43,15 +44,23 @@ class DeeperGCN(torch.nn.Module):
 
         self.layers = torch.nn.ModuleList()
         for i in range(1, num_layers + 1):
-            conv = GENConv(hidden_channels, hidden_channels, aggr='softmax_sg',
-                           t=1.0, learn_t=True, num_layers=1, norm='batch')
+            conv = GENConv(hidden_channels,
+                           hidden_channels,
+                           aggr='softmax_sg',
+                           t=1.0,
+                           learn_t=True,
+                           num_layers=1,
+                           norm='batch')
             norm = LayerNorm(hidden_channels, elementwise_affine=False)
             act = ReLU(inplace=True)
 
-            layer = DeepGCNLayer(conv, norm, act, block='res+', dropout=0.1,
+            layer = DeepGCNLayer(conv,
+                                 norm,
+                                 act,
+                                 block='res+',
+                                 dropout=0.1,
                                  ckpt_grad=i % 3)
             self.layers.append(layer)
-
 
     def forward(self, x, edge_index):
         x = self.node_encoder(x)
@@ -74,6 +83,7 @@ criterion = torch.nn.BCEWithLogitsLoss()
 # evaluator = Evaluator('ogbn-proteins')
 w.tick('build model')
 
+
 def train(epoch):
     model.train()
 
@@ -83,7 +93,8 @@ def train(epoch):
     total_loss = total_examples = 0
     for data in train_loader:
         out = model(data.x.to(device), data.edge_index.to(device))
-        loss = F.nll_loss(out[data.train_mask], data.y[data.train_mask].squeeze().to(device))
+        loss = F.nll_loss(out[data.train_mask],
+                          data.y[data.train_mask].squeeze().to(device))
         loss.backward()
         w.turn_off('sample')
         # data = data.to(device)

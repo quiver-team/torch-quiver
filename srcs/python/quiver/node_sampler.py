@@ -6,6 +6,8 @@ from torch import Tensor
 from torch_sparse import SparseTensor
 import time
 import torch_quiver as qv
+
+
 class EdgeIndex(NamedTuple):
     edge_index: Tensor
     e_id: Optional[Tensor]
@@ -26,6 +28,7 @@ class Adj(NamedTuple):
         adj_t = self.adj_t.to(*args, **kwargs)
         e_id = self.e_id.to(*args, **kwargs) if self.e_id is not None else None
         return Adj(adj_t, e_id, self.size)
+
 
 class RandomIndexSampler(torch.utils.data.Sampler):
     def __init__(self, num_nodes: int, num_parts: int, shuffle: bool = False):
@@ -69,26 +72,34 @@ class RandomNodeCudaSampler(torch.utils.data.DataLoader):
         **kwargs (optional): Additional arguments of
             :class:`torch.utils.data.DataLoader`, such as :obj:`num_workers`.
     """
-    def __init__(self, data, device, num_parts: int, shuffle: bool = False, **kwargs):
+    def __init__(self,
+                 data,
+                 device,
+                 num_parts: int,
+                 shuffle: bool = False,
+                 **kwargs):
         assert data.edge_index is not None
 
         self.N = N = data.num_nodes
         self.E = data.num_edges
         self.cuda_device = torch.device('cuda:' + str(device))
-        self.adj = SparseTensor(
-            row=data.edge_index[0], col=data.edge_index[1],
-            value=torch.arange(self.E, device=data.edge_index.device),
-            sparse_sizes=(N, N)).to(self.cuda_device)
-
+        self.adj = SparseTensor(row=data.edge_index[0],
+                                col=data.edge_index[1],
+                                value=torch.arange(
+                                    self.E, device=data.edge_index.device),
+                                sparse_sizes=(N, N)).to(self.cuda_device)
 
         self.data = copy.copy(data)
         self.data.edge_index = None
         self.deg_out = None
 
-        super(RandomNodeCudaSampler, self).__init__(
-            self, batch_size=1,
-            sampler=RandomIndexSampler(self.N, num_parts, shuffle),
-            collate_fn=self.__collate__, **kwargs)
+        super(RandomNodeCudaSampler,
+              self).__init__(self,
+                             batch_size=1,
+                             sampler=RandomIndexSampler(
+                                 self.N, num_parts, shuffle),
+                             collate_fn=self.__collate__,
+                             **kwargs)
 
     def __getitem__(self, idx):
         return idx
@@ -100,7 +111,7 @@ class RandomNodeCudaSampler(torch.utils.data.DataLoader):
         row, col, value = self.adj.coo()
         node_idx = node_idx.to(self.cuda_device)
         rowptr = self.adj.storage.rowptr()
-        if (self.deg_out is None) :
+        if (self.deg_out is None):
             self.deg_out = self.adj.storage.rowcount()
         deg = torch.index_select(self.deg_out, 0, node_idx)
         subgraph = qv.saint_subgraph(node_idx, rowptr, row, col, deg)
@@ -127,6 +138,7 @@ class RandomNodeCudaSampler(torch.utils.data.DataLoader):
 
         return data
 
+
 class RandomNodeSampler(torch.utils.data.DataLoader):
     r"""A data loader that randomly samples nodes within a graph and returns
     their induced subgraph.
@@ -152,18 +164,22 @@ class RandomNodeSampler(torch.utils.data.DataLoader):
         self.N = N = data.num_nodes
         self.E = data.num_edges
 
-        self.adj = SparseTensor(
-            row=data.edge_index[0], col=data.edge_index[1],
-            value=torch.arange(self.E, device=data.edge_index.device),
-            sparse_sizes=(N, N))
+        self.adj = SparseTensor(row=data.edge_index[0],
+                                col=data.edge_index[1],
+                                value=torch.arange(
+                                    self.E, device=data.edge_index.device),
+                                sparse_sizes=(N, N))
 
         self.data = copy.copy(data)
         self.data.edge_index = None
 
-        super(RandomNodeSampler, self).__init__(
-            self, batch_size=1,
-            sampler=RandomIndexSampler(self.N, num_parts, shuffle),
-            collate_fn=self.__collate__, **kwargs)
+        super(RandomNodeSampler, self).__init__(self,
+                                                batch_size=1,
+                                                sampler=RandomIndexSampler(
+                                                    self.N, num_parts,
+                                                    shuffle),
+                                                collate_fn=self.__collate__,
+                                                **kwargs)
 
     def __getitem__(self, idx):
         return idx

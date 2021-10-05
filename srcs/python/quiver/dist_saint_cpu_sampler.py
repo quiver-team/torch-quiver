@@ -6,6 +6,7 @@ from torch_geometric.data import GraphSAINTSampler
 import torch
 from torch_geometric.data import Data
 
+
 def sample_n(nodes, size):
     neighbors, counts = None, None
 
@@ -16,13 +17,16 @@ def subgraph_nodes_n(nodes, i):
     row, col, edge_index = None, None, None
     return row, col, edge_index
 
+
 class Comm:
     def __init__(self, rank, world_size):
         self.rank = rank
         self.world_size = world_size
 
+
 sample_nodes = sample_n
 subgraph_nodes = subgraph_nodes_n
+
 
 class distributeRWSampler(GraphSAINTSampler):
     def __init__(self,
@@ -48,6 +52,7 @@ class distributeRWSampler(GraphSAINTSampler):
         super(distributeRWSampler,
               self).__init__(data, batch_size, num_steps, sample_coverage,
                              save_dir, log, **kwargs)
+
     @property
     def __filename__(self):
         hardcode = "GraphSAINTRandomWalkSampler"
@@ -97,7 +102,7 @@ class distributeRWSampler(GraphSAINTSampler):
 
     def __sample_nodes__(self, batch_size):
         # make start nodes
-        start = torch.randint(0, self.N, (batch_size,), dtype=torch.long)
+        start = torch.randint(0, self.N, (batch_size, ), dtype=torch.long)
         ranks = self.node2rank(start)
         local_nodes = None
         res = []
@@ -168,7 +173,8 @@ class distributeRWSampler(GraphSAINTSampler):
                 # if current server then local
                 if i == self.comm.rank:
                     local_nodes = part_nodes
-                    futures.append((torch.LongTensor([]), torch.LongTensor([])))
+                    futures.append(
+                        (torch.LongTensor([]), torch.LongTensor([])))
                 # remote server
                 else:
                     futures.append(
@@ -199,10 +205,10 @@ class distributeRWSampler(GraphSAINTSampler):
         ret_cols = torch.cat(cols)
         ret_edgeindex = torch.cat(edge_indices)
 
-        out = SparseTensor(row = ret_row,
-                           rowptr = None,
-                           col= ret_cols,
-                           value = ret_edgeindex,
+        out = SparseTensor(row=ret_row,
+                           rowptr=None,
+                           col=ret_cols,
+                           value=ret_edgeindex,
                            sparse_sizes=(node_idx.size(0), node_idx.size(0)),
                            is_sorted=False)
         return out, ret_edgeindex

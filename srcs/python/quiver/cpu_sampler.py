@@ -98,10 +98,14 @@ class NeighborSampler(torch.utils.data.DataLoader):
             :class:`torch.utils.data.DataLoader`, such as :obj:`batch_size`,
             :obj:`shuffle`, :obj:`drop_last` or :obj:`num_workers`.
     """
-    def __init__(self, edge_index: Union[Tensor, SparseTensor],
-                 sizes: List[int], node_idx: Optional[Tensor] = None,
-                 num_nodes: Optional[int] = None, return_e_id: bool = False,
-                 transform: Callable = None, **kwargs):
+    def __init__(self,
+                 edge_index: Union[Tensor, SparseTensor],
+                 sizes: List[int],
+                 node_idx: Optional[Tensor] = None,
+                 num_nodes: Optional[int] = None,
+                 return_e_id: bool = False,
+                 transform: Callable = None,
+                 **kwargs):
 
         edge_index = edge_index.to('cpu')
 
@@ -131,7 +135,8 @@ class NeighborSampler(torch.utils.data.DataLoader):
                 num_nodes = int(edge_index.max()) + 1
 
             value = torch.arange(edge_index.size(1)) if return_e_id else None
-            self.adj_t = SparseTensor(row=edge_index[0], col=edge_index[1],
+            self.adj_t = SparseTensor(row=edge_index[0],
+                                      col=edge_index[1],
                                       value=value,
                                       sparse_sizes=(num_nodes, num_nodes)).t()
         else:
@@ -149,8 +154,9 @@ class NeighborSampler(torch.utils.data.DataLoader):
         elif node_idx.dtype == torch.bool:
             node_idx = node_idx.nonzero(as_tuple=False).view(-1)
 
-        super(NeighborSampler, self).__init__(
-            node_idx.view(-1).tolist(), collate_fn=self.sample_layer, **kwargs)
+        super(NeighborSampler, self).__init__(node_idx.view(-1).tolist(),
+                                              collate_fn=self.sample_layer,
+                                              **kwargs)
 
     def sample(self, batch):
         if not isinstance(batch, Tensor):

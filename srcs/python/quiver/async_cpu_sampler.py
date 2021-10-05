@@ -31,7 +31,8 @@ class Adj(NamedTuple):
 def prepare_adj(edge_index):
     num_nodes = int(edge_index.max()) + 1
     value = None
-    adj_t = SparseTensor(row=edge_index[0], col=edge_index[1],
+    adj_t = SparseTensor(row=edge_index[0],
+                         col=edge_index[1],
                          value=value,
                          sparse_sizes=(num_nodes, num_nodes)).t()
     adj_t.share_memory_()

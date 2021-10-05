@@ -8,16 +8,20 @@ import time
 import torch_quiver as qv
 from torch.distributed import rpc
 
+
 def subgraph_nodes_n(nodes, i):
     row, col, edge_index = None, None, None
     return row, col, edge_index
+
 
 class Comm:
     def __init__(self, rank, world_size):
         self.rank = rank
         self.world_size = world_size
 
+
 subgraph_nodes = subgraph_nodes_n
+
 
 class EdgeIndex(NamedTuple):
     edge_index: Tensor
@@ -39,6 +43,7 @@ class Adj(NamedTuple):
         adj_t = self.adj_t.to(*args, **kwargs)
         e_id = self.e_id.to(*args, **kwargs) if self.e_id is not None else None
         return Adj(adj_t, e_id, self.size)
+
 
 class RandomIndexSampler(torch.utils.data.Sampler):
     def __init__(self, num_nodes: int, num_parts: int, shuffle: bool = False):
@@ -81,7 +86,8 @@ class distributeCudaRandomNodeSampler(torch.utils.data.DataLoader):
         **kwargs (optional): Additional arguments of
             :class:`torch.utils.data.DataLoader`, such as :obj:`num_workers`.
     """
-    def __init__(self, comm,
+    def __init__(self,
+                 comm,
                  graph,
                  feature_func,
                  device,
@@ -100,17 +106,21 @@ class distributeCudaRandomNodeSampler(torch.utils.data.DataLoader):
 
         self.N = N = data.num_nodes
         self.E = data.num_edges
-        self.adj = SparseTensor(
-            row=data.edge_index[0], col=data.edge_index[1],
-            value=torch.arange(self.E, device=data.edge_index.device),
-            sparse_sizes=(N, N)).to(self.cuda_device)
+        self.adj = SparseTensor(row=data.edge_index[0],
+                                col=data.edge_index[1],
+                                value=torch.arange(
+                                    self.E, device=data.edge_index.device),
+                                sparse_sizes=(N, N)).to(self.cuda_device)
         self.data = copy.copy(data)
         self.data.edge_index = None
 
-        super(distributeCudaRandomNodeSampler, self).__init__(
-            self, batch_size=1,
-            sampler=RandomIndexSampler(self.N, num_parts, shuffle),
-            collate_fn=self.__collate__, **kwargs)
+        super(distributeCudaRandomNodeSampler,
+              self).__init__(self,
+                             batch_size=1,
+                             sampler=RandomIndexSampler(
+                                 self.N, num_parts, shuffle),
+                             collate_fn=self.__collate__,
+                             **kwargs)
         self.deg_out = self.adj.storage.rowcount()
 
     def __getitem__(self, idx):
@@ -138,7 +148,8 @@ class distributeCudaRandomNodeSampler(torch.utils.data.DataLoader):
                 # if current server then local
                 if i == self.comm.rank:
                     local_nodes = part_nodes
-                    futures.append((torch.LongTensor([]), torch.LongTensor([]), torch.LongTensor([])))
+                    futures.append((torch.LongTensor([]), torch.LongTensor([]),
+                                    torch.LongTensor([])))
                 # remote server
                 else:
                     futures.append(
@@ -149,14 +160,16 @@ class distributeCudaRandomNodeSampler(torch.utils.data.DataLoader):
                                       timeout=-1.0))
 
             else:
-                futures.append((torch.LongTensor([]), torch.LongTensor([]), torch.LongTensor([])))
+                futures.append((torch.LongTensor([]), torch.LongTensor([]),
+                                torch.LongTensor([])))
         # local server has nodes
         if local_nodes is not None:
             nodes = self.global2local(local_nodes)
             nodes = nodes.to(self.cuda_device)
 
             deg = torch.index_select(self.deg_out, 0, nodes)
-            row, col, edge_index = qv.saint_subgraph(nodes, adj_rowptr, adj_row, adj_col, deg)
+            row, col, edge_index = qv.saint_subgraph(nodes, adj_rowptr,
+                                                     adj_row, adj_col, deg)
 
             row = row.to(cpu)
             col = col.to(cpu)
@@ -178,10 +191,10 @@ class distributeCudaRandomNodeSampler(torch.utils.data.DataLoader):
 
         if adj_value is not None:
             ret_vals = adj_value[ret_edgeindex].to(cpu)
-        out = SparseTensor(row = ret_row,
-                           rowptr = None,
-                           col= ret_cols,
-                           value = ret_vals,
+        out = SparseTensor(row=ret_row,
+                           rowptr=None,
+                           col=ret_cols,
+                           value=ret_vals,
                            sparse_sizes=(node_idx.size(0), node_idx.size(0)),
                            is_sorted=False)
         return out, ret_edgeindex

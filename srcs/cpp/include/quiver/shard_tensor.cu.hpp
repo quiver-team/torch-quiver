@@ -16,7 +16,9 @@ __device__ int find(const int64_t *offsets, const int device_count,
 __global__ void quiver_tensor_gather(float **dev_ptrs, const int64_t *offsets,
                                      const int device_count,
                                      const int64_t *indices, int indice_length,
-                                     float *res, const int stride, const int* access_book, const int ignore_access_book)
+                                     float *res, const int stride,
+                                     const int *access_book,
+                                     const int ignore_access_book)
 {
 
     //
@@ -41,7 +43,7 @@ __global__ void quiver_tensor_gather(float **dev_ptrs, const int64_t *offsets,
         local_start = thread_start;
         dev_index = find(offsets, device_count, indices[warp_start]);
         // we only copy data from reachable device
-        if(ignore_access_book || access_book[dev_index] == 1){
+        if (ignore_access_book || access_book[dev_index] == 1) {
             dev_ptr = dev_ptrs[dev_index];
             dev_offset = indices[warp_start] - offsets[dev_index];
             src_copy_start = dev_offset * stride;

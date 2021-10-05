@@ -6,22 +6,28 @@ from torch_geometric.data import GraphSAINTSampler
 import torch
 import time
 from torch_geometric.data import Data
+
+
 def sample_n(nodes, size):
     neighbors, counts = None, None
 
     return neighbors, counts
 
+
 def subgraph_nodes_n(nodes, i):
     row, col, edge_index = None, None, None
     return row, col, edge_index
+
 
 class Comm:
     def __init__(self, rank, world_size):
         self.rank = rank
         self.world_size = world_size
 
+
 sample_nodes = sample_n
 subgraph_nodes = subgraph_nodes_n
+
 
 class distributeCudaRWSampler(GraphSAINTSampler):
     r"""The GraphSAINT random walk sampler class (see
@@ -104,7 +110,7 @@ class distributeCudaRWSampler(GraphSAINTSampler):
 
     def __sample_nodes__(self, batch_size):
         # make start nodes
-        start = torch.randint(0, self.N, (batch_size,), dtype=torch.long)
+        start = torch.randint(0, self.N, (batch_size, ), dtype=torch.long)
         ranks = self.node2rank(start)
         local_nodes = None
         res = []
@@ -188,7 +194,8 @@ class distributeCudaRWSampler(GraphSAINTSampler):
                 # if current server then local
                 if i == self.comm.rank:
                     local_nodes = part_nodes
-                    futures.append((torch.LongTensor([]), torch.LongTensor([]), torch.LongTensor([])))
+                    futures.append((torch.LongTensor([]), torch.LongTensor([]),
+                                    torch.LongTensor([])))
                 # remote server
                 else:
                     futures.append(
@@ -199,7 +206,8 @@ class distributeCudaRWSampler(GraphSAINTSampler):
                                       timeout=-1.0))
 
             else:
-                futures.append((torch.LongTensor([]), torch.LongTensor([]), torch.LongTensor([])))
+                futures.append((torch.LongTensor([]), torch.LongTensor([]),
+                                torch.LongTensor([])))
         # local server has nodes
         if local_nodes is not None:
             nodes = self.global2local(local_nodes)
@@ -210,7 +218,8 @@ class distributeCudaRWSampler(GraphSAINTSampler):
 
             start_t = time.time()
             deg = torch.index_select(self.deg_out, 0, nodes)
-            row, col, edge_index = qv.saint_subgraph(nodes, adj_rowptr, adj_row, adj_col, deg)
+            row, col, edge_index = qv.saint_subgraph(nodes, adj_rowptr,
+                                                     adj_row, adj_col, deg)
             end = time.time()
             # print("subgraph", end - start_t)
 
@@ -238,10 +247,10 @@ class distributeCudaRWSampler(GraphSAINTSampler):
         if adj_value is not None:
             ret_vals = adj_value[ret_edgeindex].to(cpu)
         # start_t = time.time()
-        out = SparseTensor(row = ret_row,
-                           rowptr = None,
-                           col= ret_cols,
-                           value = ret_vals,
+        out = SparseTensor(row=ret_row,
+                           rowptr=None,
+                           col=ret_cols,
+                           value=ret_vals,
                            sparse_sizes=(node_idx.size(0), node_idx.size(0)),
                            is_sorted=False)
         # end = time.time()

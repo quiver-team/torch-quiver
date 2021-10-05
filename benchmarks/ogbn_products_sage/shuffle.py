@@ -36,8 +36,8 @@ def split(ratio, name, root):
     res = []
     if isinstance(ratio, list):
         for i in range(len(ratio) - 1):
-            num = int(ratio[i]*total_num)
-            gpu_tensor = data.x[prev_order[index:index+num]].share_memory_()
+            num = int(ratio[i] * total_num)
+            gpu_tensor = data.x[prev_order[index:index + num]].share_memory_()
             res.append(gpu_tensor)
             index += num
         cpu_tensor = data.x[prev_order[index:]].clone().share_memory_()

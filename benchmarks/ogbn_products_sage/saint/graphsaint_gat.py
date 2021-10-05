@@ -18,6 +18,7 @@ import copy
 from torch.nn import Linear as Lin
 #from quiver.schedule.throughput import ThroughputStats, SamplerChooser
 from torch_geometric.nn import GraphConv
+
 print("loading the data...")
 w = StopWatch('main')
 # --- here is ogbn ------------------
@@ -38,7 +39,7 @@ data.val_mask = valid_mask
 
 test_mask = torch.zeros(data.num_nodes, dtype=torch.bool)
 test_mask[split_idx['test']] = True
-data.test_mask= test_mask
+data.test_mask = test_mask
 row, col = data.edge_index
 data.edge_weight = 1. / degree(col, data.num_nodes)[col]  # Norm by in-degree.
 # -----below is flicker-----------
@@ -54,7 +55,7 @@ args = parser.parse_args()
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # evaluator = Evaluator(name='ogbn-products')
 x = data.x.to(device)
-y = data.y.squeeze().to(device) # [N, 1]
+y = data.y.squeeze().to(device)  # [N, 1]
 
 sample_data = copy.copy(data)
 sample_data.x = None
@@ -63,18 +64,24 @@ print(y)
 print(sample_data.y)
 w.tick('load data')
 
+
 class GAT(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels,
-                 heads = 4):
+    def __init__(self, in_channels, hidden_channels, out_channels, heads=4):
         super(GAT, self).__init__()
 
         self.conv1 = GATConv(in_channels, hidden_channels, heads=heads)
         self.lin1 = torch.nn.Linear(in_channels, heads * hidden_channels)
-        self.conv2 = GATConv(heads * hidden_channels, hidden_channels, heads=heads)
-        self.lin2 = torch.nn.Linear(heads * hidden_channels, heads * hidden_channels)
-        self.conv3 = GATConv(heads * hidden_channels, out_channels, heads=heads,
+        self.conv2 = GATConv(heads * hidden_channels,
+                             hidden_channels,
+                             heads=heads)
+        self.lin2 = torch.nn.Linear(heads * hidden_channels,
+                                    heads * hidden_channels)
+        self.conv3 = GATConv(heads * hidden_channels,
+                             out_channels,
+                             heads=heads,
                              concat=False)
         self.lin3 = torch.nn.Linear(heads * hidden_channels, out_channels)
+
     def set_aggr(self, aggr):
         self.conv1.aggr = aggr
         self.conv2.aggr = aggr
@@ -87,7 +94,6 @@ class GAT(torch.nn.Module):
         self.lin1.reset_parameters()
         self.lin2.reset_parameters()
         self.lin3.reset_parameters()
-
 
     def forward(self, x, edge_index, edge_weight=None):
         # `train_loader` computes the k-hop neighborhood of a batch of nodes,
@@ -110,7 +116,7 @@ loader = CudaRWSampler(data,
                        0,
                        batch_size=20000,
                        walk_length=1,
-                       num_steps= 5,
+                       num_steps=5,
                        sample_coverage=100,
                        save_dir=dataset.processed_dir,
                        num_workers=0)
@@ -134,7 +140,7 @@ w.tick('build model')
 def train():
     print(args.use_normalization)
     model.train()
-   # model.set_aggr('add' if args.use_normalization else 'mean')
+    # model.set_aggr('add' if args.use_normalization else 'mean')
     model.set_aggr('mean')
     total_loss = total_examples = 0
     w.turn_on('sample')
@@ -163,6 +169,7 @@ def train():
     w.turn_off('sample')
     return total_loss / total_examples
 
+
 @torch.no_grad()
 def test():
     model.eval()
@@ -176,6 +183,7 @@ def test():
         for _, mask in data('train_mask', 'val_mask', 'test_mask'):
             accs.append(correct[mask].sum().item() / mask.sum().item())
         return accs
+
 
 # # warm up
 # for i in range(1, 11):

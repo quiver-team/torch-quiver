@@ -112,9 +112,11 @@ class SingleProcess:
         #####################################################################################################
         total_nodes = info.get_max_node() + 1
         schedule.bind(rank % total_nodes)
-        print(f"LOG >>> Rank {rank} Is Bind To NUMA Node {rank % total_nodes}/{total_nodes}")
+        print(
+            f"LOG >>> Rank {rank} Is Bind To NUMA Node {rank % total_nodes}/{total_nodes}"
+        )
         time.sleep(1)
-        
+
         csr_mat, batch_size, sizes, train_idx = sample_data
         device = rank
         torch.cuda.set_device(device)
@@ -157,8 +159,8 @@ class SingleProcess:
             reorder, inputs, outputs, counts = ret
             index = MicroBatchIndex(batch_id, rank, size)
             reindex_peer = self.comm.other_peers.local_reindex
-            request = ReindexRequest(
-                index, self.global_rank, reindex_peer, reorder, inputs, outputs, counts)
+            request = ReindexRequest(index, self.global_rank, reindex_peer,
+                                     reorder, inputs, outputs, counts)
             self.sync.upstream_queues[reindex_peer].put(request)
 
     def handle_reindex_response(self, reindex_response):
@@ -169,24 +171,25 @@ class SingleProcess:
         ret = self.manager.recv_reindex(batch_id, nodes, row, col)
         nodes, temp_layer = ret
         if temp_layer >= 0:
-            reorder, res = self.manager.dispatch(
-                nodes, self.sample_size, False)
+            reorder, res = self.manager.dispatch(nodes, self.sample_size,
+                                                 False)
             res = self.manager.prepare_request(batch_id, reorder, res, False)
             global_samplers = self.comm.other_peers.global_samplers
             for rank, nodes in enumerate(res):
                 index = MicroBatchIndex(batch_id, rank, len(res))
-                req = SamplerRequest(
-                    index, self.comm.global_rank, global_samplers[rank], nodes, self.sizes[temp_layer])
+                req = SamplerRequest(index, self.comm.global_rank,
+                                     global_samplers[rank], nodes,
+                                     self.sizes[temp_layer])
                 self.sync.request_queues[global_samplers[rank]].put(req)
         else:
-            reorder, res = self.manager.dispatch(
-                nodes, self.feature_size, True)
+            reorder, res = self.manager.dispatch(nodes, self.feature_size,
+                                                 True)
             res = self.manager.prepare_request(batch_id, reorder, res, True)
             group_peers = self.comm.group_peers
             for rank, nodes in enumerate(res):
                 index = MicroBatchIndex(batch_id, rank, len(res))
-                req = FeatureRequest(
-                    index, self.comm.global_rank, group_peers[rank], nodes)
+                req = FeatureRequest(index, self.comm.global_rank,
+                                     group_peers[rank], nodes)
                 self.sync.request_queues[group_peers[rank]].put(req)
 
     def handle_feature_request(self, feature_request):
@@ -242,8 +245,9 @@ class TrainerProcess(QuiverProcess):
     def prepare(self, data):
         num_features, num_hidden, num_classes, num_layers, y = data
         self.y = y
-        device = torch.device('cuda:' +
-                              str(self.comm.group_rank) if torch.cuda.is_available() else 'cpu')
+        device = torch.device(
+            'cuda:' +
+            str(self.comm.group_rank) if torch.cuda.is_available() else 'cpu')
         self.device = device
         self.feature = feature_data.to(device)
         model = SAGE(num_features, num_hidden, num_classes, num_layers)
@@ -260,8 +264,9 @@ class TrainerProcess(QuiverProcess):
 
     def dispatch(self, nodes, ws):
         ranks = torch.fmod(nodes, ws)
-        input_orders = torch.arange(nodes.size(
-            0), dtype=torch.long, device=nodes.device)
+        input_orders = torch.arange(nodes.size(0),
+                                    dtype=torch.long,
+                                    device=nodes.device)
         reorder = torch.empty_like(input_orders)
         beg = 0
         res = []
@@ -282,8 +287,8 @@ class TrainerProcess(QuiverProcess):
             total_inputs_list = []
             sample_reorder_list = []
             sample_input_list = [None] * (self.comm.ws * self.list_size)
-            sample_results_list = [
-                [None] * self.comm.ws for i in range(self.list_size)]
+            sample_results_list = [[None] * self.comm.ws
+                                   for i in range(self.list_size)]
             t0 = time.time()
             for j in range(self.list_size):
                 nodes = nodes_list[j]
@@ -294,11 +299,11 @@ class TrainerProcess(QuiverProcess):
                 sample_results = []
                 for rank, part_nodes in enumerate(sample_args):
                     if rank == self.comm.rank:
-                        sample_input_list[self.comm.rank *
-                                          self.list_size + j] = part_nodes
+                        sample_input_list[self.comm.rank * self.list_size +
+                                          j] = part_nodes
                     else:
-                        req = BatchSampleRequest(
-                            j, self.comm.rank, rank, part_nodes, size)
+                        req = BatchSampleRequest(j, self.comm.rank, rank,
+                                                 part_nodes, size)
                         self.sync.request_queues[rank].put(req)
                     total_inputs.append(part_nodes)
                 total_inputs = torch.cat(total_inputs)
@@ -315,8 +320,8 @@ class TrainerProcess(QuiverProcess):
                     if self.ready:
                         self.queue_time[src] += time.time() - q_beg
                     part_nodes = req.nodes.to(self.device)
-                    sample_input_list[src *
-                                      self.list_size + index] = part_nodes
+                    sample_input_list[src * self.list_size +
+                                      index] = part_nodes
                     # s_beg = time.time()
                     # out, cnt = self.loader.sample_layer(part_nodes, size)
                     # self.sample_time += time.time() - s_beg
@@ -335,21 +340,22 @@ class TrainerProcess(QuiverProcess):
             size_beg = 0
             for i in range(self.comm.ws):
                 for j in range(self.list_size):
-                    single_size = len(
-                        sample_input_list[i * self.list_size + j]) #1
-                    single_cnt = batch_cnt[size_beg: size_beg + single_size] #[2]
+                    single_size = len(sample_input_list[i * self.list_size +
+                                                        j])  #1
+                    single_cnt = batch_cnt[size_beg:size_beg +
+                                           single_size]  #[2]
                     if i == 0 and j == 0:
                         prefix_beg = 0
                     else:
-                        prefix_beg = batch_prefix[size_beg - 1] #0 2
-                    prefix_end = batch_prefix[size_beg + single_size - 1] #2 4
-                    single_out = batch_out[prefix_beg: prefix_end] # [0:2] 
+                        prefix_beg = batch_prefix[size_beg - 1]  #0 2
+                    prefix_end = batch_prefix[size_beg + single_size - 1]  #2 4
+                    single_out = batch_out[prefix_beg:prefix_end]  # [0:2]
                     size_beg += single_size
                     if i == self.comm.rank:
                         sample_results_list[j][i] = (single_out, single_cnt)
                     else:
-                        resp = BatchSampleResponse(
-                            j, i, self.comm.rank, single_out, single_cnt)
+                        resp = BatchSampleResponse(j, i, self.comm.rank,
+                                                   single_out, single_cnt)
                         self.sync.response_queues[i].put(resp)
             for i in range(self.comm.ws - 1):
                 for j in range(self.list_size):
@@ -374,7 +380,8 @@ class TrainerProcess(QuiverProcess):
                 total_outputs = torch.cat(total_outputs)
                 total_counts = torch.cat(total_counts)
                 frontier, row_idx, col_idx = self.loader.reindex(
-                    sample_reorder_list[j], total_inputs_list[j], total_outputs, total_counts)
+                    sample_reorder_list[j], total_inputs_list[j],
+                    total_outputs, total_counts)
                 self.reindex_count += 1
                 row_idx, col_idx = col_idx, row_idx
                 edge_index = torch.stack([row_idx, col_idx], dim=0)
@@ -523,15 +530,17 @@ class TrainerProcess(QuiverProcess):
         feature_beg = time.time()
         total_features = torch.cat(total_features)
         feature_end = time.time()
-        total_features = total_features[feature_reorder] #= total_features
+        total_features = total_features[feature_reorder]  #= total_features
         # if self.comm.rank == 0:
         #     print(f'feature cat {feature_end - feature_beg}')
         return total_features
 
     def __call__(self, rank):
         self.prepare(rank, *self.args)
-        dataloader = torch.utils.data.DataLoader(
-            self.train_idx, batch_size=self.batch_size, shuffle=True, drop_last=True)
+        dataloader = torch.utils.data.DataLoader(self.train_idx,
+                                                 batch_size=self.batch_size,
+                                                 shuffle=True,
+                                                 drop_last=True)
         for i in range(self.num_epoch):
             count = 0
             for j in range(num_batch):
@@ -563,8 +572,10 @@ def get_csr_from_coo(edge_index):
     dst = edge_index[1].numpy()
     node_count = max(np.max(src), np.max(dst))
     data = np.zeros(dst.shape, dtype=np.int32)
-    csr_mat = csr_matrix((data, (edge_index[0].numpy(), edge_index[1].numpy())))
+    csr_mat = csr_matrix(
+        (data, (edge_index[0].numpy(), edge_index[1].numpy())))
     return csr_mat
+
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
@@ -578,9 +589,9 @@ if __name__ == '__main__':
     split_idx = dataset.get_idx_split()
     evaluator = Evaluator(name='ogbn-products')
     data = dataset[0]
-    
+
     csr_mat = get_csr_from_coo(data.edge_index)
-    
+
     train_idx = split_idx['train']
     edge_index = data.edge_index
     csr_mat = get_csr_from_coo(edge_index)
@@ -589,14 +600,12 @@ if __name__ == '__main__':
     train_data = dataset.num_features, 256, dataset.num_classes, 3, y
     comm = CommConfig(0, ws)
     sync = SyncManager(ws)
-    proc = SingleProcess(num_epoch, num_batch, sample_data,
-                         train_data, x, sync, comm)
+    proc = SingleProcess(num_epoch, num_batch, sample_data, train_data, x,
+                         sync, comm)
     procs = launch_multiprocess(proc, ws)
     time.sleep(50)
     for p in procs:
         p.kill()
-
-
 '''
 
 def get_csr_from_coo(edge_index):

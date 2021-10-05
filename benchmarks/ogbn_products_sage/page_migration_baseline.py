@@ -33,6 +33,7 @@ from typing import List, NamedTuple, Optional, Tuple
 from numa import schedule, info
 
 import cupy as cp
+
 pool = cp.cuda.MemoryPool(cp.cuda.malloc_managed)
 cp.cuda.set_allocator(pool.malloc)
 
@@ -44,9 +45,13 @@ data = dataset[0]
 
 train_idx = split_idx['train']
 
-subgraph_loader = NeighborSampler(data.edge_index, node_idx=None, sizes=[-1],
-                                  batch_size=4096, shuffle=False,
+subgraph_loader = NeighborSampler(data.edge_index,
+                                  node_idx=None,
+                                  sizes=[-1],
+                                  batch_size=4096,
+                                  shuffle=False,
                                   num_workers=12)
+
 
 class Adj(NamedTuple):
     edge_index: torch.Tensor
@@ -56,7 +61,8 @@ class Adj(NamedTuple):
     def to(self, *args, **kwargs):
         return Adj(self.edge_index.to(*args, **kwargs),
                    self.e_id.to(*args, **kwargs), self.size)
-        
+
+
 class SAGE(torch.nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels, num_layers):
         super(SAGE, self).__init__()
@@ -116,25 +122,35 @@ class SAGE(torch.nn.Module):
 
         return x_all
 
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+
 ##############################
-# Initilize Zero-Copy Sampler 
+# Initilize Zero-Copy Sampler
 #############################
 def get_csr_from_coo(edge_index):
     src = edge_index[0].numpy()
     dst = edge_index[1].numpy()
     node_count = max(np.max(src), np.max(dst))
     data = np.zeros(dst.shape, dtype=np.int32)
-    csr_mat = csr_matrix((data, (edge_index[0].numpy(), edge_index[1].numpy())))
+    csr_mat = csr_matrix(
+        (data, (edge_index[0].numpy(), edge_index[1].numpy())))
     return csr_mat
 
+
 csr_mat = get_csr_from_coo(data.edge_index)
-sampler = AsyncCudaNeighborSampler(csr_indptr= csr_mat.indptr, csr_indices=csr_mat.indices, device=0, copy=True)
+sampler = AsyncCudaNeighborSampler(csr_indptr=csr_mat.indptr,
+                                   csr_indices=csr_mat.indices,
+                                   device=0,
+                                   copy=True)
 
 split_idx = dataset.get_idx_split()
 train_idx = split_idx['train']
-train_loader = torch.utils.data.DataLoader(train_idx, batch_size= 4096, shuffle=True, drop_last=True)
+train_loader = torch.utils.data.DataLoader(train_idx,
+                                           batch_size=4096,
+                                           shuffle=True,
+                                           drop_last=True)
 
 model = SAGE(dataset.num_features, 256, dataset.num_classes, num_layers=3)
 model = model.to(device)
@@ -144,27 +160,29 @@ x = torch.as_tensor(x_uma, device=device)
 
 y = data.y.squeeze().to(device)
 
+
 def sample(input_nodes, sizes):
-        nodes = input_nodes.to(device)
-        adjs = []
+    nodes = input_nodes.to(device)
+    adjs = []
 
-        batch_size = len(nodes)
-        for size in sizes:
-            out, cnt = sampler.sample_layer(nodes, size)
-            frontier, row_idx, col_idx = sampler.reindex(nodes, out, cnt)
-            row_idx, col_idx = col_idx, row_idx
-            edge_index = torch.stack([row_idx, col_idx], dim=0)
+    batch_size = len(nodes)
+    for size in sizes:
+        out, cnt = sampler.sample_layer(nodes, size)
+        frontier, row_idx, col_idx = sampler.reindex(nodes, out, cnt)
+        row_idx, col_idx = col_idx, row_idx
+        edge_index = torch.stack([row_idx, col_idx], dim=0)
 
-            adj_size = torch.LongTensor([
-                frontier.size(0),
-                nodes.size(0),
-            ])
-            e_id = torch.tensor([])
-            adjs.append(Adj(edge_index, e_id, adj_size))
-            nodes = frontier
+        adj_size = torch.LongTensor([
+            frontier.size(0),
+            nodes.size(0),
+        ])
+        e_id = torch.tensor([])
+        adjs.append(Adj(edge_index, e_id, adj_size))
+        nodes = frontier
 
-        return nodes, batch_size, adjs[::-1]
-    
+    return nodes, batch_size, adjs[::-1]
+
+
 def train(epoch):
     model.train()
 
@@ -175,10 +193,10 @@ def train(epoch):
     for seeds in train_loader:
         start_time = time.time()
         n_id, batch_size, adjs = sample(seeds, [15, 10, 5])
-        
+
         print(f"sample consumed = {time.time() - start_time}")
         optimizer.zero_grad()
-        
+
         out = model(x[n_id], adjs)
         loss = F.nll_loss(out, y[n_id[:batch_size]])
         loss.backward()
@@ -194,7 +212,6 @@ def train(epoch):
     approx_acc = total_correct / train_idx.size(0)
 
     return loss, approx_acc
-
 
 
 @torch.no_grad()

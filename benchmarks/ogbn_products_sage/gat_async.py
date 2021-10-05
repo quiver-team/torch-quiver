@@ -118,7 +118,7 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
                                          batch_size=batch_size,
                                          shuffle=True)
     else:
-       # torch.set_num_threads(1)
+        # torch.set_num_threads(1)
         if sync.dist:
             import quiver.dist_cpu_sampler as dist
             comm = dist.Comm(sync.rank, sync.world_size)
@@ -171,15 +171,18 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
 
 
 class GAT(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, num_layers,
-                 heads = 4):
+    def __init__(self,
+                 in_channels,
+                 hidden_channels,
+                 out_channels,
+                 num_layers,
+                 heads=4):
         super(GAT, self).__init__()
 
         self.num_layers = num_layers
 
         self.convs = torch.nn.ModuleList()
-        self.convs.append(GATConv(in_channels, hidden_channels,
-                                  heads))
+        self.convs.append(GATConv(in_channels, hidden_channels, heads))
         for _ in range(num_layers - 2):
             self.convs.append(
                 GATConv(heads * hidden_channels, hidden_channels, heads))
@@ -358,8 +361,8 @@ def main(policy, num_batch=64, use_products=True):
         sync = SyncConfig(0, 0, device_num, queues, [barrier1, barrier2], 3,
                           train_num > 1, False)
         cpu = mp.Process(target=SamplerProcess,
-                         args=(sync, dev, edge_index, (None, None),
-                               train_idx, [15, 10, 5], batch_size))
+                         args=(sync, dev, edge_index, (None, None), train_idx,
+                               [15, 10, 5], batch_size))
         cpu.start()
         samplers.append(cpu)
 

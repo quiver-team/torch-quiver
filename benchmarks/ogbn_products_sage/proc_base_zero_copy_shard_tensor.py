@@ -101,17 +101,20 @@ class SingleProcess:
         self.num_batch = num_batch
         self.args = args
 
-    def prepare(self, rank, sample_data, train_data, shard_tensor_item_ipc, sync, comm):
+    def prepare(self, rank, sample_data, train_data, shard_tensor_item_ipc,
+                sync, comm):
         #####################################################################################################
         # Bind Task To NUMA Node And Sleep 1s So That Next Time This Processing Is Runing On Target NUMA Node
         #####################################################################################################
         total_nodes = info.get_max_node() + 1
         current_node = 0 if rank < 2 else 1
         schedule.bind(current_node)
-        
-        print(f"LOG >>> Rank {rank} Is Bind To NUMA Node {rank % total_nodes}/{total_nodes}")
+
+        print(
+            f"LOG >>> Rank {rank} Is Bind To NUMA Node {rank % total_nodes}/{total_nodes}"
+        )
         time.sleep(1)
-        
+
         csr_mat, batch_size, sizes, train_idx = sample_data
         device = rank
         torch.cuda.set_device(device)
@@ -141,10 +144,11 @@ class SingleProcess:
         self.sizes = sizes
         num_features, num_hidden, num_classes, num_layers, y = train_data
         self.y = y
-        device = torch.device('cuda:' +
-                              str(self.comm.rank) if torch.cuda.is_available() else 'cpu')
+        device = torch.device(
+            'cuda:' +
+            str(self.comm.rank) if torch.cuda.is_available() else 'cpu')
         self.device = device
-        
+
         ###################################
         # Rebuild Tensor In Child Process
         ###################################
@@ -153,10 +157,9 @@ class SingleProcess:
             item = qv.ShardTensorItem()
             item.from_ipc(ipc_item)
             self.feature.append(item)
-        
+
         torch.cuda.set_device(device)
-        
-        
+
         model = SAGE(num_features, num_hidden, num_classes, num_layers)
         model = model.to(device)
         model.reset_parameters()
@@ -171,8 +174,9 @@ class SingleProcess:
 
     def dispatch(self, nodes, ws):
         ranks = torch.fmod(nodes, ws)
-        input_orders = torch.arange(nodes.size(
-            0), dtype=torch.long, device=nodes.device)
+        input_orders = torch.arange(nodes.size(0),
+                                    dtype=torch.long,
+                                    device=nodes.device)
         reorder = torch.empty_like(input_orders)
         beg = 0
         res = []
@@ -193,8 +197,8 @@ class SingleProcess:
             total_inputs_list = []
             sample_reorder_list = []
             sample_input_list = [None] * (self.comm.ws * self.list_size)
-            sample_results_list = [
-                [None] * self.comm.ws for i in range(self.list_size)]
+            sample_results_list = [[None] * self.comm.ws
+                                   for i in range(self.list_size)]
             t0 = time.time()
             for j in range(self.list_size):
                 nodes = nodes_list[j]
@@ -205,11 +209,11 @@ class SingleProcess:
                 sample_results = []
                 for rank, part_nodes in enumerate(sample_args):
                     if rank == self.comm.rank:
-                        sample_input_list[self.comm.rank *
-                                          self.list_size + j] = part_nodes
+                        sample_input_list[self.comm.rank * self.list_size +
+                                          j] = part_nodes
                     else:
-                        req = BatchSampleRequest(
-                            j, self.comm.rank, rank, part_nodes, size)
+                        req = BatchSampleRequest(j, self.comm.rank, rank,
+                                                 part_nodes, size)
                         self.sync.request_queues[rank].put(req)
                     total_inputs.append(part_nodes)
                 total_inputs = torch.cat(total_inputs)
@@ -226,8 +230,8 @@ class SingleProcess:
                     if self.ready:
                         self.queue_time[src] += time.time() - q_beg
                     part_nodes = req.nodes.to(self.device)
-                    sample_input_list[src *
-                                      self.list_size + index] = part_nodes
+                    sample_input_list[src * self.list_size +
+                                      index] = part_nodes
                     # s_beg = time.time()
                     # out, cnt = self.loader.sample_layer(part_nodes, size)
                     # self.sample_time += time.time() - s_beg
@@ -246,21 +250,22 @@ class SingleProcess:
             size_beg = 0
             for i in range(self.comm.ws):
                 for j in range(self.list_size):
-                    single_size = len(
-                        sample_input_list[i * self.list_size + j]) #1
-                    single_cnt = batch_cnt[size_beg: size_beg + single_size] #[2]
+                    single_size = len(sample_input_list[i * self.list_size +
+                                                        j])  #1
+                    single_cnt = batch_cnt[size_beg:size_beg +
+                                           single_size]  #[2]
                     if i == 0 and j == 0:
                         prefix_beg = 0
                     else:
-                        prefix_beg = batch_prefix[size_beg - 1] #0 2
-                    prefix_end = batch_prefix[size_beg + single_size - 1] #2 4
-                    single_out = batch_out[prefix_beg: prefix_end] # [0:2] 
+                        prefix_beg = batch_prefix[size_beg - 1]  #0 2
+                    prefix_end = batch_prefix[size_beg + single_size - 1]  #2 4
+                    single_out = batch_out[prefix_beg:prefix_end]  # [0:2]
                     size_beg += single_size
                     if i == self.comm.rank:
                         sample_results_list[j][i] = (single_out, single_cnt)
                     else:
-                        resp = BatchSampleResponse(
-                            j, i, self.comm.rank, single_out, single_cnt)
+                        resp = BatchSampleResponse(j, i, self.comm.rank,
+                                                   single_out, single_cnt)
                         self.sync.response_queues[i].put(resp)
             for i in range(self.comm.ws - 1):
                 for j in range(self.list_size):
@@ -285,7 +290,8 @@ class SingleProcess:
                 total_outputs = torch.cat(total_outputs)
                 total_counts = torch.cat(total_counts)
                 frontier, row_idx, col_idx = self.loader.reindex(
-                    sample_reorder_list[j], total_inputs_list[j], total_outputs, total_counts)
+                    sample_reorder_list[j], total_inputs_list[j],
+                    total_outputs, total_counts)
                 self.reindex_count += 1
                 row_idx, col_idx = col_idx, row_idx
                 edge_index = torch.stack([row_idx, col_idx], dim=0)
@@ -410,8 +416,10 @@ class SingleProcess:
 
     def __call__(self, rank):
         self.prepare(rank, *self.args)
-        dataloader = torch.utils.data.DataLoader(
-            self.train_idx, batch_size=self.batch_size, shuffle=True, drop_last=True)
+        dataloader = torch.utils.data.DataLoader(self.train_idx,
+                                                 batch_size=self.batch_size,
+                                                 shuffle=True,
+                                                 drop_last=True)
         for i in range(self.num_epoch):
             count = 0
             cont = True
@@ -443,13 +451,16 @@ class SingleProcess:
         # print(f'rank {self.comm.rank} recv avg {self.recv_time}')
         # print(f'rank {self.comm.rank} queue avg {self.queue_time}')
 
+
 def get_csr_from_coo(edge_index):
     src = edge_index[0].numpy()
     dst = edge_index[1].numpy()
     node_count = max(np.max(src), np.max(dst))
     data = np.zeros(dst.shape, dtype=np.int32)
-    csr_mat = csr_matrix((data, (edge_index[0].numpy(), edge_index[1].numpy())))
+    csr_mat = csr_matrix(
+        (data, (edge_index[0].numpy(), edge_index[1].numpy())))
     return csr_mat
+
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
@@ -466,7 +477,7 @@ if __name__ == '__main__':
     edge_index = data.edge_index
     csr_mat = get_csr_from_coo(edge_index)
     y = data.y.squeeze().share_memory_()
-    
+
     ######################################
     # Init Shard Tensor In Main Process
     ######################################
@@ -474,24 +485,21 @@ if __name__ == '__main__':
     shard_tensors = []
     shard_tensor = qv.ShardTensor(0)
     half_count = data.x.shape[0] // 2
-    shard_tensor.append(data.x[: half_count], 0)
+    shard_tensor.append(data.x[:half_count], 0)
     shard_tensor.append(data.x[half_count:], 1)
     shard_tensor_ipc = shard_tensor.share_ipc()
     shard_item_ipc = [item.share_ipc() for item in shard_tensor_ipc]
-        
-    
+
     sample_data = csr_mat, batch_size, sizes, train_idx
     train_data = dataset.num_features, 256, dataset.num_classes, 3, y
     comm = CommConfig(0, ws)
     sync = SyncManager(ws)
-    proc = SingleProcess(num_epoch, num_batch, sample_data,
-                         train_data, shard_item_ipc, sync, comm)
+    proc = SingleProcess(num_epoch, num_batch, sample_data, train_data,
+                         shard_item_ipc, sync, comm)
     procs = launch_multiprocess(proc, ws)
     time.sleep(50)
     for p in procs:
         p.kill()
-
-
 '''
 
 def get_csr_from_coo(edge_index):

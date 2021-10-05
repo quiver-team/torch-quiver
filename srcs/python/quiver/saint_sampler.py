@@ -9,6 +9,8 @@ from typing import Optional, List, NamedTuple, Tuple
 import time
 import os.path as osp
 from torch_geometric.data import Data
+
+
 class quiverRWSampler(GraphSAINTRandomWalkSampler):
     @property
     def __filename__(self):
@@ -80,7 +82,7 @@ class CudaRWSampler(GraphSAINTSampler):
         row, col, value = self.adj.coo()
         rowptr = self.adj.storage.rowptr()
         # start_t = time.time()
-        if (self.deg_out is None) :
+        if (self.deg_out is None):
             print("calculating")
             self.deg_out = self.adj.storage.rowcount()
         deg = torch.index_select(self.deg_out, 0, node_idx)
@@ -137,9 +139,14 @@ class QuiverSAINTEdgeSampler(GraphSAINTSampler):
     r"""The GraphSAINT edge sampler class (see
     :class:`torch_geometric.data.GraphSAINTSampler`).
     """
-    def __init__(self, data, batch_size: int,
-                 num_steps: int = 1, sample_coverage: int = 0,
-                 save_dir: Optional[str] = None, log: bool = True, **kwargs):
+    def __init__(self,
+                 data,
+                 batch_size: int,
+                 num_steps: int = 1,
+                 sample_coverage: int = 0,
+                 save_dir: Optional[str] = None,
+                 log: bool = True,
+                 **kwargs):
         super(QuiverSAINTEdgeSampler,
               self).__init__(data, batch_size, num_steps, sample_coverage,
                              save_dir, log, **kwargs)
@@ -153,9 +160,9 @@ class QuiverSAINTEdgeSampler(GraphSAINTSampler):
 
         source_node_sample = []
         target_node_sample = []
-        while i < self.E :
+        while i < self.E:
             if batch_count == batch_size:
-                break;
+                break
             u = row[i]
             v = col[i]
             prob = (self.deg_in[u]) + (self.deg_out[v])
@@ -168,6 +175,7 @@ class QuiverSAINTEdgeSampler(GraphSAINTSampler):
                 i = i + 1
                 source_node_sample.append(u)
                 target_node_sample.append(v)
-        return torch.cat([torch.LongTensor(source_node_sample), torch.LongTensor(target_node_sample)], -1)
-
-
+        return torch.cat([
+            torch.LongTensor(source_node_sample),
+            torch.LongTensor(target_node_sample)
+        ], -1)

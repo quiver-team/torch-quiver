@@ -44,6 +44,7 @@ w = StopWatch('main')
 
 # -----below is flicker-----------
 
+
 class ProductsDataset:
     def __init__(self, train_idx, edge_index, x, y, f, c):
         self.train_idx = train_idx
@@ -82,6 +83,7 @@ class ProductsDataset:
         for key in sorted(self.keys) if not keys else keys:
             if key in self:
                 yield key, self[key]
+
     def __contains__(self, key):
         r"""Returns :obj:`True`, if the attribute :obj:`key` is present in the
         data."""
@@ -90,6 +92,8 @@ class ProductsDataset:
     def __getitem__(self, key):
         r"""Gets the data of the attribute :obj:`key`."""
         return getattr(self, key, None)
+
+
 root = '../products.pt'
 dataset = torch.load(root)
 train_idx = dataset.train_idx
@@ -98,7 +102,7 @@ data = dataset
 train_mask = torch.zeros(data.num_nodes, dtype=torch.bool)
 train_mask[train_idx] = True
 row, col = data.edge_index
-dataset.processed_dir="./"
+dataset.processed_dir = "./"
 data.train_mask = train_mask
 
 parser = argparse.ArgumentParser()
@@ -107,7 +111,7 @@ args = parser.parse_args()
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 x = data.x.to(device)
-y = data.y.squeeze().to(device) # [N, 1]
+y = data.y.squeeze().to(device)  # [N, 1]
 
 sample_data = copy.copy(data)
 sample_data.x = None
@@ -131,7 +135,7 @@ loader = CudaRWSampler(sample_data,
 #                        save_dir=dataset.processed_dir,
 #                        num_workers=4)
 w.tick('create train_loader')
-print (dataset.num_features)
+print(dataset.num_features)
 
 model = Net(hidden_channels=256,
             num_node_features=dataset.num_features,
@@ -149,10 +153,11 @@ w.tick('build model')
 #     print('choose cuda sampler')
 # w.tick('choose sampler')
 
+
 def train():
     print(args.use_normalization)
     model.train()
-   # model.set_aggr('add' if args.use_normalization else 'mean')
+    # model.set_aggr('add' if args.use_normalization else 'mean')
     model.set_aggr('mean')
     total_loss = total_examples = 0
     w.turn_on('sample')
@@ -180,6 +185,7 @@ def train():
         total_examples += data.num_nodes
     w.turn_off('sample')
     return total_loss / total_examples
+
 
 # @torch.no_grad()
 # def test():

@@ -17,7 +17,6 @@ from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
 from quiver.models.sage_model import SAGE
 import time
 
-
 from typing import List, NamedTuple, Optional, Tuple
 
 
@@ -119,13 +118,13 @@ class SingleProcess:
         self.comm.rank = rank
         self.train_idx = train_idx
         self.batch_size = batch_size
-        self.loader = AsyncCudaNeighborSampler(edge_index,
-                                               device=device)
+        self.loader = AsyncCudaNeighborSampler(edge_index, device=device)
         self.sizes = sizes
         num_features, num_hidden, num_classes, num_layers, y = train_data
         self.y = y
-        device = torch.device('cuda:' +
-                              str(self.comm.rank) if torch.cuda.is_available() else 'cpu')
+        device = torch.device(
+            'cuda:' +
+            str(self.comm.rank) if torch.cuda.is_available() else 'cpu')
         self.device = device
         self.feature = feature_data.to(device)
         model = SAGE(num_features, num_hidden, num_classes, num_layers)
@@ -142,8 +141,9 @@ class SingleProcess:
 
     def dispatch(self, nodes, ws):
         ranks = torch.fmod(nodes, ws)
-        input_orders = torch.arange(nodes.size(
-            0), dtype=torch.long, device=nodes.device)
+        input_orders = torch.arange(nodes.size(0),
+                                    dtype=torch.long,
+                                    device=nodes.device)
         reorder = torch.empty_like(input_orders)
         beg = 0
         res = []
@@ -164,8 +164,8 @@ class SingleProcess:
             total_inputs_list = []
             sample_reorder_list = []
             sample_input_list = [None] * (self.comm.ws * self.list_size)
-            sample_results_list = [
-                [None] * self.comm.ws for i in range(self.list_size)]
+            sample_results_list = [[None] * self.comm.ws
+                                   for i in range(self.list_size)]
             t0 = time.time()
             for j in range(self.list_size):
                 nodes = nodes_list[j]
@@ -176,11 +176,11 @@ class SingleProcess:
                 sample_results = []
                 for rank, part_nodes in enumerate(sample_args):
                     if rank == self.comm.rank:
-                        sample_input_list[self.comm.rank *
-                                          self.list_size + j] = part_nodes
+                        sample_input_list[self.comm.rank * self.list_size +
+                                          j] = part_nodes
                     else:
-                        req = BatchSampleRequest(
-                            j, self.comm.rank, rank, part_nodes, size)
+                        req = BatchSampleRequest(j, self.comm.rank, rank,
+                                                 part_nodes, size)
                         self.sync.request_queues[rank].put(req)
                     total_inputs.append(part_nodes)
                 total_inputs = torch.cat(total_inputs)
@@ -197,8 +197,8 @@ class SingleProcess:
                     if self.ready:
                         self.queue_time[src] += time.time() - q_beg
                     part_nodes = req.nodes.to(self.device)
-                    sample_input_list[src *
-                                      self.list_size + index] = part_nodes
+                    sample_input_list[src * self.list_size +
+                                      index] = part_nodes
                     # s_beg = time.time()
                     # out, cnt = self.loader.sample_layer(part_nodes, size)
                     # self.sample_time += time.time() - s_beg
@@ -217,21 +217,22 @@ class SingleProcess:
             size_beg = 0
             for i in range(self.comm.ws):
                 for j in range(self.list_size):
-                    single_size = len(
-                        sample_input_list[i * self.list_size + j]) #1
-                    single_cnt = batch_cnt[size_beg: size_beg + single_size] #[2]
+                    single_size = len(sample_input_list[i * self.list_size +
+                                                        j])  #1
+                    single_cnt = batch_cnt[size_beg:size_beg +
+                                           single_size]  #[2]
                     if i == 0 and j == 0:
                         prefix_beg = 0
                     else:
-                        prefix_beg = batch_prefix[size_beg - 1] #0 2
-                    prefix_end = batch_prefix[size_beg + single_size - 1] #2 4
-                    single_out = batch_out[prefix_beg: prefix_end] # [0:2] 
+                        prefix_beg = batch_prefix[size_beg - 1]  #0 2
+                    prefix_end = batch_prefix[size_beg + single_size - 1]  #2 4
+                    single_out = batch_out[prefix_beg:prefix_end]  # [0:2]
                     size_beg += single_size
                     if i == self.comm.rank:
                         sample_results_list[j][i] = (single_out, single_cnt)
                     else:
-                        resp = BatchSampleResponse(
-                            j, i, self.comm.rank, single_out, single_cnt)
+                        resp = BatchSampleResponse(j, i, self.comm.rank,
+                                                   single_out, single_cnt)
                         self.sync.response_queues[i].put(resp)
             for i in range(self.comm.ws - 1):
                 for j in range(self.list_size):
@@ -256,7 +257,8 @@ class SingleProcess:
                 total_outputs = torch.cat(total_outputs)
                 total_counts = torch.cat(total_counts)
                 frontier, row_idx, col_idx = self.loader.reindex(
-                    sample_reorder_list[j], total_inputs_list[j], total_outputs, total_counts)
+                    sample_reorder_list[j], total_inputs_list[j],
+                    total_outputs, total_counts)
                 self.reindex_count += 1
                 row_idx, col_idx = col_idx, row_idx
                 edge_index = torch.stack([row_idx, col_idx], dim=0)
@@ -425,8 +427,10 @@ class SingleProcess:
 
     def __call__(self, rank):
         self.prepare(rank, *self.args)
-        dataloader = torch.utils.data.DataLoader(
-            self.train_idx, batch_size=self.batch_size, shuffle=True, drop_last=True)
+        dataloader = torch.utils.data.DataLoader(self.train_idx,
+                                                 batch_size=self.batch_size,
+                                                 shuffle=True,
+                                                 drop_last=True)
         for i in range(self.num_epoch):
             count = 0
             cont = True
@@ -481,8 +485,8 @@ if __name__ == '__main__':
     train_data = dataset.num_features, 256, dataset.num_classes, 3, y
     comm = CommConfig(0, ws)
     sync = SyncManager(ws)
-    proc = SingleProcess(num_epoch, num_batch, sample_data,
-                         train_data, x, sync, comm)
+    proc = SingleProcess(num_epoch, num_batch, sample_data, train_data, x,
+                         sync, comm)
     procs = launch_multiprocess(proc, ws)
     time.sleep(50)
     for p in procs:

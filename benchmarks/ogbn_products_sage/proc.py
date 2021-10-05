@@ -17,7 +17,6 @@ import os.path as osp
 from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
 import time
 
-
 DEVICE_NUM = 2
 BUFFER_SIZE = 2
 
@@ -55,7 +54,6 @@ class SampleResponse:
 #         self.inputs = inputs
 #         self.outputs = outputs
 #         self.counts = counts
-
 
 # class ReindexResponse:
 #     def __init__(self, index, src, dst, nodes, row, col):
@@ -98,8 +96,14 @@ class DataPeerInfo:
 
 
 class CommConfig:
-    def __init__(self, global_rank, group_rank, group_size, group_peers, upstream_peer,
-                 downstream_peer, other_peers=None):
+    def __init__(self,
+                 global_rank,
+                 group_rank,
+                 group_size,
+                 group_peers,
+                 upstream_peer,
+                 downstream_peer,
+                 other_peers=None):
         self.global_rank = global_rank
         self.group_rank = group_rank
         self.group_size = group_size
@@ -140,8 +144,7 @@ class CudaSamplerProcess(QuiverProcess):
     def prepare(self, data):
         device, edge_index, sizes = data
         self.sizes = sizes
-        self.loader = AsyncCudaNeighborSampler(edge_index,
-                                               device=device)
+        self.loader = AsyncCudaNeighborSampler(edge_index, device=device)
 
     def run(self, *args):
         upstream_queue = self.sync.upstream_queues[self.comm.global_rank]
@@ -159,8 +162,9 @@ class CudaSamplerProcess(QuiverProcess):
                         nodes, out, cnt)
                     reindex_results.append((len(frontier), col_idx, row_idx))
                     nodes = frontier
-                response_queue.put(SampleResponse(
-                    req.index, req.src, req.dst, nodes, reindex_results))
+                response_queue.put(
+                    SampleResponse(req.index, req.src, req.dst, nodes,
+                                   reindex_results))
 
 
 class MicroBatchIndex:
@@ -193,12 +197,13 @@ class DataProcess(QuiverProcess):
                     # print(f'data {self.comm.group_rank} sample response')
                     self.handle_sample_response(res)
                 # elif isinstance(res, ReindexResponse):
-                    # print(f'data {self.comm.group_rank} reindex response')
-                    # self.handle_reindex_response(res)
+                # print(f'data {self.comm.group_rank} reindex response')
+                # self.handle_reindex_response(res)
                 else:
                     # print(f'data {self.comm.group_rank} feature response')
                     self.handle_feature_response(res)
-            if len(self.manager.buffers) < self.buffer_size and not upstream_queue.empty():
+            if len(self.manager.buffers
+                   ) < self.buffer_size and not upstream_queue.empty():
                 req = upstream_queue.get()
                 self.handle_input_request(req)
 
@@ -209,31 +214,27 @@ class DataProcess(QuiverProcess):
         batch_id = input_request.index.batch_id
         size = input_request.size
         sampler = self.comm.other_peers.sampler
-        self.manager.init_entry(
-            nodes, batch_id, size, train_device)
+        self.manager.init_entry(nodes, batch_id, size, train_device)
         index = MicroBatchIndex(batch_id, 0, 1)
-        req = SampleRequest(index, self.comm.global_rank,
-                            sampler, nodes)
+        req = SampleRequest(index, self.comm.global_rank, sampler, nodes)
         self.sync.upstream_queues[sampler].put(req)
 
     def handle_sample_response(self, sample_response):
         batch_id = sample_response.index.batch_id
         nodes = sample_response.nodes.clone().to(self.manager.device)
-        ret = self.manager.recv_sample(
-            batch_id, nodes, sample_response.reindex_results)
-        reorder, res = self.manager.dispatch(
-            nodes, self.feature_size)
+        ret = self.manager.recv_sample(batch_id, nodes,
+                                       sample_response.reindex_results)
+        reorder, res = self.manager.dispatch(nodes, self.feature_size)
         res = self.manager.prepare_request(batch_id, reorder, res)
         group_peers = self.comm.group_peers
         for rank, nodes in enumerate(res):
             if rank == self.comm.group_rank:
                 features = self.manager.feature[nodes]
-                self.manager.recv_feature(
-                    batch_id, rank, len(res), features)
+                self.manager.recv_feature(batch_id, rank, len(res), features)
                 continue
             index = MicroBatchIndex(batch_id, rank, len(res))
-            req = FeatureRequest(
-                index, self.comm.global_rank, group_peers[rank], nodes)
+            req = FeatureRequest(index, self.comm.global_rank,
+                                 group_peers[rank], nodes)
             self.sync.request_queues[group_peers[rank]].put(req)
 
     # def handle_reindex_response(self, reindex_response):
@@ -321,8 +322,9 @@ class TrainerProcess(QuiverProcess):
     def prepare(self, data):
         num_features, num_hidden, num_classes, num_layers, y = data
         self.y = y
-        device = torch.device('cuda:' +
-                              str(self.comm.group_rank) if torch.cuda.is_available() else 'cpu')
+        device = torch.device(
+            'cuda:' +
+            str(self.comm.group_rank) if torch.cuda.is_available() else 'cpu')
         self.device = device
         model = SAGE(num_features, num_hidden, num_classes, num_layers)
         model = model.to(device)
@@ -361,9 +363,11 @@ class TrainerProcess(QuiverProcess):
                     total_time += dur
                     if count % 10 == 0 and self.comm.global_rank == 2 * DEVICE_NUM:
                         print(
-                            f'rank {self.comm.group_rank} total {count} avg {total_time / (count - 10)}')
+                            f'rank {self.comm.group_rank} total {count} avg {total_time / (count - 10)}'
+                        )
                         print(
-                            f'trainer {self.comm.global_rank} wait {queue_end - queue_beg} a batch')
+                            f'trainer {self.comm.global_rank} wait {queue_end - queue_beg} a batch'
+                        )
                 t0 = time.time()
                 if count >= num_batch:
                     break
@@ -395,7 +399,7 @@ if __name__ == '__main__':
     num_epoch = 1
     num_batch = 4000
     batch_size = 128
-    
+
     sampler_size = DEVICE_NUM
     trainer_size = DEVICE_NUM
     data_size = DEVICE_NUM
@@ -417,26 +421,34 @@ if __name__ == '__main__':
     train_idx = split_idx['train']
 
     for i in range(sampler_size):
-        sample_comm = CommConfig(global_rank + i, i, sampler_size, list(
-            range(sampler_size)), i + sampler_size, -1)
+        sample_comm = CommConfig(global_rank + i, i, sampler_size,
+                                 list(range(sampler_size)), i + sampler_size,
+                                 -1)
         sample_comms.append(sample_comm)
     global_rank += sampler_size
     for i in range(data_size):
         other_peers = DataPeerInfo(i, i)
-        data_comm = CommConfig(global_rank + i, i, data_size, list(
-            range(sampler_size, sampler_size + data_size)), i, i + sampler_size + data_size, other_peers)
+        data_comm = CommConfig(
+            global_rank + i, i, data_size,
+            list(range(sampler_size, sampler_size + data_size)), i,
+            i + sampler_size + data_size, other_peers)
         data_comms.append(data_comm)
     global_rank += data_size
-    train_comm = CommConfig(global_rank, 0, trainer_size, list(
-        range(sampler_size + data_size, sampler_size + data_size + trainer_size)), -1, -1)
+    train_comm = CommConfig(
+        global_rank, 0, trainer_size,
+        list(
+            range(sampler_size + data_size,
+                  sampler_size + data_size + trainer_size)), -1, -1)
 
     sync = SyncManager(global_size, 8)
     sample_procs = []
     data_procs = []
     for sample_comm in sample_comms:
         sample = CudaSamplerProcess(sample_comm, sync)
-        sample_proc = mp.Process(target=sample, args=(
-            (sample_comm.group_rank, graph_data.edge_index, [15, 10, 5]), num_epoch, num_batch))
+        sample_proc = mp.Process(target=sample,
+                                 args=((sample_comm.group_rank,
+                                        graph_data.edge_index, [15, 10, 5]),
+                                       num_epoch, num_batch))
         sample_proc.start()
         sample_procs.append(sample_proc)
     for data_comm in data_comms:
@@ -447,18 +459,21 @@ if __name__ == '__main__':
         feature_rank = rank_func
         manager = DataManager(device, feature, device, feature_devices,
                               feature_to_local, feature_rank)
-        data_proc = mp.Process(target=data, args=(
-            (manager, data_size, BUFFER_SIZE), num_epoch, num_batch))
+        data_proc = mp.Process(target=data,
+                               args=((manager, data_size, BUFFER_SIZE),
+                                     num_epoch, num_batch))
         data_proc.start()
         data_procs.append(data_proc)
 
-    train = TrainerWrapper(train_comm, sync, (dataset.num_features,
-                                              256, dataset.num_classes, 3, graph_data.y.squeeze()),
-                           num_epoch, num_batch)
+    train = TrainerWrapper(train_comm, sync,
+                           (dataset.num_features, 256, dataset.num_classes, 3,
+                            graph_data.y.squeeze()), num_epoch, num_batch)
     train_procs = launch_multiprocess(train, trainer_size)
     train_idx = train_idx.repeat(20)
-    dataloader = torch.utils.data.DataLoader(
-        train_idx, batch_size=batch_size, shuffle=True, drop_last=True)
+    dataloader = torch.utils.data.DataLoader(train_idx,
+                                             batch_size=batch_size,
+                                             shuffle=True,
+                                             drop_last=True)
 
     dst_data = 0
     count = 0

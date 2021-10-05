@@ -59,6 +59,7 @@ class ProductsDataset:
         for key in sorted(self.keys) if not keys else keys:
             if key in self:
                 yield key, self[key]
+
     def __contains__(self, key):
         r"""Returns :obj:`True`, if the attribute :obj:`key` is present in the
         data."""
@@ -93,6 +94,8 @@ local_rank = None
 loader = None
 # graph_num_nodes = 2500000
 graph_num_nodes = 2449029
+
+
 def subgraph_cuda(nodes, i):
     torch.cuda.set_device(local_rank)
     device = torch.device('cuda:' + str(local_rank))
@@ -100,13 +103,16 @@ def subgraph_cuda(nodes, i):
     adj_rowptr = loader.adj.storage.rowptr()
     nodes = nodes.to(device)
     deg = torch.index_select(loader.deg_out, 0, nodes)
-    row, col, edge_index = qv.saint_subgraph(nodes, adj_rowptr, adj_row, adj_col, deg)
+    row, col, edge_index = qv.saint_subgraph(nodes, adj_rowptr, adj_row,
+                                             adj_col, deg)
     cpu = torch.device('cpu')
     return row.to(cpu), col.to(cpu), edge_index.to(cpu)
+
 
 def subgraph_cpu(nodes, i):
     adj, edge_index = loader.adj.saint_subgraph(nodes)
     return adj, edge_index
+
 
 def node_f(nodes, is_feature):
     cpu = torch.device('cpu')
@@ -119,7 +125,7 @@ def node_f(nodes, is_feature):
 def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
     print(batch_size)
     num_parts = (int)(graph_num_nodes / batch_size)
-    print("num parts",num_parts)
+    print("num parts", num_parts)
     global loader
     global local_rank
     device, num = dev
@@ -145,18 +151,19 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
             local_rank = sync.rank
             loader = dist.distributeCudaRandomNodeSampler(
                 comm, (data, local2global, global2local, node2rank),
-                node_f, device,
+                node_f,
+                device,
                 num_parts=num_parts,
                 shuffle=True)
             dist.subgraph_nodes = subgraph_cuda
         else:
             loader = RandomNodeCudaSampler(data,
-                                    device,
-                                    num_parts=num_parts,
-                                    shuffle=True)
+                                           device,
+                                           num_parts=num_parts,
+                                           shuffle=True)
     else:
         if sync.dist:
-                print(" distribute cpu not implemented")
+            print(" distribute cpu not implemented")
         else:
             loader = RandomNodeSampler(data,
                                        num_parts=num_parts,
@@ -194,23 +201,32 @@ def SamplerProcess(sync, dev, edge_index, data, train_idx, sizes, batch_size):
     # print('sample wait: ' + str(wait))
     time.sleep(30)
 
+
 class DeeperGCN(torch.nn.Module):
-    def __init__(self,input_channels, hidden_channels, num_layers):
+    def __init__(self, input_channels, hidden_channels, num_layers):
         super(DeeperGCN, self).__init__()
 
         self.node_encoder = Linear(input_channels, hidden_channels)
 
         self.layers = torch.nn.ModuleList()
         for i in range(1, num_layers + 1):
-            conv = GENConv(hidden_channels, hidden_channels, aggr='softmax_sg',
-                           t=1.0, learn_t=True, num_layers=1, norm='batch')
+            conv = GENConv(hidden_channels,
+                           hidden_channels,
+                           aggr='softmax_sg',
+                           t=1.0,
+                           learn_t=True,
+                           num_layers=1,
+                           norm='batch')
             norm = LayerNorm(hidden_channels, elementwise_affine=False)
             act = ReLU(inplace=True)
 
-            layer = DeepGCNLayer(conv, norm, act, block='res+', dropout=0.1,
+            layer = DeepGCNLayer(conv,
+                                 norm,
+                                 act,
+                                 block='res+',
+                                 dropout=0.1,
                                  ckpt_grad=i % 3)
             self.layers.append(layer)
-
 
     def forward(self, x, edge_index):
         x = self.node_encoder(x)
@@ -239,7 +255,7 @@ def TrainProcess(rank, sync, data, num_batch, num_features, num_hidden,
     device = torch.device('cuda:' +
                           str(rank) if torch.cuda.is_available() else 'cpu')
     torch.cuda.set_device(rank)
-    x,y = data
+    x, y = data
     model = DeeperGCN(num_features, num_hidden, num_layers)
     model = model.to(device)
     model.reset_parameters()
@@ -279,7 +295,8 @@ def TrainProcess(rank, sync, data, num_batch, num_features, num_hidden,
         label = y[data.node_idx]
         optimizer.zero_grad()
         out = model(x[data.node_idx].to(device), data.edge_index.to(device))
-        loss = F.nll_loss(out[data.train_mask], label[data.train_mask].squeeze().to(device))
+        loss = F.nll_loss(out[data.train_mask],
+                          label[data.train_mask].squeeze().to(device))
         # print(data.x.size(0))
         # out = model(data.x.to(device), data.edge_index.to(device))
         # loss = F.nll_loss(out[data.train_mask], data.y[data.train_mask].squeeze().to(device))
@@ -356,8 +373,8 @@ def main(policy, num_batch=64, use_products=False):
             sync = SyncConfig(group, j, device_num - train_num, queues,
                               [barrier1, barrier2], 3, train_num > 1, dist)
             gpu0 = mp.Process(target=SamplerProcess,
-                              args=(sync, dev, None, data,
-                                    train_idx, None, batch_size))
+                              args=(sync, dev, None, data, train_idx, None,
+                                    batch_size))
             gpu0.start()
             samplers.append(gpu0)
             time.sleep(1)
@@ -368,8 +385,8 @@ def main(policy, num_batch=64, use_products=False):
             sync = SyncConfig(group, j, device_num, queues,
                               [barrier1, barrier2], 1, train_num > 1, dist)
             gpu0 = mp.Process(target=SamplerProcess,
-                              args=(sync, dev, None, data,
-                                    train_idx, None, batch_size))
+                              args=(sync, dev, None, data, train_idx, None,
+                                    batch_size))
             gpu0.start()
             samplers.append(gpu0)
             time.sleep(1)
@@ -380,8 +397,8 @@ def main(policy, num_batch=64, use_products=False):
         sync = SyncConfig(0, 0, device_num, queues, [barrier1, barrier2], 3,
                           train_num > 1, False)
         cpu = mp.Process(target=SamplerProcess,
-                         args=(sync, dev, None, data,
-                               train_idx, None, batch_size))
+                         args=(sync, dev, None, data, train_idx, None,
+                               batch_size))
         cpu.start()
         samplers.append(cpu)
 
@@ -389,13 +406,14 @@ def main(policy, num_batch=64, use_products=False):
                       train_num > 1, dist)
     if train_num == 1:
         train = mp.Process(target=TrainProcess,
-                           args=(device_num - 1, sync, (x,y), num_batch, dataset.num_features,
-                                 128, dataset.num_classes, 3))
+                           args=(device_num - 1, sync, (x, y), num_batch,
+                                 dataset.num_features, 128,
+                                 dataset.num_classes, 3))
         train.start()
         trainers = [train]
     else:
-        train = Trainer(TrainProcess, device_num, sync, (x, y), num_batch, dataset.num_features,
-                        128, dataset.num_classes, 3)
+        train = Trainer(TrainProcess, device_num, sync, (x, y), num_batch,
+                        dataset.num_features, 128, dataset.num_classes, 3)
         trainers = launch_multiprocess(train, train_num)
     barrier1.wait()
     t0 = time.time()
@@ -414,7 +432,7 @@ def main(policy, num_batch=64, use_products=False):
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
-    batch_size = graph_num_nodes/10
+    batch_size = graph_num_nodes / 10
     cpu_num = psutil.cpu_count() // num_device
     print(f'cpu worker {cpu_num}')
     normal = Policy(batch_size, num_device, num_device, 0)
@@ -422,7 +440,7 @@ if __name__ == '__main__':
     pyg.remove_group()
     pf = PolicyFilter(batch_size, num_device, 0)
     for policy in pf:
-        if(policy.num_train == 3 and policy.num_group ==2):
+        if (policy.num_train == 3 and policy.num_group == 2):
             next
         print(f'trainer {policy.num_train} group {policy.num_group}')
         stats = main(policy)

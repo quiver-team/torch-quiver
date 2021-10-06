@@ -17,6 +17,7 @@ IF(USE_STRICT)
 ENDIF()
 
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/srcs/cpp/include)
+INCLUDE(srcs/cmake/common.cmake)
 
 IF(QUIVER_ENABLE_TRACE)
     INCLUDE(srcs/cmake/fetch_stdtracer.cmake)
@@ -29,13 +30,9 @@ IF(BUILD_TORCH_EXTENSION)
     INCLUDE(srcs/cmake/torch.cmake)
 ENDIF()
 
-FUNCTION(TARGET_ADD_SOURCE_PATTERN target)
-    FILE(GLOB SRCS ${ARGN})
-    TARGET_SOURCES(${target} PRIVATE ${SRCS})
-ENDFUNCTION()
-
-INCLUDE(srcs/cmake/common.cmake)
-INCLUDE(srcs/cmake/lib.cmake)
+IF(BUILD_LIB)
+    INCLUDE(srcs/cmake/lib.cmake)
+ENDIF()
 
 IF(BUILD_TESTS)
     INCLUDE(srcs/cmake/tests.cmake)

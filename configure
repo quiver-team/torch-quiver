@@ -22,6 +22,9 @@ parse_args() {
         --enable-torch)
             BUILD_TORCH_EXTENSION=1
             ;;
+        -v)
+            VERBOSE=1
+            ;;
         *)
             echo "unknown argument $i"
             exit 1
@@ -49,11 +52,13 @@ add_cmake_flags() {
     fi
 
     add_cmake_flag BUILD_TORCH_EXTENSION ${BUILD_TORCH_EXTENSION}
-    add_cmake_flag BUILD_TESTS 1
-    add_cmake_flag BUILD_BENCHMARKS 1
+    add_cmake_flag BUILD_TESTS ${BUILD_TESTS}
+    add_cmake_flag BUILD_BENCHMARKS ${BUILD_TESTS}
     add_cmake_flag CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH}
 
     add_cmake_flag QUIVER_ENABLE_TRACE $ENABLE_TRACE
+    add_cmake_flag CMAKE_VERBOSE_MAKEFILE ${VERBOSE}
+    add_cmake_flag CMAKE_EXPORT_COMPILE_COMMANDS ${VERBOSE}
 }
 
 main() {

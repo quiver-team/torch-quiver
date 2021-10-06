@@ -2,6 +2,7 @@
 *.dylib
 *.so
 *.whl
+/dist
 /3rdparty
 /KungFu
 /Makefile
@@ -17,3 +18,5 @@ venvgi/
 build/
 .vscode/
 srcs/python/torch_quiver.egg-info/
+
+compile_commands.json

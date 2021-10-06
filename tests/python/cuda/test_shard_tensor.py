@@ -92,6 +92,8 @@ def pyshard_tensor_ipc_child_proc(rank, ipc_handle, tensor):
     consumed_time = time.time() - start
     feature = feature.cpu().numpy()
     feature_gt = tensor[indices].numpy()
+    print(feature[0][:10])
+    print(feature_gt[0][:10])
     print("Correctness Check : ", np.array_equal(feature, feature_gt))
 
 
@@ -148,6 +150,47 @@ def torch_child_proc(rank, ws, cpu_tensor, gpu_tensors, range_list, indices):
     feature = feature.cpu().numpy()
     print(
         f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s")
+
+def test_products():
+
+    from ogb.nodeproppred import PygNodePropPredDataset
+    root = "/home/dalong/data/products/"
+    dataset = PygNodePropPredDataset('ogbn-products', root)
+    data = dataset[0]
+
+    NUM_ELEMENT = 1000000
+    FEATURE_DIM = 600
+
+    torch.cuda.set_device(0)
+
+    host_tensor = np.random.rand(2 * NUM_ELEMENT, FEATURE_DIM)
+    tensor = torch.from_numpy(host_tensor).type(torch.float32)
+
+    tensor = torch.Tensor([[ 0.0319, -0.1959,  0.0520, -0.0633, -0.2299, -0.0221,  0.4046, -0.1079,
+         0.0326,  0.0603]])
+
+    # Uncomment this to see wierd behavior of shard_tensor
+    # data.x = tensor
+
+    feature = data.x
+    print(f"original data ", feature[0][:10])
+
+    device_feature = feature.to(0)
+
+    shard_tensor_config = ShardTensorConfig({0:"200M"})
+    shard_tensor = PyShardTensor(0, shard_tensor_config)
+
+    shard_tensor.from_cpu_tensor(feature)
+
+    print("shard_tensor.shape", shard_tensor.size(0))
+
+    nid = torch.LongTensor([0]).to(0)
+
+    print(shard_tensor[nid][0][:10])
+    print(device_feature[nid][0][:10])
+
+
+
 
 
 
@@ -279,10 +322,11 @@ def test_delete():
 if __name__ == "__main__":
     mp.set_start_method("spawn")
     qv.init_p2p()
-    test_delete()
+    #test_delete()
     #test_py_shard_tensor_basic()
     #test_normal_feature_collection()
     #basic_test()
+    test_products()
     #test_py_shard_tensor_ipc()
     #test_torch_shard_tensor()
     # test_py_shard_tensor_basic()

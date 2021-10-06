@@ -15,7 +15,6 @@
 #include <quiver/zip.hpp>
 #include <thrust/remove.h>
 
-
 template <typename IdType>
 HostOrderedHashTable<IdType> *
 FillWithDuplicates(const IdType *const input, const size_t num_input,
@@ -246,9 +245,6 @@ class TorchQuiver
     sample_sub_with_stream(int stream_num, const torch::Tensor &vertices,
                            int k) const
     {
-        system_clock::time_point tp0 = system_clock::now();
-        system_clock::duration d0 = tp0.time_since_epoch();
-        time_t m0 = duration_cast<microseconds>(d0).count();
         TRACE_SCOPE(__func__);
         cudaStream_t stream = 0;
         if (!pool_.empty()) { stream = (pool_)[stream_num]; }
@@ -259,16 +255,8 @@ class TorchQuiver
         thrust::device_vector<T> subset;
         sample_kernel(stream, vertices, k, inputs, outputs, output_counts);
         int tot = outputs.size();
-        system_clock::time_point tp1 = system_clock::now();
-        system_clock::duration d1 = tp1.time_since_epoch();
-        time_t m1 = duration_cast<microseconds>(d1).count();
-        // std::cout << "sample" << m1 - m0 << std::endl;
 
         reindex_kernel(stream, inputs, outputs, subset);
-        system_clock::time_point tp2 = system_clock::now();
-        system_clock::duration d2 = tp2.time_since_epoch();
-        time_t m2 = duration_cast<microseconds>(d2).count();
-        // std::cout << "reindex" << m2 - m1 << std::endl;
 
         torch::Tensor out_vertices =
             torch::empty(subset.size(), vertices.options());
@@ -299,10 +287,6 @@ class TorchQuiver
                          out_vertices.data_ptr<T>());
             thrust::copy(outputs.begin(), outputs.end(), col_idx.data_ptr<T>());
         }
-        system_clock::time_point tp3 = system_clock::now();
-        system_clock::duration d3 = tp3.time_since_epoch();
-        time_t m3 = duration_cast<microseconds>(d3).count();
-        // std::cout << "output" << m3 - m2 << std::endl;
         return std::make_tuple(out_vertices, row_idx, col_idx);
     }
 };
@@ -458,8 +442,8 @@ TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
                                      (void *)id_original, 0);
         } else {
             const T *id_original = reinterpret_cast<const T *>(edge_idx.ptr);
-            const T *id_copy = (const T *)malloc_func(sizeof(T) *
-            edge_count); memcpy((void *)id_copy, (void *)id_original,
+            const T *id_copy = (const T *)malloc(sizeof(T) * edge_count);
+            memcpy((void *)id_copy, (void *)id_original,
                    sizeof(T) * edge_count);
 
             // Register Buffer As Mapped Pinned Memory

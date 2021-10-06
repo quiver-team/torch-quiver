@@ -34,6 +34,7 @@ FUNCTION(TARGET_ADD_SOURCE_PATTERN target)
     TARGET_SOURCES(${target} PRIVATE ${SRCS})
 ENDFUNCTION()
 
+INCLUDE(srcs/cmake/common.cmake)
 INCLUDE(srcs/cmake/lib.cmake)
 
 IF(BUILD_TESTS)

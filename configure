@@ -11,12 +11,16 @@ if [ -f $CUDA_HOME/include/cuda_runtime.h ]; then
 fi
 
 ENABLE_CUDA=${HAVE_CUDA}
+BUILD_TORCH_EXTENSION=1 # FIXME: disable by default
 
 parse_args() {
     for i in "$@"; do
         case $i in
         --enable-trace)
             ENABLE_TRACE=1
+            ;;
+        --enable-torch)
+            BUILD_TORCH_EXTENSION=1
             ;;
         *)
             echo "unknown argument $i"
@@ -43,7 +47,8 @@ add_cmake_flags() {
         add_cmake_flag CUDA_TOOLKIT_ROOT_DIR $CUDA_HOME
         add_cmake_flag CMAKE_CUDA_COMPILER $CUDA_HOME/bin/nvcc
     fi
-    # add_cmake_flag BUILD_TORCH_EXTENSION 1
+
+    add_cmake_flag BUILD_TORCH_EXTENSION ${BUILD_TORCH_EXTENSION}
     add_cmake_flag BUILD_TESTS 1
     add_cmake_flag BUILD_BENCHMARKS 1
     add_cmake_flag CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH}

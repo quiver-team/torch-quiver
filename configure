@@ -4,6 +4,7 @@ set -e
 . ./auto/cmake
 
 CUDA_HOME=/usr/local/cuda
+CUDA_ARCHITECTURES="61" # FIXME: detect
 
 HAVE_CUDA=0
 if [ -f $CUDA_HOME/include/cuda_runtime.h ]; then
@@ -21,6 +22,15 @@ parse_args() {
             ;;
         --enable-torch)
             BUILD_TORCH_EXTENSION=1
+            ;;
+        --lib)
+            BUILD_LIB=1
+            ;;
+        --tests)
+            BUILD_TESTS=1
+            ;;
+        --benchmarks)
+            BUILD_BENCHMARKS=1
             ;;
         -v)
             VERBOSE=1
@@ -52,6 +62,7 @@ add_cmake_flags() {
     fi
 
     add_cmake_flag BUILD_TORCH_EXTENSION ${BUILD_TORCH_EXTENSION}
+    add_cmake_flag BUILD_LIB ${BUILD_LIB}
     add_cmake_flag BUILD_TESTS ${BUILD_TESTS}
     add_cmake_flag BUILD_BENCHMARKS ${BUILD_TESTS}
     add_cmake_flag CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH}
@@ -59,6 +70,8 @@ add_cmake_flags() {
     add_cmake_flag QUIVER_ENABLE_TRACE $ENABLE_TRACE
     add_cmake_flag CMAKE_VERBOSE_MAKEFILE ${VERBOSE}
     add_cmake_flag CMAKE_EXPORT_COMPILE_COMMANDS ${VERBOSE}
+
+    add_cmake_flag CUDA_ARCHITECTURES ${CUDA_ARCHITECTURES}
 }
 
 main() {

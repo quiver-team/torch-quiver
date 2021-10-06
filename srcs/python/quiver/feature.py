@@ -5,7 +5,9 @@ import numpy as np
 import time
 from typing import List
 from quiver.shard_tensor import ShardTensor, ShardTensorConfig, Topo
-import quiver
+
+__all__ = ["Feature"]
+
 class Feature:
     def __init__(self, rank, device_list, device_cache_size=0, cache_policy='device_replicate'):
         self.device_cache_size = device_cache_size
@@ -100,53 +102,12 @@ class Feature:
             numa_id = self.topo.get_numa_node(self.rank)
             shard_tensor = self.numa_tensor_list[numa_id]
             return shard_tensor[node_idx]
-
-
-def test_feature_basic():
-    rank = 0
     
-    NUM_ELEMENT = 1000000
-    SAMPLE_SIZE = 80000
-    FEATURE_DIM = 600
-    #########################
-    # Init With Numpy
-    ########################
-    torch.cuda.set_device(rank)
-    torch_qv.init_p2p()
-
-
-    host_tensor = np.random.randint(
-        0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
-    
-    print("host data size", host_tensor.size * 4 // 1024  // 1024, "MB")
-    tensor = torch.from_numpy(host_tensor).type(torch.float32)
-
-    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
-    indices = torch.from_numpy(host_indice).type(torch.long)
-
-    device_indices = indices.to(rank)
-
-    ############################
-    # define a quiver.Feature
-    ###########################
-    feature = quiver.Feature(rank=0, device_list=[0, 1], device_cache_size="0.9G", cache_policy="numa_replicate")
-    feature.from_cpu_tensor(tensor)
-
-
-    ####################
-    # Indexing 
-    ####################
-    res = feature[device_indices]
-    
-    start = time.time()
-
-    res = feature[device_indices]
-    consumed_time = time.time() - start
-
-    res = res.cpu().numpy()
-    feature_gt = tensor[indices].numpy()
-    print("Correctness Check : ", np.array_equal(res, feature_gt))
-    print(
-        f"TEST SUCCEED!, With Memory Bandwidth = {res.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s, consumed {consumed_time}s")
-
-test_feature_basic()
+    def size(self, dim):
+        if self.cache_policy == "device_replicate":
+            shard_tensor = self.device_tensor_list[self.rank]
+            return shard_tensor.size(dim)
+        else:
+            numa_id = self.topo.get_numa_node(self.rank)
+            shard_tensor = self.numa_tensor_list[numa_id]
+            return shard_tensor.size(dim)

@@ -317,3 +317,7 @@ class ShardTensor:
 
     def delete(self):
         self.shard_tensor.unregister(self.cpu_tensor)
+    
+    def size(self, dim):
+        return self.shard_tensor.size(dim)
+

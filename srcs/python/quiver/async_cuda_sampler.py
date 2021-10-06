@@ -6,9 +6,6 @@ import time
 from typing import List, NamedTuple, Optional, Tuple
 import numpy as np
 
-from quiver.coro.task import TaskNode
-from quiver.coro.task_context import TaskContext
-
 import torch
 from torch_sparse import SparseTensor
 import torch_quiver as qv

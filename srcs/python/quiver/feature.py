@@ -5,11 +5,12 @@ import numpy as np
 import time
 from typing import List
 from quiver.shard_tensor import ShardTensor, ShardTensorConfig, Topo
+from quiver.utils import reindex_feature
 
 __all__ = ["Feature"]
 
 class Feature:
-    def __init__(self, rank, device_list, device_cache_size=0, cache_policy='device_replicate'):
+    def __init__(self, rank, device_list, device_cache_size=0, cache_policy='device_replicate', reorder=None):
         self.device_cache_size = device_cache_size
         self.cache_policy = cache_policy
         self.device_list = device_list
@@ -17,6 +18,8 @@ class Feature:
         self.numa_tensor_list = dict.fromkeys([0, 1], None)
         self.rank = rank            
         self.topo = Topo(self.device_list)
+        self.reorder = reorder
+        self.new_order = None
     
     def cal_memory_budget_bytes(self, memory_budget):
         if isinstance(memory_budget, int):
@@ -48,10 +51,15 @@ class Feature:
     def from_cpu_tensor(self, cpu_tensor):
         if self.cache_policy == "device_replicate":
             cache_memory_budget = self.cal_memory_budget_bytes(self.device_cache_size)
+            shuffle_ratio = 0.0
         else:
             cache_memory_budget = self.cal_memory_budget_bytes(self.device_cache_size) * len(self.topo.Numa2Device[0])
+            shuffle_ratio = self.cal_size(cpu_tensor, cache_memory_budget) / cpu_tensor.size(0)
         
         print(f"LOG>>> {min(100, int(100 * cache_memory_budget / cpu_tensor.numel() / 4))}% data cached")
+        if self.reorder is not None:
+            cpu_tensor, new_order = reindex_feature(self.reorder, cpu_tensor, shuffle_ratio)
+            self.new_order = new_order.to(self.rank)
         cache_part, self.cpu_part = self.partition(cpu_tensor, cache_memory_budget)
         if self.cache_policy == "device_replicate":
             for device in self.device_list:
@@ -95,6 +103,8 @@ class Feature:
         
     def __getitem__(self, node_idx):
         node_idx = node_idx.to(self.rank)
+        if self.new_order is not None:
+            node_idx = self.new_order[node_idx]
         if self.cache_policy == "device_replicate":
             shard_tensor = self.device_tensor_list[self.rank]
             return shard_tensor[node_idx]
@@ -111,3 +121,13 @@ class Feature:
             numa_id = self.topo.get_numa_node(self.rank)
             shard_tensor = self.numa_tensor_list[numa_id]
             return shard_tensor.size(dim)
+
+    @property
+    def shape(self):
+        if self.cache_policy == "device_replicate":
+            shard_tensor = self.device_tensor_list[self.rank]
+            return shard_tensor.shape
+        else:
+            numa_id = self.topo.get_numa_node(self.rank)
+            shard_tensor = self.numa_tensor_list[numa_id]
+            return shard_tensor.shape

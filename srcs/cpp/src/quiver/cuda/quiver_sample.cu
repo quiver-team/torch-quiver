@@ -348,8 +348,7 @@ reindex_single(torch::Tensor inputs, torch::Tensor outputs, torch::Tensor count)
 TorchQuiver new_quiver_from_csr_array(py::array_t<int64_t> &input_indptr,
                                       py::array_t<int64_t> &input_indices,
                                       py::array_t<int64_t> &input_edge_idx,
-                                      int device = 0, bool copy = false,
-                                      bool uva = true)
+                                      int device = 0, bool copy = false)
 {
 
     cudaSetDevice(device);

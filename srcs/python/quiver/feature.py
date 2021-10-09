@@ -15,7 +15,7 @@ class Feature:
         self.cache_policy = cache_policy
         self.device_list = device_list
         self.device_tensor_list = {}
-        self.numa_tensor_list = dict.fromkeys([0, 1], None)
+        self.numa_tensor_list = {}
         self.rank = rank            
         self.topo = Topo(self.device_list)
         self.reorder = reorder
@@ -61,17 +61,17 @@ class Feature:
             cpu_tensor, new_order = reindex_feature(self.reorder, cpu_tensor, shuffle_ratio)
             self.new_order = new_order.to(self.rank)
         cache_part, self.cpu_part = self.partition(cpu_tensor, cache_memory_budget)
-        if self.cache_policy == "device_replicate":
+        self.cpu_part.share_memory_()
+        if cache_part.shape[0] > 0 and self.cache_policy == "device_replicate":
             for device in self.device_list:
                 shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
                 shard_tensor.append(cache_part, device)
                 self.device_tensor_list[device] = shard_tensor
-            if self.cpu_part.numel() > 0:
-                self.device_tensor_list[self.rank].append(self.cpu_part, -1)
 
-        else:
+        elif cache_part.shape[0] > 0:
             numa0_device_list = self.topo.Numa2Device[0]
             numa1_device_list = self.topo.Numa2Device[1]
+
             block_size = self.cal_size(cpu_tensor, cache_memory_budget // len(self.topo.Numa2Device[0]))
 
             if len(numa0_device_list) > 0:
@@ -81,7 +81,7 @@ class Feature:
                 for device in numa0_device_list:
                     shard_tensor.append(cache_part[cur_pos: cur_pos + block_size], device)
                     cur_pos += block_size
-                    if cur_pos > block_size * len(self.topo.Numa2Device[0]):
+                    if cur_pos >= block_size * len(self.topo.Numa2Device[0]) or cur_pos >= cache_part.shape[0]:
                         break
 
                 self.numa_tensor_list[0] = shard_tensor
@@ -93,13 +93,23 @@ class Feature:
                 for device in numa1_device_list:
                     shard_tensor.append(cache_part[cur_pos: cur_pos + block_size], device)
                     cur_pos += block_size
+                    if cur_pos >= block_size * len(self.topo.Numa2Device[0]) or cur_pos >= cache_part.shape[0]:
+                        break
 
                 self.numa_tensor_list[1] = shard_tensor
 
-            if self.cpu_part.numel() > 0:
+        # 构建CPU Tensor
+        if self.cpu_part.numel() > 0:
+            if self.cache_policy == "device_replicate":
+                shard_tensor = self.device_tensor_list.get(self.rank, None) or ShardTensor(self.rank, ShardTensorConfig({}))
+                shard_tensor.append(self.cpu_part, -1)
+                self.device_tensor_list[self.rank] = shard_tensor
+            else:
                 numa_id = self.topo.get_numa_node(self.rank)
-                self.numa_tensor_list[numa_id].append(self.cpu_part, -1)
-
+                shard_tensor = self.numa_tensor_list.get(numa_id, None) or ShardTensor(self.rank, ShardTensorConfig({}))
+                shard_tensor.append(self.cpu_part, -1)
+                self.numa_tensor_list[numa_id] = shard_tensor
+            
         
     def __getitem__(self, node_idx):
         node_idx = node_idx.to(self.rank)
@@ -131,3 +141,37 @@ class Feature:
             numa_id = self.topo.get_numa_node(self.rank)
             shard_tensor = self.numa_tensor_list[numa_id]
             return shard_tensor.shape
+    
+    def share_ipc(self):
+        gpu_ipc_handle_dict = {}
+        if self.cache_policy == "device_replicate":
+            for device in self.device_tensor_list:
+                gpu_ipc_handle_dict[device] = self.device_tensor_list[device].share_ipc()[0]
+        else:
+            for numa_node in self.numa_tensor_list:
+                gpu_ipc_handle_dict[numa_node] = self.numa_tensor_list[numa_node].share_ipc()[0]
+        
+        return gpu_ipc_handle_dict, self.cpu_part, self.device_list, self.device_cache_size, self.cache_policy
+    
+    def from_gpu_ipc_handle_dict(self, gpu_ipc_handle_dict, cpu_tensor):
+        if self.cache_policy == "device_replicate":
+            print(type(gpu_ipc_handle_dict[self.rank]))
+            ipc_handle = gpu_ipc_handle_dict[self.rank], cpu_tensor, ShardTensorConfig({})
+            shard_tensor = ShardTensor.new_from_share_ipc(ipc_handle, self.rank)
+            self.device_tensor_list[self.rank] = shard_tensor
+            
+        else:
+            numa_node = self.topo.get_numa_node(self.rank)
+            ipc_handle = gpu_ipc_handle_dict[numa_node], cpu_tensor, ShardTensorConfig({})
+            shard_tensor = ShardTensor.new_from_share_ipc(ipc_handle, self.rank)
+            self.numa_tensor_list[numa_node] = shard_tensor
+        
+        self.cpu_part = cpu_tensor
+        
+        
+    @classmethod
+    def new_from_ipc_handle(self, rank, ipc_handle):
+        gpu_ipc_handle_dict, cpu_part, device_list, device_cache_size, cache_policy = ipc_handle
+        feature = Feature(rank, device_list, device_cache_size, cache_policy)
+        feature.from_gpu_ipc_handle_dict(gpu_ipc_handle_dict, cpu_part)
+        return feature

@@ -8,7 +8,39 @@ from quiver.shard_tensor import ShardTensor, ShardTensorConfig, Topo
 from quiver.utils import reindex_feature
 import torch.multiprocessing as mp
 from torch.multiprocessing import Process
+import os 
 import sys
+import quiver
+import torch.distributed as dist
+
+
+"""
+from multiprocessing.reduction import ForkingPickler
+import torch.multiprocessing as mp
+import quiver
+import torch
+import torch_quiver as torch_qv
+import random
+import numpy as np
+import time
+from typing import List
+from quiver.shard_tensor import ShardTensor, ShardTensorConfig, Topo
+from quiver.utils import reindex_feature
+import torch.multiprocessing as mp
+from torch.multiprocessing import Process
+import sys
+
+
+
+def reduce_sampler():
+    pass
+
+def rebuild_sampler():
+    pass    
+
+tensor = torch.Tensor([1,2,3,4])
+
+
 
 __all__ = ["Feature"]
 
@@ -66,7 +98,7 @@ class Feature:
             cpu_tensor, new_order = reindex_feature(self.reorder, cpu_tensor, shuffle_ratio)
             self.new_order = new_order.to(self.rank)
         cache_part, self.cpu_part = self.partition(cpu_tensor, cache_memory_budget)
-        self.cpu_part.share_memory_()
+        self.cpu_part = self.cpu_part.clone()
         if cache_part.shape[0] > 0 and self.cache_policy == "device_replicate":
             for device in self.device_list:
                 shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
@@ -167,12 +199,11 @@ class Feature:
         else:
             for numa_node in self.numa_tensor_list:
                 gpu_ipc_handle_dict[numa_node] = self.numa_tensor_list[numa_node].share_ipc()[0]
-        
+        #self.cpu_part = torch.zeros([3, 600])
         return gpu_ipc_handle_dict, self.cpu_part, self.device_list, self.device_cache_size, self.cache_policy
     
     def from_gpu_ipc_handle_dict(self, gpu_ipc_handle_dict, cpu_tensor):
         if self.cache_policy == "device_replicate":
-            print(type(gpu_ipc_handle_dict[self.rank]))
             ipc_handle = gpu_ipc_handle_dict[self.rank], cpu_tensor, ShardTensorConfig({})
             shard_tensor = ShardTensor.new_from_share_ipc(ipc_handle, self.rank)
             self.device_tensor_list[self.rank] = shard_tensor
@@ -210,12 +241,12 @@ class Feature:
         self.ipc_handle = None
 
 
-
+"""
 def test_feature_basic():
     rank = 2
     
-    NUM_ELEMENT = 10000
-    SAMPLE_SIZE = 800
+    NUM_ELEMENT = 1000000
+    SAMPLE_SIZE = 80000
     FEATURE_DIM = 600
 
     #########################
@@ -237,7 +268,7 @@ def test_feature_basic():
     ############################
     # define a quiver.Feature
     ###########################
-    feature = quiver.Feature(rank=rank, device_list=[0, 1, 2, 3], device_cache_size="10M", cache_policy="numa_replicate")
+    feature = quiver.Feature(rank=rank, device_list=[0, 1, 2, 3], device_cache_size="0.9G", cache_policy="numa_replicate")
     feature.from_cpu_tensor(tensor)
 
     ####################
@@ -252,12 +283,66 @@ def test_feature_basic():
     feature_gt = tensor[indices].numpy()
     print("Correctness Check : ", np.array_equal(res, feature_gt))
     print(
-        f"TEST SUCCEED!, With Memory Bandwidth = {res.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s, consumed {consumed_time}s")
+        f"Process {os.getpid()}: TEST SUCCEED!, With Memory Bandwidth = {res.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s, consumed {consumed_time}s")
 
+def child_proc(rank, world_size, host_tensor, feature):
+    torch.cuda.set_device(rank)
+    print(f"Process {os.getpid()}: check current device {torch.cuda.current_device()}")
+    NUM_ELEMENT = host_tensor.shape[0]
+    SAMPLE_SIZE = 80000
+    host_indice = np.random.randint(0, NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
+    indices = torch.from_numpy(host_indice).type(torch.long)
+    device_indices = indices.to(rank)
+
+    res = feature[device_indices]
+    bandwidth = []
+    for _ in range(20):
+        start = time.time()
+        res = feature[device_indices]
+        consumed_time = time.time() - start
+        bandwidth.append(res.numel() * 4 / consumed_time / 1024 / 1024 / 1024)
+    
+
+    res = res.cpu().numpy()
+    feature_gt = host_tensor[indices].numpy()
+    print("Correctness Check : ", np.array_equal(res, feature_gt))
+    print(
+        f"Process {os.getpid()}: TEST SUCCEED!, With Memory Bandwidth = {np.mean(np.array(bandwidth))} GB/s, consumed {consumed_time}s, res size {res.size * 4 / 1024 / 1024 / 1024}GB")
+
+def test_ipc():
+    rank = 2
+    
+    NUM_ELEMENT = 1000000
+    FEATURE_DIM = 600
+
+    #########################
+    # Init With Numpy
+    ########################
+    torch.cuda.set_device(rank)
+
+    host_tensor = np.random.randint(
+        0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
+    tensor = torch.from_numpy(host_tensor).type(torch.float32)
+    print("host data size", host_tensor.size * 4 // 1024  // 1024, "MB")
+
+
+    ############################
+    # define a quiver.Feature
+    ###########################
+    feature = quiver.Feature(rank=rank, device_list=[0,1,2,3], device_cache_size="0.9G", cache_policy="device_replicate")
+    feature.from_cpu_tensor(tensor)
+    world_size = 4
+    mp.spawn(
+        child_proc,   
+        args=(world_size, tensor, feature),
+        nprocs=world_size,
+        join=True
+    )
 
 if __name__ == "__main__":
     mp.set_start_method("spawn")
     torch_qv.init_p2p()
-    test_feature_basic()
+    #test_feature_basic()
+    test_ipc()
 
 

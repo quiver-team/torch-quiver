@@ -158,7 +158,6 @@ class ShardTensor:
             if self.cpu_tensor is not None:
                 raise Exception("cpu tensor has been already appended")
             self.cpu_tensor = cpu_tensor
-            self.cpu_tensor.share_memory_()
             self.shard_tensor.append(cpu_tensor, -1)
             return
         if self.shard_tensor_config.device_memory_budget.get(device,
@@ -210,7 +209,6 @@ class ShardTensor:
         if cur_pos < tensor.shape[0]:
             # allocate the rest of data on CPU
             self.cpu_tensor = tensor[cur_pos: ]
-            self.cpu_tensor.share_memory_()
             self.shard_tensor.append(self.cpu_tensor, -1)
             print(
                 f"LOG >>> Assign {100 - int(100 * cur_pos * 1.0 / tensor.shape[0])}% data to CPU"

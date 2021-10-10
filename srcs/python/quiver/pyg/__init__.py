@@ -1,6 +1,5 @@
-from .sage_sampler import GraphSageSampler, GraphStructure
+from .sage_sampler import GraphSageSampler
 
 __all__ = [
     "GraphSageSampler",
-    "GraphStructure"
 ]

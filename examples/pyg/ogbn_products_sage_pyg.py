@@ -26,7 +26,7 @@ train_idx = split_idx['train']
 
 train_loader = NeighborSampler(data.edge_index, node_idx=train_idx,
                                sizes=[15, 10, 5], batch_size=1024,
-                               shuffle=True, num_workers=12)
+                               shuffle=True, num_workers=12, persistent_workers=True)
 
 subgraph_loader = NeighborSampler(data.edge_index, node_idx=None, sizes=[-1],
                                   batch_size=4096, shuffle=False,

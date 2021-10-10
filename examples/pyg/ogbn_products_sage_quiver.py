@@ -16,7 +16,7 @@ import quiver
 from quiver.pyg import GraphSageSampler
 
 #root = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'products')
-root = "/data/products/"
+root = "/home/dalong/data/products/"
 dataset = PygNodePropPredDataset('ogbn-products', root)
 split_idx = dataset.get_idx_split()
 evaluator = Evaluator(name='ogbn-products')
@@ -35,7 +35,9 @@ train_loader = torch.utils.data.DataLoader(train_idx,
                                            shuffle=True,
                                            drop_last=True)
 
-quiver_sampler = GraphSageSampler(data.edge_index, sizes=[15, 10, 5], device=0)
+csr_topo = quiver.CSRTopo(data.edge_index)
+
+quiver_sampler = GraphSageSampler(csr_topo, sizes=[15, 10, 5], device=0)
 
 
 subgraph_loader = NeighborSampler(data.edge_index, node_idx=None, sizes=[-1],
@@ -113,7 +115,7 @@ model = model.to(device)
 # x = data.x.to(device)
 
 x = quiver.Feature(rank=0, device_list=[
-                   0], device_cache_size="200M", cache_policy="device_replicate", reorder=data.edge_index)
+                   0], device_cache_size="2G", cache_policy="device_replicate", reorder=data.edge_index)
 feature = torch.zeros(data.x.shape)
 feature[:] = data.x
 x.from_cpu_tensor(feature)
@@ -195,14 +197,14 @@ for run in range(1, 11):
         loss, acc = train(epoch)
         print(f'Epoch {epoch:02d}, Loss: {loss:.4f}, Approx. Train: {acc:.4f}')
 
-        # if epoch > 5:
-        #     train_acc, val_acc, test_acc = test()
-        #     print(f'Train: {train_acc:.4f}, Val: {val_acc:.4f}, '
-        #           f'Test: {test_acc:.4f}')
+        if epoch > 5:
+            train_acc, val_acc, test_acc = test()
+            print(f'Train: {train_acc:.4f}, Val: {val_acc:.4f}, '
+                f'Test: {test_acc:.4f}')
 
-        #     if val_acc > best_val_acc:
-        #         best_val_acc = val_acc
-        #         final_test_acc = test_acc
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                final_test_acc = test_acc
     test_accs.append(final_test_acc)
 
 test_acc = torch.tensor(test_accs)

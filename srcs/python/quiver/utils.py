@@ -25,6 +25,34 @@ def get_csr_from_coo(edge_index):
         (data, (edge_index[0].numpy(), edge_index[1].numpy())))
     return csr_mat
 
+class CSRTopo:
+    def __init__(self, edge_index=None, indptr=None, indices=None, eid=None):
+        if edge_index is not None:
+            csr_mat = get_csr_from_coo(edge_index)
+            self.indptr_ = torch.from_numpy(csr_mat.indptr).type(torch.long)
+            self.indices_ = torch.from_numpy(csr_mat.indices).type(torch.long)
+        elif indptr is not None and indices is not None:
+            if isinstance(indptr, torch.Tensor):
+                self.indptr_ = indptr.type(torch.long)
+                self.indices_ = indices.type(torch.long)
+            elif ininstance(indptr, np.ndarray):
+                self.indptr_ = torch.from_numpy(indptr).type(torch.long)
+                self.indices_ = torch.from_numpy(indices).type(torch.long)
+        self.eid_ = eid
+    
+    @property
+    def indptr(self):
+        return self.indptr_
+    
+    @property
+    def indices(self):
+        return self.indices_
+    
+    @property
+    def eid(self):
+        return self.eid_
+
+    
 def reindex_feature(graph, feature, ratio):
     if not isinstance(graph, csr_matrix):
         graph = get_csr_from_coo(graph)

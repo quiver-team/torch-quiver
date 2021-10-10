@@ -5,15 +5,15 @@ import numpy as np
 import time
 from typing import List
 from quiver.shard_tensor import ShardTensor, ShardTensorConfig, Topo
-import quiver
-from torch.multiprocessing import Process
+from quiver.utils import reindex_feature
 import torch.multiprocessing as mp
+from torch.multiprocessing import Process
 import sys
 
 __all__ = ["Feature"]
 
 class Feature:
-    def __init__(self, rank, device_list, device_cache_size=0, cache_policy='device_replicate'):
+    def __init__(self, rank, device_list, device_cache_size=0, cache_policy='device_replicate', reorder=None):
         self.device_cache_size = device_cache_size
         self.cache_policy = cache_policy
         self.device_list = device_list
@@ -21,6 +21,10 @@ class Feature:
         self.numa_tensor_list = {}
         self.rank = rank            
         self.topo = Topo(self.device_list)
+        self.reorder = reorder
+        self.new_order = None
+
+        self.ipc_handle_ = None
     
     def cal_memory_budget_bytes(self, memory_budget):
         if isinstance(memory_budget, int):
@@ -52,10 +56,15 @@ class Feature:
     def from_cpu_tensor(self, cpu_tensor):
         if self.cache_policy == "device_replicate":
             cache_memory_budget = self.cal_memory_budget_bytes(self.device_cache_size)
+            shuffle_ratio = 0.0
         else:
             cache_memory_budget = self.cal_memory_budget_bytes(self.device_cache_size) * len(self.topo.Numa2Device[0])
+            shuffle_ratio = self.cal_size(cpu_tensor, cache_memory_budget) / cpu_tensor.size(0)
         
         print(f"LOG>>> {min(100, int(100 * cache_memory_budget / cpu_tensor.numel() / 4))}% data cached")
+        if self.reorder is not None:
+            cpu_tensor, new_order = reindex_feature(self.reorder, cpu_tensor, shuffle_ratio)
+            self.new_order = new_order.to(self.rank)
         cache_part, self.cpu_part = self.partition(cpu_tensor, cache_memory_budget)
         self.cpu_part.share_memory_()
         if cache_part.shape[0] > 0 and self.cache_policy == "device_replicate":
@@ -108,7 +117,10 @@ class Feature:
             
         
     def __getitem__(self, node_idx):
+        self.lazy_init_from_ipc_handle()
         node_idx = node_idx.to(self.rank)
+        if self.new_order is not None:
+            node_idx = self.new_order[node_idx]
         if self.cache_policy == "device_replicate":
             shard_tensor = self.device_tensor_list[self.rank]
             return shard_tensor[node_idx]
@@ -118,6 +130,7 @@ class Feature:
             return shard_tensor[node_idx]
     
     def size(self, dim):
+        self.lazy_init_from_ipc_handle()
         if self.cache_policy == "device_replicate":
             shard_tensor = self.device_tensor_list[self.rank]
             return shard_tensor.size(dim)
@@ -125,7 +138,27 @@ class Feature:
             numa_id = self.topo.get_numa_node(self.rank)
             shard_tensor = self.numa_tensor_list[numa_id]
             return shard_tensor.size(dim)
+
+    @property
+    def shape(self):
+        self.lazy_init_from_ipc_handle()
+        if self.cache_policy == "device_replicate":
+            shard_tensor = self.device_tensor_list[self.rank]
+            return shard_tensor.shape
+        else:
+            numa_id = self.topo.get_numa_node(self.rank)
+            shard_tensor = self.numa_tensor_list[numa_id]
+            return shard_tensor.shape
     
+
+    @property
+    def ipc_handle(self):
+        return self.ipc_handle_
+            
+    @ipc_handle.setter
+    def ipc_handle(self, ipc_handle):
+        self.ipc_handle_ = ipc_handle
+
     def share_ipc(self):
         gpu_ipc_handle_dict = {}
         if self.cache_policy == "device_replicate":
@@ -154,11 +187,28 @@ class Feature:
         
         
     @classmethod
-    def new_from_ipc_handle(self, rank, ipc_handle):
+    def new_from_ipc_handle(cls, rank, ipc_handle):
         gpu_ipc_handle_dict, cpu_part, device_list, device_cache_size, cache_policy = ipc_handle
-        feature = Feature(rank, device_list, device_cache_size, cache_policy)
+        feature = cls(rank, device_list, device_cache_size, cache_policy)
         feature.from_gpu_ipc_handle_dict(gpu_ipc_handle_dict, cpu_part)
         return feature
+    
+    @classmethod
+    def lazy_from_ipc_handle(cls, ipc_handle):
+        gpu_ipc_handle_dict, cpu_part, device_list, device_cache_size, cache_policy = ipc_handle
+        feature = cls(device_list[0], device_list, device_cache_size, cache_policy)
+        feature.ipc_handle = ipc_handle
+        return feature
+    
+    def lazy_init_from_ipc_handle(self):
+        if self.ipc_handle is None:
+            return 
+        
+        self.rank = torch.cuda.current_device()
+        gpu_ipc_handle_dict, cpu_part, device_list, device_cache_size, cache_policy = self.ipc_handle
+        self.from_gpu_ipc_handle_dict(gpu_ipc_handle_dict, cpu_part)
+        self.ipc_handle = None
+
 
 
 def test_feature_basic():
@@ -254,7 +304,7 @@ def child(ipc_handle):
     device_indices = indices.to(rank)
 
     feature = Feature.new_from_ipc_handle(0, ipc_handle)
-    print(feature.size(0))
+    print(feature[device_indices].shape)
 
 
 def test_feature_ipc():
@@ -293,6 +343,62 @@ def test_feature_ipc():
     process.join()
 
 
+def lazy_child(ipc_handle):
+    NUM_ELEMENT = 10000
+    SAMPLE_SIZE = 800
+    rank = 3
+    print(sys.argv)
+    torch.cuda.set_device(rank)
+
+    #########################
+    # Init With Numpy
+    ########################
+
+    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
+    indices = torch.from_numpy(host_indice).type(torch.long)
+    device_indices = indices.to(rank)
+
+    feature = Feature.lazy_from_ipc_handle(ipc_handle)
+    print(feature[device_indices].shape)
+    print(feature.rank)
+
+
+def test_lazy_ipc():
+    rank = 0
+    
+    NUM_ELEMENT = 10000
+    SAMPLE_SIZE = 800
+    FEATURE_DIM = 600
+    #########################
+    # Init With Numpy
+    ########################
+    torch.cuda.set_device(rank)
+
+
+    host_tensor = np.random.randint(
+        0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
+    
+    print("host data size", host_tensor.size * 4 // 1024  // 1024, "MB")
+    tensor = torch.from_numpy(host_tensor).type(torch.float32)
+
+    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
+    indices = torch.from_numpy(host_indice).type(torch.long)
+
+    device_indices = indices.to(rank)
+
+    ############################
+    # define a quiver.Feature
+    ###########################
+    feature = Feature(rank=0, device_list=[0, 1, 2, 3], device_cache_size='10MB', cache_policy="numa_replicate")
+    feature.from_cpu_tensor(tensor)
+
+    ipc_handle = feature.share_ipc()
+
+    process = Process(target=lazy_child, args=(ipc_handle, ))
+    process.start()
+    process.join()
+
+
 if __name__ == "__main__":
     mp.set_start_method("spawn")
     torch_qv.init_p2p()
@@ -301,4 +407,5 @@ if __name__ == "__main__":
 
     #test_feature_ipc_basic()
 
-    test_feature_ipc()
+    #test_feature_ipc()
+    test_lazy_ipc()

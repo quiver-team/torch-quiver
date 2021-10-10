@@ -20,6 +20,8 @@ class Feature:
         self.topo = Topo(self.device_list)
         self.reorder = reorder
         self.new_order = None
+
+        self.ipc_handle_ = None
     
     def cal_memory_budget_bytes(self, memory_budget):
         if isinstance(memory_budget, int):
@@ -112,6 +114,7 @@ class Feature:
             
         
     def __getitem__(self, node_idx):
+        self.lazy_init_from_ipc_handle()
         node_idx = node_idx.to(self.rank)
         if self.new_order is not None:
             node_idx = self.new_order[node_idx]
@@ -124,6 +127,7 @@ class Feature:
             return shard_tensor[node_idx]
     
     def size(self, dim):
+        self.lazy_init_from_ipc_handle()
         if self.cache_policy == "device_replicate":
             shard_tensor = self.device_tensor_list[self.rank]
             return shard_tensor.size(dim)
@@ -134,6 +138,7 @@ class Feature:
 
     @property
     def shape(self):
+        self.lazy_init_from_ipc_handle()
         if self.cache_policy == "device_replicate":
             shard_tensor = self.device_tensor_list[self.rank]
             return shard_tensor.shape
@@ -142,6 +147,15 @@ class Feature:
             shard_tensor = self.numa_tensor_list[numa_id]
             return shard_tensor.shape
     
+
+    @property
+    def ipc_handle(self):
+        return self.ipc_handle_
+            
+    @ipc_handle.setter
+    def ipc_handle(self, ipc_handle):
+        self.ipc_handle_ = ipc_handle
+
     def share_ipc(self):
         gpu_ipc_handle_dict = {}
         if self.cache_policy == "device_replicate":
@@ -170,8 +184,24 @@ class Feature:
         
         
     @classmethod
-    def new_from_ipc_handle(self, rank, ipc_handle):
+    def new_from_ipc_handle(cls, rank, ipc_handle):
         gpu_ipc_handle_dict, cpu_part, device_list, device_cache_size, cache_policy = ipc_handle
-        feature = Feature(rank, device_list, device_cache_size, cache_policy)
+        feature = cls(rank, device_list, device_cache_size, cache_policy)
         feature.from_gpu_ipc_handle_dict(gpu_ipc_handle_dict, cpu_part)
         return feature
+    
+    @classmethod
+    def lazy_from_ipc_handle(cls, ipc_handle):
+        gpu_ipc_handle_dict, cpu_part, device_list, device_cache_size, cache_policy = ipc_handle
+        feature = cls(device_list[0], device_list, device_cache_size, cache_policy)
+        feature.ipc_handle = ipc_handle
+        return feature
+    
+    def lazy_init_from_ipc_handle(self):
+        if self.ipc_handle is None:
+            return 
+        
+        self.rank = torch.cuda.current_device()
+        gpu_ipc_handle_dict, cpu_part, device_list, device_cache_size, cache_policy = self.ipc_handle
+        self.from_gpu_ipc_handle_dict(gpu_ipc_handle_dict, cpu_part)
+        self.ipc_handle = None

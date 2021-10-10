@@ -16,7 +16,7 @@ import time
 ######################
 # Import From Quiver
 ######################
-
+import quiver
 
 class SAGE(torch.nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels,
@@ -64,18 +64,18 @@ class SAGE(torch.nn.Module):
         return x_all
 
 
-def run(rank, world_size, data_split, edge_index, x, y, num_features, num_classes):
+def run(rank, world_size, data_split, edge_index, x, quiver_sampler, y, num_features, num_classes):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
     dist.init_process_group('nccl', rank=rank, world_size=world_size)
+
+    torch.torch.cuda.set_device(rank)
 
     train_mask, val_mask, test_mask = data_split    
     train_idx = train_mask.nonzero(as_tuple=False).view(-1)
     train_idx = train_idx.split(train_idx.size(0) // world_size)[rank]
 
-    train_loader = NeighborSampler(edge_index, node_idx=train_idx,
-                                   sizes=[25, 10], batch_size=1024,
-                                   shuffle=True, num_workers=0)
+    train_loader = torch.utils.data.DataLoader(train_idx, batch_size=1024, shuffle=True, drop_last=True)
 
     if rank == 0:
         subgraph_loader = NeighborSampler(edge_index, node_idx=None,
@@ -88,12 +88,13 @@ def run(rank, world_size, data_split, edge_index, x, y, num_features, num_classe
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
     # Simulate cases those data can not be fully stored by GPU memory
-    x, y = x, y.to(rank)
+    y = y.to(rank)
 
     for epoch in range(1, 21):
         model.train()
         epoch_start = time.time()
-        for batch_size, n_id, adjs in train_loader:
+        for seeds in train_loader:
+            n_id, batch_size, adjs = quiver_sampler.sample(seeds)
             adjs = [adj.to(rank) for adj in adjs]
 
             optimizer.zero_grad()
@@ -105,7 +106,7 @@ def run(rank, world_size, data_split, edge_index, x, y, num_features, num_classe
         dist.barrier()
 
         if rank == 0:
-            print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}, Time: {time.time() - epoch_start}')
+            print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}, Epoch Time: {time.time() - epoch_start}')
 
         if rank == 0 and epoch % 5 == 0:  # We evaluate on a single GPU for now
             model.eval()
@@ -124,8 +125,20 @@ def run(rank, world_size, data_split, edge_index, x, y, num_features, num_classe
 
 if __name__ == '__main__':
     dataset = Reddit('/home/dalong/data/Reddit')
-    data = dataset[0]
     world_size = torch.cuda.device_count()
+
+    data = dataset[0]
+
+    csr_topo = quiver.CSRTopo(data.edge_index)
+    
+    ##############################
+    # Create Sampler And Feature
+    ##############################
+    quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [25, 10], 0)
+
+    quiver_feature = quiver.Feature(rank=0, device_list=list(range(world_size)), device_cache_size="200M", cache_policy="device_replicate")
+    quiver_feature.from_cpu_tensor(data.x)
+
     print('Let\'s use', world_size, 'GPUs!')
     data_split = (data.train_mask, data.val_mask, data.test_mask)
-    mp.spawn(run, args=(world_size, data_split, data.edge_index, data.x, data.y, dataset.num_features, dataset.num_classes), nprocs=world_size, join=True)
+    mp.spawn(run, args=(world_size, data_split, data.edge_index, quiver_feature, quiver_sampler, data.y, dataset.num_features, dataset.num_classes), nprocs=world_size, join=True)

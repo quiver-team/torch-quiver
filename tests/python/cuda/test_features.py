@@ -212,11 +212,12 @@ class Feature:
 
 
 def test_feature_basic():
-    rank = 0
+    rank = 2
     
     NUM_ELEMENT = 10000
     SAMPLE_SIZE = 800
     FEATURE_DIM = 600
+
     #########################
     # Init With Numpy
     ########################
@@ -225,21 +226,19 @@ def test_feature_basic():
 
     host_tensor = np.random.randint(
         0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
-    
-    print("host data size", host_tensor.size * 4 // 1024  // 1024, "MB")
     tensor = torch.from_numpy(host_tensor).type(torch.float32)
-
     host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
     indices = torch.from_numpy(host_indice).type(torch.long)
+    print("host data size", host_tensor.size * 4 // 1024  // 1024, "MB")
+
 
     device_indices = indices.to(rank)
 
     ############################
     # define a quiver.Feature
     ###########################
-    feature = quiver.Feature(rank=0, device_list=[0, 1, 2, 3], device_cache_size="10M", cache_policy="numa_replicate")
+    feature = quiver.Feature(rank=rank, device_list=[0, 1, 2, 3], device_cache_size="10M", cache_policy="numa_replicate")
     feature.from_cpu_tensor(tensor)
-
 
     ####################
     # Indexing 
@@ -247,165 +246,18 @@ def test_feature_basic():
     res = feature[device_indices]
     
     start = time.time()
-
     res = feature[device_indices]
     consumed_time = time.time() - start
-
     res = res.cpu().numpy()
     feature_gt = tensor[indices].numpy()
     print("Correctness Check : ", np.array_equal(res, feature_gt))
     print(
         f"TEST SUCCEED!, With Memory Bandwidth = {res.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s, consumed {consumed_time}s")
 
-def test_feature_ipc_basic():
-    rank = 0
-    
-    NUM_ELEMENT = 10000
-    SAMPLE_SIZE = 800
-    FEATURE_DIM = 600
-    #########################
-    # Init With Numpy
-    ########################
-    torch.cuda.set_device(rank)
-
-
-    host_tensor = np.random.randint(
-        0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
-    
-    print("host data size", host_tensor.size * 4 // 1024  // 1024, "MB")
-    tensor = torch.from_numpy(host_tensor).type(torch.float32)
-
-    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
-    indices = torch.from_numpy(host_indice).type(torch.long)
-
-    device_indices = indices.to(rank)
-
-    ############################
-    # define a quiver.Feature
-    ###########################
-    feature = Feature(rank=0, device_list=[0, 1], device_cache_size=0, cache_policy="numa_replicate")
-    feature.from_cpu_tensor(tensor)
-
-    ipc_handle = feature.share_ipc()
-
-def child(ipc_handle):
-    NUM_ELEMENT = 10000
-    SAMPLE_SIZE = 800
-    rank = 3
-    print(sys.argv)
-    torch.cuda.set_device(rank)
-
-    #########################
-    # Init With Numpy
-    ########################
-
-    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
-    indices = torch.from_numpy(host_indice).type(torch.long)
-    device_indices = indices.to(rank)
-
-    feature = Feature.new_from_ipc_handle(0, ipc_handle)
-    print(feature[device_indices].shape)
-
-
-def test_feature_ipc():
-    rank = 0
-    
-    NUM_ELEMENT = 10000
-    SAMPLE_SIZE = 800
-    FEATURE_DIM = 600
-    #########################
-    # Init With Numpy
-    ########################
-    torch.cuda.set_device(rank)
-
-
-    host_tensor = np.random.randint(
-        0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
-    
-    print("host data size", host_tensor.size * 4 // 1024  // 1024, "MB")
-    tensor = torch.from_numpy(host_tensor).type(torch.float32)
-
-    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
-    indices = torch.from_numpy(host_indice).type(torch.long)
-
-    device_indices = indices.to(rank)
-
-    ############################
-    # define a quiver.Feature
-    ###########################
-    feature = Feature(rank=0, device_list=[0, 1, 2, 3], device_cache_size='10MB', cache_policy="numa_replicate")
-    feature.from_cpu_tensor(tensor)
-
-    ipc_handle = feature.share_ipc()
-
-    process = Process(target=child, args=(ipc_handle, ))
-    process.start()
-    process.join()
-
-
-def lazy_child(ipc_handle):
-    NUM_ELEMENT = 10000
-    SAMPLE_SIZE = 800
-    rank = 3
-    print(sys.argv)
-    torch.cuda.set_device(rank)
-
-    #########################
-    # Init With Numpy
-    ########################
-
-    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
-    indices = torch.from_numpy(host_indice).type(torch.long)
-    device_indices = indices.to(rank)
-
-    feature = Feature.lazy_from_ipc_handle(ipc_handle)
-    print(feature[device_indices].shape)
-    print(feature.rank)
-
-
-def test_lazy_ipc():
-    rank = 0
-    
-    NUM_ELEMENT = 10000
-    SAMPLE_SIZE = 800
-    FEATURE_DIM = 600
-    #########################
-    # Init With Numpy
-    ########################
-    torch.cuda.set_device(rank)
-
-
-    host_tensor = np.random.randint(
-        0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
-    
-    print("host data size", host_tensor.size * 4 // 1024  // 1024, "MB")
-    tensor = torch.from_numpy(host_tensor).type(torch.float32)
-
-    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
-    indices = torch.from_numpy(host_indice).type(torch.long)
-
-    device_indices = indices.to(rank)
-
-    ############################
-    # define a quiver.Feature
-    ###########################
-    feature = Feature(rank=0, device_list=[0, 1, 2, 3], device_cache_size='10MB', cache_policy="numa_replicate")
-    feature.from_cpu_tensor(tensor)
-
-    ipc_handle = feature.share_ipc()
-
-    process = Process(target=lazy_child, args=(ipc_handle, ))
-    process.start()
-    process.join()
-
 
 if __name__ == "__main__":
     mp.set_start_method("spawn")
     torch_qv.init_p2p()
+    test_feature_basic()
 
-    #test_feature_basic()
 
-    #test_feature_ipc_basic()
-
-    #test_feature_ipc()
-    test_lazy_ipc()

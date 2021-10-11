@@ -67,7 +67,7 @@ class SAGE(torch.nn.Module):
                 x = self.convs[i]((x, x_target), edge_index)
                 if i != self.num_layers - 1:
                     x = F.relu(x)
-                xs.append(x.cpu())
+                xs.append(x)
 
                 pbar.update(batch_size)
 

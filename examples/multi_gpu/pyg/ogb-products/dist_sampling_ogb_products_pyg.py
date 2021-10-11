@@ -63,7 +63,7 @@ class SAGE(torch.nn.Module):
                 x = self.convs[i]((x, x_target), edge_index)
                 if i != self.num_layers - 1:
                     x = F.relu(x)
-                xs.append(x.cpu())
+                xs.append(x)
 
                 pbar.update(batch_size)
 
@@ -84,7 +84,7 @@ def run(rank, world_size, x, y, edge_index, split_idx, num_features, num_classes
 
     train_loader = NeighborSampler(edge_index, node_idx=train_idx,
                                    sizes=[15, 10, 5], batch_size=1024,
-                                   shuffle=True, num_workers=0)
+                                   shuffle=True, num_workers=5)
 
     if rank == 0:
         subgraph_loader = NeighborSampler(edge_index, node_idx=None,

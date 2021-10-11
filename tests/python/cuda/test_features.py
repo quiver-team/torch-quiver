@@ -290,27 +290,22 @@ def child_proc(rank, world_size, host_tensor, feature):
     print(f"Process {os.getpid()}: check current device {torch.cuda.current_device()}")
     NUM_ELEMENT = host_tensor.shape[0]
     SAMPLE_SIZE = 80000
-    host_indice = np.random.randint(0, NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
-    indices = torch.from_numpy(host_indice).type(torch.long)
-    device_indices = indices.to(rank)
-
-    res = feature[device_indices]
+    device_tensor = host_tensor.to(rank)
     bandwidth = []
-    for _ in range(20):
+    for _ in range(300):
+        device_indices = torch.randint(0, NUM_ELEMENT - 1, (SAMPLE_SIZE, ), device=rank)
+        torch.cuda.synchronize()
         start = time.time()
         res = feature[device_indices]
         consumed_time = time.time() - start
         bandwidth.append(res.numel() * 4 / consumed_time / 1024 / 1024 / 1024)
-    
-
-    res = res.cpu().numpy()
-    feature_gt = host_tensor[indices].numpy()
-    print("Correctness Check : ", np.array_equal(res, feature_gt))
+        assert torch.equal(res, device_tensor[device_indices])
+    print("Correctness check passed")
     print(
-        f"Process {os.getpid()}: TEST SUCCEED!, With Memory Bandwidth = {np.mean(np.array(bandwidth))} GB/s, consumed {consumed_time}s, res size {res.size * 4 / 1024 / 1024 / 1024}GB")
+        f"Process {os.getpid()}: TEST SUCCEED!, With Memory Bandwidth = {np.mean(np.array(bandwidth[1:]))} GB/s, consumed {consumed_time}s, res size {res.numel() * 4 / 1024 / 1024 / 1024}GB")
 
 def test_ipc():
-    rank = 2
+    rank = 0
     
     NUM_ELEMENT = 1000000
     FEATURE_DIM = 600
@@ -329,7 +324,8 @@ def test_ipc():
     ############################
     # define a quiver.Feature
     ###########################
-    feature = quiver.Feature(rank=rank, device_list=[0,1,2,3], device_cache_size="0.9G", cache_policy="device_replicate")
+
+    feature = quiver.Feature(rank=rank, device_list=[0,1,2,3], device_cache_size="0.9G", cache_policy="numa_replicate")
     feature.from_cpu_tensor(tensor)
     world_size = 4
     mp.spawn(
@@ -342,7 +338,7 @@ def test_ipc():
 if __name__ == "__main__":
     mp.set_start_method("spawn")
     torch_qv.init_p2p()
-    #test_feature_basic()
+    test_feature_basic()
     test_ipc()
 
 

@@ -80,23 +80,27 @@ class Feature:
                 print(f"LOG>>> GPU {numa0_device_list} belong to the same NUMA Domain")
                 shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
                 cur_pos = 0
-                for device in numa0_device_list:
-                    shard_tensor.append(cache_part[cur_pos: cur_pos + block_size], device)
-                    cur_pos += block_size
-                    if cur_pos >= block_size * len(self.topo.Numa2Device[0]) or cur_pos >= cache_part.shape[0]:
-                        break
+                for idx, device in enumerate(numa0_device_list):
+                    if idx == len(numa0_device_list) - 1:
+                        shard_tensor.append(cache_part[cur_pos:], device)
+                    else:
 
+                        shard_tensor.append(cache_part[cur_pos: cur_pos + block_size], device)
+                        cur_pos += block_size
+                    
                 self.numa_tensor_list[0] = shard_tensor
             
             if len(numa1_device_list) > 0:
                 print(f"LOG>>> GPU {numa1_device_list} belong to the same NUMA Domain")
                 shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
                 cur_pos = 0
-                for device in numa1_device_list:
-                    shard_tensor.append(cache_part[cur_pos: cur_pos + block_size], device)
-                    cur_pos += block_size
-                    if cur_pos >= block_size * len(self.topo.Numa2Device[0]) or cur_pos >= cache_part.shape[0]:
-                        break
+                for idx, device in enumerate(numa1_device_list):
+                    if idx == len(numa1_device_list) - 1:
+                        shard_tensor.append(cache_part[cur_pos:], device)
+                    else:
+
+                        shard_tensor.append(cache_part[cur_pos: cur_pos + block_size], device)
+                        cur_pos += block_size
 
                 self.numa_tensor_list[1] = shard_tensor
 

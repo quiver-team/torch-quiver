@@ -13,6 +13,8 @@
 #include <atomic>
 #include <string>
 #include <iostream>
+#include <unordered_map>
+
 
 namespace quiver
 {
@@ -58,6 +60,7 @@ class ShardTensor
     {
 
         offset_list_.push_back(0);
+
     }
 
     size_t get_tensor_bytes(torch::Tensor tensor){
@@ -188,6 +191,39 @@ class ShardTensor
 
     }
 
+    std::tuple<float**, int64_t*, int*> get_device_pointers(int device){
+        auto iter = device_pointers_map.find(device);
+        if(iter == device_pointers_map.end()){
+            float **buffers_device;
+            int64_t *offset_device;
+            int *access_book_device;
+
+            // Copy buffers Device
+            cudaMalloc((void ***)&buffers_device, sizeof(float *) * device_count_);
+            cudaMemcpy(buffers_device, &dev_ptrs_[0],
+                    sizeof(float *) * dev_ptrs_.size(), cudaMemcpyHostToDevice);
+            cudaCheckError();
+
+            // copy offset
+            cudaMalloc((void **)&offset_device,
+                    sizeof(int64_t) * offset_list_.size());
+            cudaMemcpy(offset_device, &offset_list_[0],
+                    sizeof(int64_t) * offset_list_.size(),
+                    cudaMemcpyHostToDevice);
+            cudaCheckError();
+
+            cudaMalloc((void **)&access_book_device,
+                    sizeof(int) * access_book.size());
+            cudaMemcpy(access_book_device, &access_book[0],
+                    sizeof(int) * access_book.size(),
+                    cudaMemcpyHostToDevice);
+            cudaCheckError();
+            device_pointers_map.emplace(device, std::make_tuple(buffers_device, offset_device, access_book_device));
+            iter = device_pointers_map.find(device);
+        }
+        return iter->second;
+    }
+
     torch::Tensor operator[](torch::Tensor &indices)
     {
         /*
@@ -214,32 +250,16 @@ class ShardTensor
         //    std::cout<<"offset " << offset_list_[index]<<std::endl;
         //    std::cout<<"access_book[index] " << access_book[index]<<std::endl;
         //}
-
+        
         float **buffers_device;
         int64_t *offset_device;
         int *access_book_device;
 
-        // Copy buffers Device
-        cudaMalloc((void ***)&buffers_device, sizeof(float *) * device_count_);
-        cudaMemcpy(buffers_device, &dev_ptrs_[0],
-                sizeof(float *) * dev_ptrs_.size(), cudaMemcpyHostToDevice);
-        cudaCheckError();
-
-        // copy offset
-        cudaMalloc((void **)&offset_device,
-                sizeof(int64_t) * offset_list_.size());
-        cudaMemcpy(offset_device, &offset_list_[0],
-                sizeof(int64_t) * offset_list_.size(),
-                cudaMemcpyHostToDevice);
-        cudaCheckError();
-
-        cudaMalloc((void **)&access_book_device,
-                sizeof(int) * access_book.size());
-        cudaMemcpy(access_book_device, &access_book[0],
-                sizeof(int) * access_book.size(),
-                cudaMemcpyHostToDevice);
-        cudaCheckError();
-    
+        auto val = get_device_pointers(current_device);
+        buffers_device = std::get<0>(val);
+        offset_device = std::get<1>(val);
+        access_book_device = std::get<2>(val);
+        
         int blockSize = 0;
         int numBlocks = 0;
         cudaOccupancyMaxPotentialBlockSize(&numBlocks, &blockSize,
@@ -318,6 +338,7 @@ class ShardTensor
     std::vector<int> access_book;
     std::vector<std::vector<int>> tensor_shapes_;
     std::vector<int64_t> shape_;
+    std::unordered_map<int, std::tuple<float **, int64_t*, int*>> device_pointers_map;
     int numa_broker_device;
     int device_;
     int device_count_;

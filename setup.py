@@ -28,7 +28,6 @@ def create_extension(with_cuda=False):
     libraries = []
     extra_cxx_flags = [
         '-std=c++17',
-        '-lnuma'
         # TODO: enforce strict build
         # '-Wall',
         # '-Werror',

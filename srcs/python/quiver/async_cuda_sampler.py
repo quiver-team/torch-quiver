@@ -26,8 +26,7 @@ class AsyncCudaNeighborSampler:
                  edge_index: Optional[torch.Tensor] = None,
                  csr_indptr: Optional[torch.Tensor] = None,
                  csr_indices: Optional[torch.Tensor] = None,
-                 copy: Optional[bool] = True,
-                 numa_alloc: Optional[bool] = False,
+                 copy: Optional[bool] = False,
                  device: int = 0,
                  num_nodes: Optional[int] = None):
 
@@ -40,10 +39,9 @@ class AsyncCudaNeighborSampler:
         # Initialization With CSR
         if csr_indptr is not None and csr_indices is not None:
             print("LOG>>> Create Quiver From CSR")
-            edge_id = np.zeros(1, dtype=np.int64)
+            edge_id = torch.zeros(1, dtype=torch.long)
             self.quiver = qv.new_quiver_from_csr_array(csr_indptr, csr_indices,
-                                                       edge_id, device, copy,
-                                                       numa_alloc)
+                                                       edge_id, device, copy)
 
         self.device = device
 

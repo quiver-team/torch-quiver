@@ -1,3 +1,4 @@
+# Reaches around 0.7870 ± 0.0036 test accuracy.
 import os
 
 import torch
@@ -63,7 +64,7 @@ class SAGE(torch.nn.Module):
                 x = self.convs[i]((x, x_target), edge_index)
                 if i != self.num_layers - 1:
                     x = F.relu(x)
-                xs.append(x)
+                xs.append(x.cpu())
 
                 pbar.update(batch_size)
 
@@ -120,7 +121,7 @@ def run(rank, world_size, x, y, edge_index, split_idx, num_features, num_classes
             model.eval()
             with torch.no_grad():
                 out = model.module.inference(x, rank, subgraph_loader)
-            res = out.argmax(dim=-1) == y
+            res = out.argmax(dim=-1) == y.cpu()
             acc1 = int(res[train_idx].sum()) / train_idx.numel()
             acc2 = int(res[val_idx].sum()) / val_idx.numel()
             acc3 = int(res[test_idx].sum()) / test_idx.numel()
@@ -139,6 +140,7 @@ if __name__ == '__main__':
 
     world_size = torch.cuda.device_count()
     print('Let\'s use', world_size, 'GPUs!')
+    
     mp.spawn(
         run,
         args=(world_size, data.x, data.y.squeeze(), data.edge_index, split_idx, dataset.num_features, dataset.num_classes),

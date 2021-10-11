@@ -8,6 +8,7 @@ from tqdm import tqdm
 from ogb.nodeproppred import PygNodePropPredDataset, Evaluator
 from torch_geometric.loader import NeighborSampler
 from torch_geometric.nn import SAGEConv
+import time
 
 ######################
 # Import From Quiver
@@ -114,8 +115,7 @@ model = model.to(device)
 ####################
 # x = data.x.to(device)
 
-x = quiver.Feature(rank=0, device_list=[
-                   0], device_cache_size="2G", cache_policy="device_replicate", reorder=data.edge_index)
+x = quiver.Feature(rank=0, device_list=[0], device_cache_size="200M", cache_policy="device_replicate", reorder=None)
 feature = torch.zeros(data.x.shape)
 feature[:] = data.x
 x.from_cpu_tensor(feature)
@@ -194,8 +194,9 @@ for run in range(1, 11):
 
     best_val_acc = final_test_acc = 0
     for epoch in range(1, 21):
+        epoch_start = time.time()
         loss, acc = train(epoch)
-        print(f'Epoch {epoch:02d}, Loss: {loss:.4f}, Approx. Train: {acc:.4f}')
+        print(f'Epoch {epoch:02d}, Loss: {loss:.4f}, Approx. Train: {acc:.4f}, Epoch Time: {time.time() - epoch_start}')
 
         if epoch > 5:
             train_acc, val_acc, test_acc = test()

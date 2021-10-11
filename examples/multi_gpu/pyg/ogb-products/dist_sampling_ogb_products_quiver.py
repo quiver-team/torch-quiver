@@ -1,3 +1,4 @@
+# Reaches around 0.7870 ± 0.0036 test accuracy.
 import os
 
 import torch
@@ -67,7 +68,7 @@ class SAGE(torch.nn.Module):
                 x = self.convs[i]((x, x_target), edge_index)
                 if i != self.num_layers - 1:
                     x = F.relu(x)
-                xs.append(x)
+                xs.append(x.cpu())
 
                 pbar.update(batch_size)
 
@@ -90,7 +91,7 @@ def run(rank, world_size, quiver_sampler, quiver_feature, y, edge_index, split_i
 
     if rank == 0:
         subgraph_loader = NeighborSampler(edge_index, node_idx=None,
-                                          sizes=[-1], batch_size=1024,
+                                          sizes=[-1], batch_size=512,
                                           shuffle=False, num_workers=6)
 
     torch.manual_seed(12345)
@@ -123,7 +124,7 @@ def run(rank, world_size, quiver_sampler, quiver_feature, y, edge_index, split_i
             model.eval()
             with torch.no_grad():
                 out = model.module.inference(quiver_feature, rank, subgraph_loader)
-            res = out.argmax(dim=-1) == y
+            res = out.argmax(dim=-1) == y.cpu()
             acc1 = int(res[train_idx].sum()) / train_idx.numel()
             acc2 = int(res[val_idx].sum()) / val_idx.numel()
             acc3 = int(res[test_idx].sum()) / test_idx.numel()
@@ -147,9 +148,10 @@ if __name__ == '__main__':
     ##############################
     csr_topo = quiver.CSRTopo(data.edge_index)
     quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], 0)
-
-    quiver_feature = quiver.Feature(rank=0, device_list=list(range(world_size)), device_cache_size="200M", cache_policy="device_replicate", reorder=csr_topo)
-    quiver_feature.from_cpu_tensor(data.x)
+    feature = torch.zeros(data.x.shape)
+    feature[:] = data.x
+    quiver_feature = quiver.Feature(rank=0, device_list=list(range(world_size)), device_cache_size="200M", cache_policy="device_replicate")
+    quiver_feature.from_cpu_tensor(feature)
 
     print('Let\'s use', world_size, 'GPUs!')
     mp.spawn(

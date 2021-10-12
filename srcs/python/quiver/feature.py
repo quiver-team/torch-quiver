@@ -23,8 +23,21 @@ class Feature:
         self.csr_topo = csr_topo
         self.feature_order = None
         self.ipc_handle_ = None
+        if not self.numa_device_symmetry_check():
+            self.topo.info()
+            raise Exception("numa1 device num abd numa2 device num should equal")
+
     
     
+    def numa_device_symmetry_check(self):
+        if self.cache_policy == "device_replicate":
+            return True
+        if len(self.topo.Numa2Device[1]) == 0:
+            return True
+        if len(self.topo.Numa2Device[1]) == len(self.topo.Numa2Device[0]):
+            return True
+        return False
+
     def cal_memory_budget_bytes(self, memory_budget):
         if isinstance(memory_budget, int):
             return memory_budget

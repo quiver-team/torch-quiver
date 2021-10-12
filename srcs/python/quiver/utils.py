@@ -1,7 +1,57 @@
 from scipy.sparse import csr_matrix
 import numpy as np
 import torch
+import torch_quiver as torch_qv
 
+
+from typing import List
+
+
+def color_mat(access_book, device_list):
+    device_count = access_book.shape[0]
+
+    device2numa = dict.fromkeys(device_list, -1)
+    numa2device = {0: [], 1: []}
+    current_numa = 0
+    for src_device_idx in range(device_count):
+        src_device = device_list[src_device_idx]
+        if (device2numa[src_device] == -1):
+            device2numa[src_device] = current_numa
+            numa2device[current_numa].append(src_device)
+            current_numa += 1
+            for dst_device_idx in range(device_count):
+                if (dst_device_idx != src_device_idx
+                        and access_book[src_device_idx, dst_device_idx] == 1):
+                    dst_device = device_list[dst_device_idx]
+                    device2numa[dst_device] = device2numa[src_device]
+                    numa2device[device2numa[src_device]].append(dst_device)
+
+    return device2numa, numa2device
+
+
+class Topo:
+
+    Numa2Device = {}
+    Device2Numa = {}
+
+    def __init__(self, device_list: List[int]) -> None:
+        access_book = torch.zeros((len(device_list), len(device_list)))
+        for src_index, src_device in enumerate(device_list):
+            for dst_index, dst_device in enumerate(device_list):
+                if torch_qv.can_device_access_peer(src_device, dst_device):
+                    access_book[src_index][dst_index] = 1
+                    access_book[dst_index][src_index] = 1
+        self.Device2Numa, self.Numa2Device = color_mat(access_book,
+                                                       device_list)
+
+    def get_numa_node(self, device_id: int):
+        return self.Device2Numa[device_id]
+
+    def info(self):
+        if len(self.Numa2Device[0]) > 0:
+            print(f"Devices {self.Numa2Device[0]} belong to the same numa domain")
+        if len(self.Numa2Device[1]) > 0:
+            print(f"Devices {self.Numa2Device[1]} belong to the same numa domain")
 
 def get_csr_from_coo(edge_index):
     src = edge_index[0].numpy()
@@ -47,7 +97,7 @@ class CSRTopo:
     @feature_order.setter
     def feature_order(self, feature_order):
         self.feature_order_ =  feature_order
-        
+
 
 def reindex_by_config(adj_csr: CSRTopo, graph_feature, gpu_portion):
     degree = adj_csr.indptr[1:] - adj_csr.indptr[:-1]

@@ -21,6 +21,14 @@ from typing import List, Optional, Tuple, NamedTuple, Union, Callable
 import quiver.utils as quiver_utils
 
 
+import torch
+from torch import Tensor
+from torch_sparse import SparseTensor
+import torch_quiver as qv
+from typing import List, Optional, Tuple, NamedTuple, Union, Callable
+
+
+
 __all__ = ["GraphSageSampler", "GraphStructure"]
 
 
@@ -50,11 +58,9 @@ class GraphSageSampler:
             (default: :obj:`None`)
         mode (str): Sample mode, choices are [UVA, GPU].
             (default: :obj: `UVA`)
-        device_replicate: (bool): If replicate edge index for each device
-            (default: :obj: `True`)
     """
 
-    def __init__(self, csr_topo: quiver_utils.CSRTopo, sizes: List[int], device, mode="UVA", device_replicate=False):
+    def __init__(self, csr_topo: quiver_utils.CSRTopo, sizes: List[int], device, mode="UVA"):
 
         
         self.sizes = sizes
@@ -63,13 +69,10 @@ class GraphSageSampler:
         self.csr_topo = csr_topo
 
         self.mode = mode
-        if device >= 0 and self.mode == "UVA":
+        if device >= 0:
             edge_id = torch.zeros(1, dtype=torch.long)
-            self.quiver = qv.new_quiver_from_csr_array(self.csr_topo.indptr, self.csr_topo.indices, edge_id, device, device_replicate)
-        else:
-            pass
-        
-        self.device_replicate = device_replicate
+            self.quiver = qv.new_quiver_from_csr_array(self.csr_topo.indptr, self.csr_topo.indices, edge_id, device, self.mode != "UVA")
+    
         self.device = device
 
         self.ipc_handle_ = None
@@ -89,9 +92,8 @@ class GraphSageSampler:
         if self.quiver is not None:
             return 
         self.device = torch.cuda.current_device()
-        if self.mode == "UVA":
-            edge_id = torch.zeros(1, dtype=torch.long)
-            self.quiver = qv.new_quiver_from_csr_array(self.csr_topo.indptr, self.csr_topo.indices, edge_id, self.device, self.device_replicate)
+        edge_id = torch.zeros(1, dtype=torch.long)
+        self.quiver = qv.new_quiver_from_csr_array(self.csr_topo.indptr, self.csr_topo.indices, edge_id, self.device, self.mode != "UVA")
 
     def reindex(self, inputs, outputs, counts):
         return qv.reindex_single(inputs, outputs, counts)
@@ -119,12 +121,12 @@ class GraphSageSampler:
         return nodes, batch_size, adjs[::-1]
 
     def share_ipc(self):
-        return self.csr_topo, self.sizes, self.mode, self.device_replicate
+        return self.csr_topo, self.sizes, self.mode
     
     @classmethod
     def lazy_from_ipc_handle(cls, ipc_handle):
-        csr_topo, sizes, mode, device_replicate = ipc_handle
-        return cls(csr_topo, sizes, -1, mode, device_replicate)
+        csr_topo, sizes, mode = ipc_handle
+        return cls(csr_topo, sizes, -1, mode)
 
 
 def test_GraphSageSampler():
@@ -153,7 +155,7 @@ def test_GraphSageSampler():
 
     csr_topo = quiver.CSRTopo(data.edge_index)
 
-    sage_sampler = GraphSageSampler(csr_topo, sizes=[5], device=0, device_replicate=False)
+    sage_sampler = GraphSageSampler(csr_topo, sizes=[5], device=0, mode="GPU")
     res = sage_sampler.sample(cuda_seeds)
     print(res)
     
@@ -182,7 +184,7 @@ def test_ipc():
     torch.cuda.set_device(0)
     data = dataset[0]
     csr_topo = quiver.CSRTopo(data.edge_index)
-    sage_sampler = quiver.pyg.GraphSageSampler(csr_topo, sizes=[5], device=0, device_replicate=False)
+    sage_sampler = quiver.pyg.GraphSageSampler(csr_topo, sizes=[5], device=0, mode="GPU")
 
     mp.spawn(child_process, args=(sage_sampler, ), nprocs=4, join=True)
     

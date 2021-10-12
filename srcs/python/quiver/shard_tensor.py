@@ -2,51 +2,7 @@ import torch_quiver as torch_qv
 import torch
 import random
 from typing import List
-
-
-def color_mat(access_book, device_list):
-    device_count = access_book.shape[0]
-
-    device2numa = dict.fromkeys(device_list, -1)
-    numa2device = {0: [], 1: []}
-    current_numa = 0
-    for src_device_idx in range(device_count):
-        src_device = device_list[src_device_idx]
-        if (device2numa[src_device] == -1):
-            device2numa[src_device] = current_numa
-            numa2device[current_numa].append(src_device)
-            current_numa += 1
-            for dst_device_idx in range(device_count):
-                if (dst_device_idx != src_device_idx
-                        and access_book[src_device_idx, dst_device_idx] == 1):
-                    dst_device = device_list[dst_device_idx]
-                    device2numa[dst_device] = device2numa[src_device]
-                    numa2device[device2numa[src_device]].append(dst_device)
-
-    return device2numa, numa2device
-
-
-class Topo:
-
-    Numa2Device = {}
-    Device2Numa = {}
-
-    def __init__(self, device_list: List[int]) -> None:
-        access_book = torch.zeros((len(device_list), len(device_list)))
-        for src_index, src_device in enumerate(device_list):
-            for dst_index, dst_device in enumerate(device_list):
-                if torch_qv.can_device_access_peer(src_device, dst_device):
-                    access_book[src_index][dst_index] = 1
-                    access_book[dst_index][src_index] = 1
-        self.Device2Numa, self.Numa2Device = color_mat(access_book,
-                                                       device_list)
-
-    def get_numa_node(self, device_id: int):
-        return self.Device2Numa[device_id]
-
-    def random_pick_device_from_numa(self, numa_id):
-        return random.choice(self.Numa2Device[numa_id])
-
+from .utils import Topo
 
 class Offset:
     def __init__(self, start, end):

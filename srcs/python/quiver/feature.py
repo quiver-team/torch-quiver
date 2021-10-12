@@ -12,6 +12,7 @@ __all__ = ["Feature"]
 
 class Feature:
     def __init__(self, rank, device_list, device_cache_size=0, cache_policy='device_replicate', csr_topo=None):
+        assert cache_policy in ["device_replicate", "numa_replicate"], f"Feature cache_policy should be one of [device_replicate, numa_replicate]"
         self.device_cache_size = device_cache_size
         self.cache_policy = cache_policy
         self.device_list = device_list
@@ -23,7 +24,7 @@ class Feature:
         self.feature_order = None
         self.ipc_handle_ = None
     
-    def 
+    
     def cal_memory_budget_bytes(self, memory_budget):
         if isinstance(memory_budget, int):
             return memory_budget

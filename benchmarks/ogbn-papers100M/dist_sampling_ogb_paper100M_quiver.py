@@ -20,8 +20,7 @@ import time
 import quiver
 
 class Paper100MDataset:
-
-    def __init__(self, root):
+    def __init__(self, root, gpu_portion):
         data_dir = osp.join(root, 'ogbn_papers100M')
         feat_root = osp.join(data_dir, 'feat', 'sort_feature.pt')
         prev_root = osp.join(data_dir, 'feat', 'prev_order.pt')
@@ -32,20 +31,20 @@ class Paper100MDataset:
         print('load feature')
         prev_order = torch.load(prev_root)
         node_count = prev_order.shape[0]
-        gpu_portion = 0.4
         total_range = torch.arange(node_count, dtype=torch.long)
-        # perm_range = torch.randperm(int(node_count * gpu_portion))
+        perm_range = torch.randperm(int(node_count * gpu_portion))
         new_order = torch.zeros_like(prev_order)
-        # prev_order[: int(node_count * gpu_portion)] = prev_order[perm_range]
+        prev_order[: int(node_count * gpu_portion)] = prev_order[perm_range]
         new_order[prev_order] = total_range
-        # graph_feature = feat[prev_order]
-        graph_feature = feat
+        feature = feat[prev_order]
         print('reorder feature')
-        del prev_order
-
-        indptr = torch.load(indptr_root)[:-1].share_memory_()
-        indices = torch.load(indices_root).share_memory_()
-        label = torch.load(label_root).share_memory_()
+        del feat
+        self.feature = feature.share_memory_()
+        self.indptr = torch.load(indptr_root)[:-1].share_memory_()
+        self.indices = torch.load(indices_root).share_memory_()
+        self.label = torch.load(label_root).share_memory_()
+        self.new_order = new_order
+        self.prev_order = prev_order
 
 
 class SAGE(torch.nn.Module):
@@ -166,21 +165,19 @@ def run(rank, world_size, quiver_sampler, quiver_feature, y, edge_index, split_i
 
 
 if __name__ == '__main__':
-    root = "/home/dalong/data/products"
-    dataset = PygNodePropPredDataset('ogbn-products', root)
-    data = dataset[0]
-
-    split_idx = dataset.get_idx_split()
+    root = "/data/papers/"
+    dataset = Paper100MDataset(root, 0.5)
     world_size = torch.cuda.device_count()
+    exit(0)
     
     ##############################
     # Create Sampler And Feature
     ##############################
-    csr_topo = quiver.CSRTopo(data.edge_index)
+    csr_topo = quiver.CSRTopo(indptr=dataset.indptr, indices=dataset.indices)
     quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], 0, mode="UVA")
-    feature = torch.zeros(data.x.shape)
-    feature[:] = data.x
-    quiver_feature = quiver.Feature(rank=0, device_list=list(range(world_size)), device_cache_size="200M", cache_policy="device_replicate", csr_topo=csr_topo)
+    feature = dataset.feature
+    new_order = dataset.new_order
+    quiver_feature = quiver.Feature(rank=0, device_list=list(range(world_size)), device_cache_size="200M", cache_policy="numa_replicate", new_order)
     quiver_feature.from_cpu_tensor(feature)
 
     print('Let\'s use', world_size, 'GPUs!')

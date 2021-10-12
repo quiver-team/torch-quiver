@@ -442,7 +442,7 @@ TorchQuiver new_quiver_from_csr_array(torch::Tensor &input_indptr,
     // initialize Quiver instance
     using Q = quiver<int64_t, CUDA>;
     Q quiver = Q::New(indptr_device_pointer, indices_device_pointer,
-                      edge_id_device_pointer, node_count, edge_count);
+                      edge_id_device_pointer, node_count-1, edge_count);
     return TorchQuiver(std::move(quiver), device);
 }
 

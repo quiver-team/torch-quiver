@@ -14,10 +14,6 @@ import quiver
 import torch.distributed as dist
 
 
-"""
-from multiprocessing.reduction import ForkingPickler
-import torch.multiprocessing as mp
-import quiver
 import torch
 import torch_quiver as torch_qv
 import random
@@ -26,26 +22,11 @@ import time
 from typing import List
 from quiver.shard_tensor import ShardTensor, ShardTensorConfig, Topo
 from quiver.utils import reindex_feature
-import torch.multiprocessing as mp
-from torch.multiprocessing import Process
-import sys
-
-
-
-def reduce_sampler():
-    pass
-
-def rebuild_sampler():
-    pass    
-
-tensor = torch.Tensor([1,2,3,4])
-
-
 
 __all__ = ["Feature"]
 
 class Feature:
-    def __init__(self, rank, device_list, device_cache_size=0, cache_policy='device_replicate', reorder=None):
+    def __init__(self, rank, device_list, device_cache_size=0, cache_policy='device_replicate', csr_topo=None):
         self.device_cache_size = device_cache_size
         self.cache_policy = cache_policy
         self.device_list = device_list
@@ -53,9 +34,7 @@ class Feature:
         self.numa_tensor_list = {}
         self.rank = rank            
         self.topo = Topo(self.device_list)
-        self.reorder = reorder
-        self.new_order = None
-
+        self.csr_topo = csr_topo
         self.ipc_handle_ = None
     
     def cal_memory_budget_bytes(self, memory_budget):
@@ -94,9 +73,11 @@ class Feature:
             shuffle_ratio = self.cal_size(cpu_tensor, cache_memory_budget) / cpu_tensor.size(0)
         
         print(f"LOG>>> {min(100, int(100 * cache_memory_budget / cpu_tensor.numel() / 4))}% data cached")
-        if self.reorder is not None:
-            cpu_tensor, new_order = reindex_feature(self.reorder, cpu_tensor, shuffle_ratio)
-            self.new_order = new_order.to(self.rank)
+        if self.csr_topo is not None:
+            print("Create")
+            cpu_tensor, self.csr_topo.feature_order = reindex_feature(self.csr_topo, cpu_tensor, shuffle_ratio)
+            self.feature_order = self.csr_topo.feature_order.to(self.rank)
+            print("Done Create")
         cache_part, self.cpu_part = self.partition(cpu_tensor, cache_memory_budget)
         self.cpu_part = self.cpu_part.clone()
         if cache_part.shape[0] > 0 and self.cache_policy == "device_replicate":
@@ -115,23 +96,27 @@ class Feature:
                 print(f"LOG>>> GPU {numa0_device_list} belong to the same NUMA Domain")
                 shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
                 cur_pos = 0
-                for device in numa0_device_list:
-                    shard_tensor.append(cache_part[cur_pos: cur_pos + block_size], device)
-                    cur_pos += block_size
-                    if cur_pos >= block_size * len(self.topo.Numa2Device[0]) or cur_pos >= cache_part.shape[0]:
-                        break
+                for idx, device in enumerate(numa0_device_list):
+                    if idx == len(numa0_device_list) - 1:
+                        shard_tensor.append(cache_part[cur_pos:], device)
+                    else:
 
+                        shard_tensor.append(cache_part[cur_pos: cur_pos + block_size], device)
+                        cur_pos += block_size
+                    
                 self.numa_tensor_list[0] = shard_tensor
             
             if len(numa1_device_list) > 0:
                 print(f"LOG>>> GPU {numa1_device_list} belong to the same NUMA Domain")
                 shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
                 cur_pos = 0
-                for device in numa1_device_list:
-                    shard_tensor.append(cache_part[cur_pos: cur_pos + block_size], device)
-                    cur_pos += block_size
-                    if cur_pos >= block_size * len(self.topo.Numa2Device[0]) or cur_pos >= cache_part.shape[0]:
-                        break
+                for idx, device in enumerate(numa1_device_list):
+                    if idx == len(numa1_device_list) - 1:
+                        shard_tensor.append(cache_part[cur_pos:], device)
+                    else:
+
+                        shard_tensor.append(cache_part[cur_pos: cur_pos + block_size], device)
+                        cur_pos += block_size
 
                 self.numa_tensor_list[1] = shard_tensor
 
@@ -151,8 +136,8 @@ class Feature:
     def __getitem__(self, node_idx):
         self.lazy_init_from_ipc_handle()
         node_idx = node_idx.to(self.rank)
-        if self.new_order is not None:
-            node_idx = self.new_order[node_idx]
+        if self.feature_order is not None:
+            node_idx = self.feature_order[node_idx]
         if self.cache_policy == "device_replicate":
             shard_tensor = self.device_tensor_list[self.rank]
             return shard_tensor[node_idx]
@@ -199,18 +184,18 @@ class Feature:
         else:
             for numa_node in self.numa_tensor_list:
                 gpu_ipc_handle_dict[numa_node] = self.numa_tensor_list[numa_node].share_ipc()[0]
-        #self.cpu_part = torch.zeros([3, 600])
-        return gpu_ipc_handle_dict, self.cpu_part, self.device_list, self.device_cache_size, self.cache_policy
+        
+        return gpu_ipc_handle_dict, self.cpu_part, self.device_list, self.device_cache_size, self.cache_policy, self.csr_topo
     
     def from_gpu_ipc_handle_dict(self, gpu_ipc_handle_dict, cpu_tensor):
         if self.cache_policy == "device_replicate":
-            ipc_handle = gpu_ipc_handle_dict[self.rank], cpu_tensor, ShardTensorConfig({})
+            ipc_handle = gpu_ipc_handle_dict.get(self.rank, []), cpu_tensor, ShardTensorConfig({})
             shard_tensor = ShardTensor.new_from_share_ipc(ipc_handle, self.rank)
             self.device_tensor_list[self.rank] = shard_tensor
             
         else:
             numa_node = self.topo.get_numa_node(self.rank)
-            ipc_handle = gpu_ipc_handle_dict[numa_node], cpu_tensor, ShardTensorConfig({})
+            ipc_handle = gpu_ipc_handle_dict.get(numa_node, []), cpu_tensor, ShardTensorConfig({})
             shard_tensor = ShardTensor.new_from_share_ipc(ipc_handle, self.rank)
             self.numa_tensor_list[numa_node] = shard_tensor
         
@@ -219,14 +204,17 @@ class Feature:
         
     @classmethod
     def new_from_ipc_handle(cls, rank, ipc_handle):
-        gpu_ipc_handle_dict, cpu_part, device_list, device_cache_size, cache_policy = ipc_handle
+        gpu_ipc_handle_dict, cpu_part, device_list, device_cache_size, cache_policy, csr_topo = ipc_handle
         feature = cls(rank, device_list, device_cache_size, cache_policy)
         feature.from_gpu_ipc_handle_dict(gpu_ipc_handle_dict, cpu_part)
+        if csr_topo is not None:
+            feature.feature_order = csr_topo.feature_order.to(rank)
+        self.csr_topo = csr_topo
         return feature
     
     @classmethod
     def lazy_from_ipc_handle(cls, ipc_handle):
-        gpu_ipc_handle_dict, cpu_part, device_list, device_cache_size, cache_policy = ipc_handle
+        gpu_ipc_handle_dict, cpu_part, device_list, device_cache_size, cache_policy, _ = ipc_handle
         feature = cls(device_list[0], device_list, device_cache_size, cache_policy)
         feature.ipc_handle = ipc_handle
         return feature
@@ -236,12 +224,42 @@ class Feature:
             return 
         
         self.rank = torch.cuda.current_device()
-        gpu_ipc_handle_dict, cpu_part, device_list, device_cache_size, cache_policy = self.ipc_handle
+        gpu_ipc_handle_dict, cpu_part, device_list, device_cache_size, cache_policy, csr_topo = self.ipc_handle
         self.from_gpu_ipc_handle_dict(gpu_ipc_handle_dict, cpu_part)
+        self.csr_topo = csr_topo
+        if csr_topo is not None:
+            self.feature_order = csr_topo.feature_order.to(self.rank)
+
         self.ipc_handle = None
 
+from multiprocessing.reduction import ForkingPickler
 
-"""
+def rebuild_feature(ipc_handle):
+    print("check rebuild")
+    feature = Feature.lazy_from_ipc_handle(ipc_handle)
+    return feature
+
+def reduce_feature(feature):
+    
+    ipc_handle = feature.share_ipc()
+    return (rebuild_feature, (ipc_handle, ))
+
+
+def rebuild_pyg_sampler(cls, ipc_handle):
+    sampler = cls.lazy_from_ipc_handle(ipc_handle)
+    return sampler
+    
+
+def reduce_pyg_sampler(sampler):
+    ipc_handle = sampler.share_ipc()
+    return (rebuild_pyg_sampler, (type(sampler), ipc_handle, ))
+  
+
+
+
+def init_reductions():
+    ForkingPickler.register(Feature, reduce_feature)
+
 def test_feature_basic():
     rank = 2
     
@@ -335,10 +353,54 @@ def test_ipc():
         join=True
     )
 
+def child_proc_real_data(rank, feature, host_tensor):
+    NUM_ELEMENT = 2000000
+    SAMPLE_SIZE = 800000
+    bandwidth = []
+    torch.cuda.set_device(rank)
+    device_tensor = host_tensor.to(rank)
+    for _ in range(300):
+        device_indices = torch.randint(0, NUM_ELEMENT - 1, (SAMPLE_SIZE, ), device=rank)
+        torch.cuda.synchronize()
+        start = time.time()
+        res = feature[device_indices]
+        consumed_time = time.time() - start
+        bandwidth.append(res.numel() * 4 / consumed_time / 1024 / 1024 / 1024)
+        assert torch.equal(device_tensor[device_indices], res)
+    print("Correctness check passed")
+    print(
+        f"Process {os.getpid()}: TEST SUCCEED!, With Memory Bandwidth = {np.mean(np.array(bandwidth[1:]))} GB/s, consumed {consumed_time}s, res size {res.numel() * 4 / 1024 / 1024 / 1024}GB")
+
+def test_ipc_with_real_data():
+    from ogb.nodeproppred import PygNodePropPredDataset
+    root = "/home/dalong/data/products"
+    dataset = PygNodePropPredDataset('ogbn-products', root)
+    data = dataset[0]
+
+    world_size = torch.cuda.device_count()
+    
+    ##############################
+    # Create Sampler And Feature
+    ##############################
+    csr_topo = quiver.CSRTopo(data.edge_index)
+    feature = torch.zeros(data.x.shape)
+    feature[:] = data.x
+    quiver_feature = Feature(rank=0, device_list=list(range(world_size)), device_cache_size="200M", cache_policy="device_replicate", csr_topo=csr_topo)
+    quiver_feature.from_cpu_tensor(feature)
+
+    print('Let\'s use', world_size, 'GPUs!')
+    mp.spawn(
+        child_proc_real_data,
+        args=(quiver_feature, feature),
+        nprocs=world_size,
+        join=True
+    )
+
 if __name__ == "__main__":
     mp.set_start_method("spawn")
     torch_qv.init_p2p()
-    test_feature_basic()
-    test_ipc()
-
+    init_reductions()
+    #test_feature_basic()
+    #test_ipc()
+    test_ipc_with_real_data()
 

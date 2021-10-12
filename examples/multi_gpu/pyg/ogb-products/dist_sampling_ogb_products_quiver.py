@@ -83,6 +83,7 @@ def run(rank, world_size, quiver_sampler, quiver_feature, y, edge_index, split_i
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
     dist.init_process_group('nccl', rank=rank, world_size=world_size)
+    torch.cuda.set_device(rank)
 
     train_idx, val_idx, test_idx = split_idx['train'], split_idx['valid'], split_idx['test']
     train_idx = train_idx.split(train_idx.size(0) // world_size)[rank]

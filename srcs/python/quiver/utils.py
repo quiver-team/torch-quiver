@@ -26,6 +26,7 @@ class CSRTopo:
                 self.indptr_ = torch.from_numpy(indptr).type(torch.long)
                 self.indices_ = torch.from_numpy(indices).type(torch.long)
         self.eid_ = eid
+        self.feature_order_ = None
     
     @property
     def indptr(self):
@@ -38,6 +39,15 @@ class CSRTopo:
     @property
     def eid(self):
         return self.eid_
+    
+    @property
+    def feature_order(self):
+        return self.feature_order_
+    
+    @feature_order.setter
+    def feature_order(self, feature_order):
+        self.feature_order_ =  feature_order
+        
 
 def reindex_by_config(adj_csr: CSRTopo, graph_feature, gpu_portion):
     degree = adj_csr.indptr[1:] - adj_csr.indptr[:-1]

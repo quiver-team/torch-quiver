@@ -9,8 +9,9 @@ from quiver.utils import reindex_feature
 
 __all__ = ["Feature"]
 
+
 class Feature:
-    def __init__(self, rank, device_list, device_cache_size=0, cache_policy='device_replicate', reorder=None):
+    def __init__(self, rank, device_list, device_cache_size=0, cache_policy='device_replicate', csr_topo=None):
         self.device_cache_size = device_cache_size
         self.cache_policy = cache_policy
         self.device_list = device_list
@@ -18,11 +19,11 @@ class Feature:
         self.numa_tensor_list = {}
         self.rank = rank            
         self.topo = Topo(self.device_list)
-        self.reorder = reorder
-        self.new_order = None
-
+        self.csr_topo = csr_topo
+        self.feature_order = None
         self.ipc_handle_ = None
     
+    def 
     def cal_memory_budget_bytes(self, memory_budget):
         if isinstance(memory_budget, int):
             return memory_budget
@@ -59,9 +60,11 @@ class Feature:
             shuffle_ratio = self.cal_size(cpu_tensor, cache_memory_budget) / cpu_tensor.size(0)
         
         print(f"LOG>>> {min(100, int(100 * cache_memory_budget / cpu_tensor.numel() / 4))}% data cached")
-        if self.reorder is not None:
-            cpu_tensor, new_order = reindex_feature(self.reorder, cpu_tensor, shuffle_ratio)
-            self.new_order = new_order.to(self.rank)
+        if self.csr_topo is not None:
+            print("Create")
+            cpu_tensor, self.csr_topo.feature_order = reindex_feature(self.csr_topo, cpu_tensor, shuffle_ratio)
+            self.feature_order = self.csr_topo.feature_order.to(self.rank)
+            print("Done Create")
         cache_part, self.cpu_part = self.partition(cpu_tensor, cache_memory_budget)
         self.cpu_part = self.cpu_part.clone()
         if cache_part.shape[0] > 0 and self.cache_policy == "device_replicate":
@@ -120,8 +123,8 @@ class Feature:
     def __getitem__(self, node_idx):
         self.lazy_init_from_ipc_handle()
         node_idx = node_idx.to(self.rank)
-        if self.new_order is not None:
-            node_idx = self.new_order[node_idx]
+        if self.feature_order is not None:
+            node_idx = self.feature_order[node_idx]
         if self.cache_policy == "device_replicate":
             shard_tensor = self.device_tensor_list[self.rank]
             return shard_tensor[node_idx]
@@ -168,8 +171,8 @@ class Feature:
         else:
             for numa_node in self.numa_tensor_list:
                 gpu_ipc_handle_dict[numa_node] = self.numa_tensor_list[numa_node].share_ipc()[0]
-        #self.cpu_part = torch.zeros([3, 600])
-        return gpu_ipc_handle_dict, self.cpu_part, self.device_list, self.device_cache_size, self.cache_policy
+        
+        return gpu_ipc_handle_dict, self.cpu_part, self.device_list, self.device_cache_size, self.cache_policy, self.csr_topo
     
     def from_gpu_ipc_handle_dict(self, gpu_ipc_handle_dict, cpu_tensor):
         if self.cache_policy == "device_replicate":
@@ -188,14 +191,17 @@ class Feature:
         
     @classmethod
     def new_from_ipc_handle(cls, rank, ipc_handle):
-        gpu_ipc_handle_dict, cpu_part, device_list, device_cache_size, cache_policy = ipc_handle
+        gpu_ipc_handle_dict, cpu_part, device_list, device_cache_size, cache_policy, csr_topo = ipc_handle
         feature = cls(rank, device_list, device_cache_size, cache_policy)
         feature.from_gpu_ipc_handle_dict(gpu_ipc_handle_dict, cpu_part)
+        if csr_topo is not None:
+            feature.feature_order = csr_topo.feature_order.to(rank)
+        self.csr_topo = csr_topo
         return feature
     
     @classmethod
     def lazy_from_ipc_handle(cls, ipc_handle):
-        gpu_ipc_handle_dict, cpu_part, device_list, device_cache_size, cache_policy = ipc_handle
+        gpu_ipc_handle_dict, cpu_part, device_list, device_cache_size, cache_policy, _ = ipc_handle
         feature = cls(device_list[0], device_list, device_cache_size, cache_policy)
         feature.ipc_handle = ipc_handle
         return feature
@@ -205,6 +211,10 @@ class Feature:
             return 
         
         self.rank = torch.cuda.current_device()
-        gpu_ipc_handle_dict, cpu_part, device_list, device_cache_size, cache_policy = self.ipc_handle
+        gpu_ipc_handle_dict, cpu_part, device_list, device_cache_size, cache_policy, csr_topo = self.ipc_handle
         self.from_gpu_ipc_handle_dict(gpu_ipc_handle_dict, cpu_part)
+        self.csr_topo = csr_topo
+        if csr_topo is not None:
+            self.feature_order = csr_topo.feature_order.to(self.rank)
+
         self.ipc_handle = None

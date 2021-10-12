@@ -1,7 +1,9 @@
 # Reaches around 0.7870 ± 0.0036 test accuracy.
 import os
+import os.path as osp
 
 import torch
+import numpy as np
 from tqdm import tqdm
 import torch.nn.functional as F
 import torch.multiprocessing as mp
@@ -13,6 +15,7 @@ from torch_geometric.datasets import Reddit
 from torch_geometric.loader import NeighborSampler
 from ogb.nodeproppred import PygNodePropPredDataset, Evaluator
 import time
+import torch_quiver as qv
 
 ####################
 # Import Quiver
@@ -27,6 +30,7 @@ class Paper100MDataset:
         indptr_root = osp.join(data_dir, 'csr', 'indptr.pt')
         indices_root = osp.join(data_dir, 'csr', 'indices.pt')
         label_root = osp.join(data_dir, 'label', 'label.pt')
+        index_root = osp.join(data_dir, 'index', 'train_idx.pt')
         feat = torch.load(feat_root)
         print('load feature')
         prev_order = torch.load(prev_root)
@@ -40,9 +44,10 @@ class Paper100MDataset:
         print('reorder feature')
         del feat
         self.feature = feature.share_memory_()
-        self.indptr = torch.load(indptr_root)[:-1].share_memory_()
+        self.indptr = torch.load(indptr_root).share_memory_()
         self.indices = torch.load(indices_root).share_memory_()
-        self.label = torch.load(label_root).share_memory_()
+        self.label = torch.load(label_root).squeeze().share_memory_()
+        self.train_idx = torch.load(index_root).share_memory_()
         self.new_order = new_order
         self.prev_order = prev_order
 
@@ -107,57 +112,78 @@ class SAGE(torch.nn.Module):
         return x_all
 
 
-def run(rank, world_size, quiver_sampler, quiver_feature, y, edge_index, split_idx, num_features, num_classes):
+def run(rank, world_size, csr_topo, quiver_feature, y, train_idx, num_features, num_classes):
+    l = list(range(world_size))
+    # qv.init_p2p(l)
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
     dist.init_process_group('nccl', rank=rank, world_size=world_size)
-    torch.cuda.set_device(rank)
+    device = rank
+    torch.cuda.set_device(device)
 
-    train_idx, val_idx, test_idx = split_idx['train'], split_idx['valid'], split_idx['test']
+    quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], device, mode="UVA")
+
     train_idx = train_idx.split(train_idx.size(0) // world_size)[rank]
 
-    train_loader = torch.utils.data.DataLoader(train_idx, batch_size=1024, pin_memory=True)
+    torch.manual_seed(123 + 45 * rank)
 
-    if rank == 0:
-        subgraph_loader = NeighborSampler(edge_index, node_idx=None,
-                                          sizes=[-1], batch_size=512,
-                                          shuffle=False, num_workers=6)
+    train_loader = torch.utils.data.DataLoader(train_idx, batch_size=1024, pin_memory=True, shuffle=True)
 
-    torch.manual_seed(12345)
-    model = SAGE(num_features, 256, num_classes, num_layers=3).to(rank)
-    model = DistributedDataParallel(model, device_ids=[rank])
+    model = SAGE(num_features, 256, num_classes, num_layers=3).to(device)
+    model = DistributedDataParallel(model, device_ids=[device])
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
-    y = y.to(rank)
+    y = y.to(device)
 
     for epoch in range(1, 21):
         model.train()
 
         epoch_start = time.time()
+        step = 0
+        iter_tput = []
+        sample_time = []
+        feature_time = []
+        train_time = []
+        tic = time.time()
         for seeds in train_loader:
+            tic_step = time.time()
+            beg = time.time()
             n_id, batch_size, adjs = quiver_sampler.sample(seeds)
-            adjs = [adj.to(rank) for adj in adjs]
-
+            adjs = [adj.to(device) for adj in adjs]
+            sample_time.append(time.time() - beg)
+            beg = time.time()
+            feat = quiver_feature[n_id]
+            torch.cuda.synchronize()
+            feature_time.append(time.time() - beg)
+            beg = time.time()
             optimizer.zero_grad()
-            out = model(quiver_feature[n_id], adjs)
+            out = model(feat, adjs)
             loss = F.nll_loss(out, y[n_id[:batch_size]])
             loss.backward()
             optimizer.step()
+            train_time.append(time.time() - beg)
+            step += 1
+            iter_tput.append(len(seeds) / (time.time() - tic_step))
+            if step % 20 == 10 and rank == 0:
+                print(f'throughput {np.mean(iter_tput[-10:])}')
+                print(f'sample {np.mean(sample_time[-10:])}')
+                print(f'feature {np.mean(feature_time[-10:])}')
+                print(f'train {np.mean(train_time[-10:])}')
 
         dist.barrier()
 
         if rank == 0:
             print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}, Epoch Time: {time.time() - epoch_start}')
 
-        if rank == 0 and epoch % 5 == 0:  # We evaluate on a single GPU for now
-            model.eval()
-            with torch.no_grad():
-                out = model.module.inference(quiver_feature, rank, subgraph_loader)
-            res = out.argmax(dim=-1) == y.cpu()
-            acc1 = int(res[train_idx].sum()) / train_idx.numel()
-            acc2 = int(res[val_idx].sum()) / val_idx.numel()
-            acc3 = int(res[test_idx].sum()) / test_idx.numel()
-            print(f'Train: {acc1:.4f}, Val: {acc2:.4f}, Test: {acc3:.4f}')
+        # if rank == 0 and epoch % 5 == 0:  # We evaluate on a single GPU for now
+        #     model.eval()
+        #     with torch.no_grad():
+        #         out = model.module.inference(quiver_feature, rank, subgraph_loader)
+        #     res = out.argmax(dim=-1) == y.cpu()
+        #     acc1 = int(res[train_idx].sum()) / train_idx.numel()
+        #     acc2 = int(res[val_idx].sum()) / val_idx.numel()
+        #     acc3 = int(res[test_idx].sum()) / test_idx.numel()
+        #     print(f'Train: {acc1:.4f}, Val: {acc2:.4f}, Test: {acc3:.4f}')
 
         dist.barrier()
 
@@ -166,24 +192,23 @@ def run(rank, world_size, quiver_sampler, quiver_feature, y, edge_index, split_i
 
 if __name__ == '__main__':
     root = "/data/papers/"
-    dataset = Paper100MDataset(root, 0.5)
-    world_size = torch.cuda.device_count()
-    exit(0)
+    # world_size = torch.cuda.device_count()
+    world_size = 1
+    dataset = Paper100MDataset(root, 0.15 * world_size if world_size < 5 else 0.8)
     
     ##############################
     # Create Sampler And Feature
     ##############################
     csr_topo = quiver.CSRTopo(indptr=dataset.indptr, indices=dataset.indices)
-    quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], 0, mode="UVA")
-    feature = dataset.feature
     new_order = dataset.new_order
-    quiver_feature = quiver.Feature(rank=0, device_list=list(range(world_size)), device_cache_size="200M", cache_policy="numa_replicate", new_order)
-    quiver_feature.from_cpu_tensor(feature)
+    quiver_feature = quiver.Feature(rank=0, device_list=list(range(world_size)), device_cache_size="10M", cache_policy="device_replicate", feature_order=new_order)
+    quiver_feature.from_cpu_tensor(dataset.feature)
+    del dataset.feature
 
     print('Let\'s use', world_size, 'GPUs!')
     mp.spawn(
         run,
-        args=(world_size, quiver_sampler, quiver_feature, data.y.squeeze(), data.edge_index, split_idx, dataset.num_features, dataset.num_classes),
+        args=(world_size, csr_topo, quiver_feature, dataset.label, dataset.train_idx, 128, 172),
         nprocs=world_size,
         join=True
     )

@@ -347,14 +347,14 @@ class ShardTensor
 
 };
 
-void init_p2p(){
+void init_p2p(std::vector<int> devices){
     std::cout << "LOG>>> P2P Access Initilization" << std::endl;
-    int numGPUs;
-    cudaGetDeviceCount(&numGPUs);
-    for (int i = 0; i < numGPUs; i++) {
-        cudaSetDevice(i);
+    
+    for (int i = 0; i < devices.size(); i++) {
+        int src = devices[i];
+        cudaSetDevice(src);
         cudaDeviceProp prop;
-        cudaGetDeviceProperties(&prop, i);
+        cudaGetDeviceProperties(&prop, src);
 
         // CUDA IPC is only supported on devices with unified addressing
         if (!prop.unifiedAddressing) {
@@ -369,18 +369,19 @@ void init_p2p(){
             continue;
         }
         
-        for (int j = i + 1; j < numGPUs; j++) {
+        for (int j = i + 1; j < devices.size(); j++) {
+            int dst = devices[j];
             int access_i_j = 0;
             int access_j_i = 0;
-            cudaDeviceCanAccessPeer(&access_i_j, i, j);
-            cudaDeviceCanAccessPeer(&access_j_i, j, i);
+            cudaDeviceCanAccessPeer(&access_i_j, src, dst);
+            cudaDeviceCanAccessPeer(&access_j_i, dst, src);
             if (access_i_j && access_j_i) {
-                printf("Enable P2P Access Between %d <---> %d \n", i, j);
-                cudaSetDevice(i);
-                cudaDeviceEnablePeerAccess(j, 0);
+                printf("Enable P2P Access Between %d <---> %d \n", src, dst);
+                cudaSetDevice(src);
+                cudaDeviceEnablePeerAccess(dst, 0);
                 cudaCheckError();
-                cudaSetDevice(j);
-                cudaDeviceEnablePeerAccess(i, 0);
+                cudaSetDevice(dst);
+                cudaDeviceEnablePeerAccess(src, 0);
                 cudaCheckError();
             }
         }

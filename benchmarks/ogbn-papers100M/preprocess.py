@@ -7,6 +7,7 @@ import numpy as np
 import sys
 import torch.multiprocessing as mp
 import os.path as osp
+from numpy import genfromtxt
 # from quiver.shard_tensor import ShardTensor as PyShardTensor
 # from quiver.shard_tensor import ShardTensorConfig
 # from torch_geometric.utils import to_undirected, dropout_adj
@@ -17,13 +18,15 @@ data_root = "/data/papers/ogbn_papers100M/raw/"
 label = np.load(osp.join(data_root, "node-label.npz"))
 data = np.load(osp.join(data_root, "data.npz"))
 
-def get_csr_from_coo(edge_index):
+def get_csr_from_coo(edge_index, reverse=False):
     src = edge_index[0]
     dst = edge_index[1]
+    if reverse:
+        dst, src = src, dst
     node_count = max(np.max(src), np.max(dst))
     data = np.zeros(dst.shape, dtype=np.int32)
     csr_mat = csr_matrix(
-        (data, (edge_index[0], edge_index[1])))
+        (data, (src, dst)))
     return csr_mat
 
 def process_topo():
@@ -39,40 +42,20 @@ def process_topo():
     indices = csr_mat.indices
     indptr = torch.from_numpy(indptr).type(torch.long)
     indices = torch.from_numpy(indices).type(torch.long)
-    
+
     print("LOG>>> Begin Save")
 
     torch.save(indptr, "/data/papers/ogbn_papers100M/csr/indptr.pt")
     torch.save(indices, "/data/papers/ogbn_papers100M/csr/indices.pt")
 
-def pyshard_tensor_ipc_child_proc(rank, ipc_handle, tensor):
-
-    NUM_ELEMENT = 1000000
-    SAMPLE_SIZE = 80000
-    torch.cuda.set_device(rank)
-    new_shard_tensor = PyShardTensor.new_from_share_ipc(ipc_handle, rank)
-
-    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
-    indices = torch.from_numpy(host_indice).type(torch.long)
-    device_indices = indices.to(rank)
-
+    csr_mat = get_csr_from_coo(edge_index, True)
+    indptr_reverse = csr_mat.indptr
+    indices_reverse = csr_mat.indices
+    indptr_reverse = torch.from_numpy(indptr_reverse).type(torch.long)
+    indices_reverse = torch.from_numpy(indices_reverse).type(torch.long)
     
-    ###############################
-    # Calculate From New Tensor
-    ###############################
-    feature = new_shard_tensor[device_indices]
-    print(f"{'#' * 40}")
-    start = time.time()
-    feature = new_shard_tensor[device_indices]
-    consumed_time = time.time() - start
-    feature = feature.cpu().numpy()
-    feature_gt = tensor[indices].numpy()
-    print("Correctness Check : ", np.array_equal(feature, feature_gt))
-
-
-    print(
-        f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s, consumed {consumed_time}s")
-    
+    torch.save(indptr_reverse, "/data/papers/ogbn_papers100M/csr/indptr_reverse.pt")
+    torch.save(indices_reverse, "/data/papers/ogbn_papers100M/csr/indices_reverse.pt")
 
 def process_feature():
     print("LOG>>> Load Finished")
@@ -89,51 +72,9 @@ def process_label():
     tensor = torch.from_numpy(node_label).type(torch.long)
     torch.save(tensor, "/data/papers/ogbn_papers100M/label/label.pt")
 
-def feature_test():
-    SAMPLE_SIZE = 100000
-    NUM_ELEMENT = 111059956
-    
-    host_indice = np.random.randint(0, NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
-    indices = torch.from_numpy(host_indice).type(torch.long)
-    device_indices = indices.to(0)
-
-    print("LOG>>> Begin Process")
-    tensor = torch.load("/data/papers/ogbn_papers100M/feat/sort_feature.pt")
-
-    
-    shard_tensor_config = ShardTensorConfig({})
-    shard_tensor = PyShardTensor(0, shard_tensor_config)
-
-    shard_tensor.from_cpu_tensor(tensor)
-    
-
-
-    '''
-    # warm up
-    res = shard_tensor[device_indices]
-
-
-    start = time.time()
-    feature = shard_tensor[device_indices]
-    consumed_time = time.time() - start
-    #feature = feature.cpu().numpy()
-
-    #feature_gt = tensor[indices].numpy()
-    
-    #print("test complete")
-    #print("Correctness Check : ", np.array_equal(feature, feature_gt))
-
-
-    #print(
-    #    f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s, consumed {consumed_time}s")
-    '''
-    print("begin delete")
-    shard_tensor.delete()
-    print("after delete")
-
 def sort_feature():
     NUM_ELEMENT = 111059956
-    indptr = torch.load("/data/papers/ogbn_papers100M/csr/indptr.pt")
+    indptr = torch.load("/data/papers/ogbn_papers100M/csr/indptr_reverse.pt")
     feature = torch.load("/data/papers/ogbn_papers100M/feat/feature.pt")
     prev = torch.LongTensor(indptr[:-1])
     sub = torch.LongTensor(indptr[1:])
@@ -145,8 +86,14 @@ def sort_feature():
     torch.save(feature, "/data/papers/ogbn_papers100M/feat/sort_feature.pt")
     torch.save(prev_order, "/data/papers/ogbn_papers100M/feat/prev_order.pt")
 
+def process_index():
+    data = genfromtxt('/data/papers/ogbn_papers100M/split/train.csv', delimiter='\n')
+    data = data.astype(np.long)
+    data = torch.from_numpy(data)
+    torch.save(data, "/data/papers/ogbn_papers100M/index/train_idx.pt")
+
 process_topo()
-process_feature()
-process_label()
+# process_feature()
+# process_label()
 # feature_test()
 sort_feature()

@@ -78,7 +78,7 @@ class Feature:
             cpu_tensor, self.csr_topo.feature_order = reindex_feature(self.csr_topo, cpu_tensor, shuffle_ratio)
             self.feature_order = self.csr_topo.feature_order.to(self.rank)
         elif self.feature_order is not None:
-            self.feature_order = self.feature_order.to(rank)
+            self.feature_order = self.feature_order.to(self.rank)
         cache_part, self.cpu_part = self.partition(cpu_tensor, cache_memory_budget)
         self.cpu_part = self.cpu_part.clone()
         if cache_part.shape[0] > 0 and self.cache_policy == "device_replicate":

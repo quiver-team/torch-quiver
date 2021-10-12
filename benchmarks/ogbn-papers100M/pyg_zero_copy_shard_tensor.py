@@ -201,16 +201,17 @@ def run(rank, world_size, shard_tensor_ipc_handle,
                                        copy=False)
     print('prepare sample')
     x = qv.ShardTensor(rank)
-    x.append(shard_tensor_ipc_handle, -1)
+    gpu_tensor, cpu_tensor = shard_tensor_ipc_handle
+    x.append(gpu_tensor, rank)
+    x.append(cpu_tensor, -1)
     print('prepare feature')
     batch_size = 2048
-
+    torch.manual_seed(178434)
     train_loader = torch.utils.data.DataLoader(train_idx,
                                                batch_size=batch_size,
                                                pin_memory=True,
                                                shuffle=True)
 
-    torch.manual_seed(12345)
     model = SAGE(inter_proc_data.num_features,
                  256,
                  inter_proc_data.num_classes,
@@ -233,6 +234,7 @@ def run(rank, world_size, shard_tensor_ipc_handle,
             new_n_id = new_order[n_id]
 
             feature = x[new_n_id]
+            torch.cuda.synchronize(rank)
             print(f"{rank}_feature", time.time() - start, iter_step)
 
             adjs = [adj.to(rank) for adj in adjs]
@@ -242,7 +244,7 @@ def run(rank, world_size, shard_tensor_ipc_handle,
             loss = F.nll_loss(out, y[n_id[:batch_size]])
             loss.backward()
             optimizer.step()
-            iprint(f"{rank}_train", time.time() - start, iter_step)
+            print(f"{rank}_train", time.time() - start, iter_step)
             if rank == 0 and iter_step > 10 and iter_step % 20 == 10:
                 iter_points.append(time.time() - start_time)
                 print(
@@ -263,8 +265,8 @@ def run(rank, world_size, shard_tensor_ipc_handle,
 
 if __name__ == '__main__':
     torch.cuda.set_device(0)
-    home = os.getenv('HOME')
-    data_dir = osp.join(home, 'papers', 'ogbn_papers100M')
+    # home = os.getenv('HOME')
+    data_dir = osp.join('/data', 'papers', 'ogbn_papers100M')
     feat_root = osp.join(data_dir, 'feat', 'sort_feature.pt')
     prev_root = osp.join(data_dir, 'feat', 'prev_order.pt')
     indptr_root = osp.join(data_dir, 'csr', 'indptr.pt')
@@ -277,17 +279,15 @@ if __name__ == '__main__':
     gpu_portion = 0.4
     total_range = torch.arange(node_count, dtype=torch.long)
     # perm_range = torch.randperm(int(node_count * gpu_portion))
-    # new_order = torch.zeros_like(prev_order)
+    new_order = torch.zeros_like(prev_order)
     # prev_order[: int(node_count * gpu_portion)] = prev_order[perm_range]
-    # new_order[prev_order] = total_range
+    new_order[prev_order] = total_range
     # graph_feature = feat[prev_order]
-    new_order = total_range
     graph_feature = feat
     print('reorder feature')
-    del feat
     del prev_order
 
-    indptr = torch.load(indptr_root).share_memory_()
+    indptr = torch.load(indptr_root)[:-1].share_memory_()
     indices = torch.load(indices_root).share_memory_()
     label = torch.load(label_root).share_memory_()
 
@@ -302,7 +302,7 @@ if __name__ == '__main__':
 
     inter_proc_data.y = label
 
-    shard_tensor_config = ShardTensorConfig({0: "11G"})
+    shard_tensor_config = ShardTensorConfig({0: "12G"})
 
     # shard_tensor = PyShardTensor(0, shard_tensor_config)
 
@@ -310,12 +310,16 @@ if __name__ == '__main__':
 
     # shard_tensor.from_cpu_tensor(graph_feature)
     print('build shard tensor')
-    graph_feature.share_memory_()
+    gpu_G = 10
+    gpu_size = gpu_G * 1024 * 1024 * 1024 // 512
+    gpu_tensor = graph_feature[:gpu_size].clone().share_memory_()
+    cpu_tensor = graph_feature[gpu_size:].clone().share_memory_()
+    del graph_feature
     # ipc_handle = shard_tensor.share_ipc()
     print('share ipc')
     world_size = 1
     print('Let\'s use', world_size, 'GPUs!')
     mp.spawn(run,
-             args=(world_size, graph_feature, inter_proc_data),
+             args=(world_size, (gpu_tensor, cpu_tensor), inter_proc_data),
              nprocs=world_size,
              join=True)

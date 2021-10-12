@@ -11,7 +11,7 @@ __all__ = ["Feature"]
 
 
 class Feature:
-    def __init__(self, rank, device_list, device_cache_size=0, cache_policy='device_replicate', csr_topo=None):
+    def __init__(self, rank, device_list, device_cache_size=0, cache_policy='device_replicate', csr_topo=None, feature_order=None):
         assert cache_policy in ["device_replicate", "numa_replicate"], f"Feature cache_policy should be one of [device_replicate, numa_replicate]"
         self.device_cache_size = device_cache_size
         self.cache_policy = cache_policy
@@ -21,7 +21,7 @@ class Feature:
         self.rank = rank            
         self.topo = Topo(self.device_list)
         self.csr_topo = csr_topo
-        self.feature_order = None
+        self.feature_order = feature_order
         self.ipc_handle_ = None
         if not self.numa_device_symmetry_check():
             self.topo.info()
@@ -78,7 +78,6 @@ class Feature:
             shuffle_only = self.csr_topo.feature_order is not None
             cpu_tensor, self.csr_topo.feature_order = reindex_feature(self.csr_topo, cpu_tensor, shuffle_ratio, shuffle_only)
             self.feature_order = self.csr_topo.feature_order.to(self.rank)
-        
         cache_part, self.cpu_part = self.partition(cpu_tensor, cache_memory_budget)
         self.cpu_part = self.cpu_part.clone()
         if cache_part.shape[0] > 0 and self.cache_policy == "device_replicate":

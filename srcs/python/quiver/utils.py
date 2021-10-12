@@ -98,21 +98,31 @@ class CSRTopo:
     def feature_order(self, feature_order):
         self.feature_order_ =  feature_order
 
+    @classmethod
+    def load(cls, cpt):
+        pass
 
-def reindex_by_config(adj_csr: CSRTopo, graph_feature, gpu_portion):
-    degree = adj_csr.indptr[1:] - adj_csr.indptr[:-1]
-    node_count = degree.shape[0]
-    _, prev_order = torch.sort(degree, descending=True)
+
+def reindex_by_config(adj_csr: CSRTopo, graph_feature, gpu_portion, shuffle_only=False):
+   
+    node_count = adj_csr.indptr.shape[0] - 1
     total_range = torch.arange(node_count, dtype=torch.long)
     perm_range = torch.randperm(int(node_count * gpu_portion))
+    if shuffle_only:
+        adj_csr.feature_order[:int(node_count * gpu_portion)] =  adj_csr.feature_order[perm_range]
+        graph_feature[:int(node_count * gpu_portion)] = graph_feature[perm_range]
+        return graph_feature, adj_csr.feature_order
 
+    # sort and shuffle
+    degree = adj_csr.indptr[1:] - adj_csr.indptr[:-1]
+     _, prev_order = torch.sort(degree, descending=True)
     new_order = torch.zeros_like(prev_order)
     prev_order[:int(node_count * gpu_portion)] = prev_order[perm_range]
     new_order[prev_order] = total_range
     graph_feature = graph_feature[prev_order]
     return graph_feature, new_order
 
-def reindex_feature(graph: CSRTopo, feature, ratio):
+def reindex_feature(graph: CSRTopo, feature, ratio, shuffle_only=False):
     assert isinstance(graph, CSRTopo), "Input graph should be CSRTopo object"
-    feature, new_order = reindex_by_config(graph, feature, ratio)
+    feature, new_order = reindex_by_config(graph, feature, ratio, shuffle_only)
     return feature, new_order

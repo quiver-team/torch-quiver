@@ -115,7 +115,7 @@ def reindex_by_config(adj_csr: CSRTopo, graph_feature, gpu_portion, shuffle_only
 
     # sort and shuffle
     degree = adj_csr.indptr[1:] - adj_csr.indptr[:-1]
-     _, prev_order = torch.sort(degree, descending=True)
+    _, prev_order = torch.sort(degree, descending=True)
     new_order = torch.zeros_like(prev_order)
     prev_order[:int(node_count * gpu_portion)] = prev_order[perm_range]
     new_order[prev_order] = total_range

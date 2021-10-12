@@ -85,7 +85,8 @@ def run(rank, world_size, x, y, edge_index, split_idx, num_features, num_classes
 
     train_loader = NeighborSampler(edge_index, node_idx=train_idx,
                                    sizes=[15, 10, 5], batch_size=1024,
-                                   shuffle=True, num_workers=5)
+                                   shuffle=True, persistent_workers=True, 
+                                   num_workers=5)
 
     if rank == 0:
         subgraph_loader = NeighborSampler(edge_index, node_idx=None,
@@ -97,7 +98,7 @@ def run(rank, world_size, x, y, edge_index, split_idx, num_features, num_classes
     model = DistributedDataParallel(model, device_ids=[rank])
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
-    x, y = x.to(rank), y.to(rank)
+    x, y = x, y.to(rank)
 
     for epoch in range(1, 21):
         model.train()
@@ -107,7 +108,7 @@ def run(rank, world_size, x, y, edge_index, split_idx, num_features, num_classes
             adjs = [adj.to(rank) for adj in adjs]
 
             optimizer.zero_grad()
-            out = model(x[n_id], adjs)
+            out = model(x[n_id].to(rank), adjs)
             loss = F.nll_loss(out, y[n_id[:batch_size]])
             loss.backward()
             optimizer.step()

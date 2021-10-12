@@ -71,7 +71,8 @@ def run(rank, world_size, data_split, edge_index, x, y, num_features, num_classe
 
     train_loader = NeighborSampler(edge_index, node_idx=train_idx,
                                    sizes=[25, 10], batch_size=1024,
-                                   shuffle=True, num_workers=0)
+                                   shuffle=True, persistent_workers=True,
+                                   num_workers= os.cpu_count() // world_size)
 
     if rank == 0:
         subgraph_loader = NeighborSampler(edge_index, node_idx=None,
@@ -121,7 +122,7 @@ def run(rank, world_size, data_split, edge_index, x, y, num_features, num_classe
 if __name__ == '__main__':
     dataset = Reddit('/home/dalong/data/Reddit')
     data = dataset[0]
-    world_size = torch.cuda.device_count()
+    world_size = 1#torch.cuda.device_count()
     print('Let\'s use', world_size, 'GPUs!')
     data_split = (data.train_mask, data.val_mask, data.test_mask)
     mp.spawn(run, args=(world_size, data_split, data.edge_index, data.x, data.y, dataset.num_features, dataset.num_classes), nprocs=world_size, join=True)

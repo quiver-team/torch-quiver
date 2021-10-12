@@ -148,10 +148,10 @@ if __name__ == '__main__':
     # Create Sampler And Feature
     ##############################
     csr_topo = quiver.CSRTopo(data.edge_index)
-    quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], 0, mode="GPU")
+    quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], 0, mode="UVA")
     feature = torch.zeros(data.x.shape)
     feature[:] = data.x
-    quiver_feature = quiver.Feature(rank=0, device_list=list(range(world_size)), device_cache_size="200M", cache_policy="device_replicate")
+    quiver_feature = quiver.Feature(rank=0, device_list=list(range(world_size)), device_cache_size="200M", cache_policy="device_replicate", csr_topo=csr_topo)
     quiver_feature.from_cpu_tensor(feature)
 
     print('Let\'s use', world_size, 'GPUs!')

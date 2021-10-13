@@ -113,8 +113,6 @@ class SAGE(torch.nn.Module):
 
 
 def run(rank, world_size, csr_topo, quiver_feature, y, train_idx, num_features, num_classes):
-    l = list(range(world_size))
-    qv.init_p2p(l)
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
     dist.init_process_group('nccl', rank=rank, world_size=world_size)
@@ -150,6 +148,7 @@ def run(rank, world_size, csr_topo, quiver_feature, y, train_idx, num_features, 
             beg = time.time()
             n_id, batch_size, adjs = quiver_sampler.sample(seeds)
             adjs = [adj.to(device) for adj in adjs]
+            torch.cuda.synchronize()
             sample_time.append(time.time() - beg)
             beg = time.time()
             feat = quiver_feature[n_id]
@@ -161,6 +160,7 @@ def run(rank, world_size, csr_topo, quiver_feature, y, train_idx, num_features, 
             loss = F.nll_loss(out, y[n_id[:batch_size]])
             loss.backward()
             optimizer.step()
+            torch.cuda.synchronize()
             train_time.append(time.time() - beg)
             step += 1
             iter_tput.append(len(seeds) / (time.time() - tic_step))
@@ -203,6 +203,8 @@ if __name__ == '__main__':
     new_order = dataset.new_order
     quiver_feature = quiver.Feature(rank=0, device_list=list(range(world_size)), device_cache_size="18G", cache_policy="numa_replicate", feature_order=new_order)
     quiver_feature.from_cpu_tensor(dataset.feature)
+    l = list(range(world_size))
+    qv.init_p2p(l)
     del dataset.feature
 
     print('Let\'s use', world_size, 'GPUs!')

@@ -3,7 +3,6 @@ import numpy as np
 import torch
 import torch_quiver as torch_qv
 
-
 from typing import List
 
 
@@ -126,3 +125,8 @@ def reindex_feature(graph: CSRTopo, feature, ratio, shuffle_only=False):
     assert isinstance(graph, CSRTopo), "Input graph should be CSRTopo object"
     feature, new_order = reindex_by_config(graph, feature, ratio, shuffle_only)
     return feature, new_order
+
+
+
+def init_p2p(device_list: List[int]):
+    torch_qv.init_p2p(device_list)

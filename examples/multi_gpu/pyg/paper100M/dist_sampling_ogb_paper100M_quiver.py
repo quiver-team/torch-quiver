@@ -80,7 +80,7 @@ class SAGE(torch.nn.Module):
         return x_all
 
 
-def run(rank, world_size, quiver_feature, y, edge_index, split_idx, num_features, num_classes):
+def run(rank, world_size, quiver_sampler, quiver_feature, y, edge_index, split_idx, num_features, num_classes):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
     dist.init_process_group('nccl', rank=rank, world_size=world_size)
@@ -88,13 +88,9 @@ def run(rank, world_size, quiver_feature, y, edge_index, split_idx, num_features
 
     train_idx, val_idx, test_idx = split_idx['train'], split_idx['valid'], split_idx['test']
     train_idx = train_idx.split(train_idx.size(0) // world_size)[rank]
-
-    train_loader = NeighborSampler(edge_index, node_idx=train_idx,
-                                   sizes=[15, 10, 5], batch_size=1024,
-                                   shuffle=True,
-                                   num_workers=5
-                                   )
     print("check train samples:", train_idx.shape)
+
+    train_loader = torch.utils.data.DataLoader(train_idx, batch_size=1024, pin_memory=True)
 
 
     torch.manual_seed(12345)
@@ -108,11 +104,13 @@ def run(rank, world_size, quiver_feature, y, edge_index, split_idx, num_features
         model.train()
 
         epoch_start = time.time()
-        for batch_size, n_id, adjs in train_loader:
+        for seeds in train_loader:
+            iteration_start = time.time()
+            n_id, batch_size, adjs = quiver_sampler.sample(seeds)
             adjs = [adj.to(rank) for adj in adjs]
 
             optimizer.zero_grad()
-            out = model(quiver_feature[n_id].to(rank), adjs)
+            out = model(quiver_feature[n_id], adjs)
             loss = F.nll_loss(out, y[n_id[:batch_size]])
             loss.backward()
             optimizer.step()
@@ -142,7 +140,8 @@ if __name__ == '__main__':
     root = "/data/papers"
     LOAD_PREPROCESS = True
 
-    world_size = 1
+    world_size = 4
+    quiver.init_p2p([0,1,2,3])
     ##############################
     # Create Sampler And Feature
     ##############################
@@ -158,10 +157,13 @@ if __name__ == '__main__':
         dataset["label"] = dataset["label"].squeeze()
         dataset["num_features"] = feature.shape[1]
         dataset["num_classes"] = 172
+        quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], 0, mode="UVA")
+        quiver_feature = quiver.Feature(rank=0, device_list=list(range(world_size)), device_cache_size="8G", cache_policy="numa_replicate", csr_topo=csr_topo)
+        quiver_feature.from_cpu_tensor(feature)
         print('Let\'s use', world_size, 'GPUs!')
         mp.spawn(
             run,
-            args=(world_size, feature, dataset["label"], dataset["edge_index"], dataset["split_idx"], dataset["num_features"], dataset["num_classes"]),
+            args=(world_size, quiver_sampler, quiver_feature, dataset["label"], dataset["edge_index"], dataset["split_idx"], dataset["num_features"], dataset["num_classes"]),
             nprocs=world_size,
             join=True
         )

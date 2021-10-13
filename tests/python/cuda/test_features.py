@@ -261,7 +261,7 @@ def init_reductions():
     ForkingPickler.register(Feature, reduce_feature)
 
 def test_feature_basic():
-    rank = 2
+    rank = 0
     
     NUM_ELEMENT = 1000000
     SAMPLE_SIZE = 80000
@@ -310,7 +310,7 @@ def child_proc(rank, world_size, host_tensor, feature):
     SAMPLE_SIZE = 80000
     device_tensor = host_tensor.to(rank)
     bandwidth = []
-    for _ in range(300):
+    for _ in range(30):
         device_indices = torch.randint(0, NUM_ELEMENT - 1, (SAMPLE_SIZE, ), device=rank)
         torch.cuda.synchronize()
         start = time.time()
@@ -343,9 +343,9 @@ def test_ipc():
     # define a quiver.Feature
     ###########################
 
-    feature = quiver.Feature(rank=rank, device_list=[0,1,2,3], device_cache_size="0.9G", cache_policy="numa_replicate")
+    feature = quiver.Feature(rank=rank, device_list=[0, 1], device_cache_size=0, cache_policy="numa_replicate")
     feature.from_cpu_tensor(tensor)
-    world_size = 4
+    world_size = 2
     mp.spawn(
         child_proc,   
         args=(world_size, tensor, feature),
@@ -396,11 +396,72 @@ def test_ipc_with_real_data():
         join=True
     )
 
+def normal_test():
+    rank = 0
+    
+    NUM_ELEMENT = 1000000
+    FEATURE_DIM = 600
+    SAMPLE_SIZE = 80000
+
+    #########################
+    # Init With Numpy
+    ########################
+    torch.cuda.set_device(rank)
+
+    host_tensor = np.random.randint(
+        0, high=10, size=(2 * NUM_ELEMENT, FEATURE_DIM))
+    tensor = torch.from_numpy(host_tensor).type(torch.float32)
+
+    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
+    indices = torch.from_numpy(host_indice).type(torch.long)
+
+    tensor.to(rank)
+    torch.cuda.synchronize()
+
+    start = time.time()
+    feature = tensor[indices]
+    feature = feature.to(rank)
+    torch.cuda.synchronize()
+    consumed_time = time.time() - start
+
+    print(
+        f"Process {os.getpid()}: TEST SUCCEED!, With Memory Bandwidth = {feature.numel() * 4 / consumed_time / 1024 / 1024 / 1024} GB/s, consumed {consumed_time}s")
+
+def test_paper100M():
+    dataset = torch.load("/data/papers/ogbn_papers100M/quiver_preprocess/paper100M.pth")
+    csr_topo = dataset["csr_topo"]
+    feature = dataset["sorted_feature"]
+    NUM_ELEMENT = feature.shape[0]
+    SAMPLE_SIZE = 80000
+    world_size = 4
+    rank = 0
+    dataset["label"] = torch.from_numpy(dataset["label"])
+    dataset["num_features"] = feature.shape[1]
+    dataset["num_classes"] = 172
+    quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], 0, mode="UVA")
+    quiver_feature = quiver.Feature(rank=0, device_list=list(range(world_size)), device_cache_size="12G", cache_policy="numa_replicate")
+    quiver_feature.from_cpu_tensor(feature)
+
+    device_indices = torch.randint(0, NUM_ELEMENT - 1, (SAMPLE_SIZE, ), device=rank)
+    res = quiver_feature[device_indices]
+
+    start = time.time()
+    res = quiver_feature[device_indices]
+    consumed_time = time.time() - start
+    print(
+        f"Process {os.getpid()}: TEST SUCCEED!, With Memory Bandwidth = {res.numel() * 4 / consumed_time / 1024 / 1024 / 1024} GB/s, consumed {consumed_time}s")
+
+
+
+
+
 if __name__ == "__main__":
     mp.set_start_method("spawn")
-    torch_qv.init_p2p()
-    init_reductions()
+    torch_qv.init_p2p([0,1,2,3])
+    test_paper100M()
+    #init_reductions()
     #test_feature_basic()
     #test_ipc()
-    test_ipc_with_real_data()
+    #normal_test()
+    #test_ipc_with_real_data()
 

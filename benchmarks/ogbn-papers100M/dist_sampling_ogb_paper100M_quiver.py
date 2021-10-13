@@ -191,7 +191,7 @@ def run(rank, world_size, csr_topo, quiver_feature, y, train_idx, num_features, 
 
 
 if __name__ == '__main__':
-    root = "/ogb/papers/"
+    root = "/data/papers/"
     # world_size = torch.cuda.device_count()
     world_size = 2
     dataset = Paper100MDataset(root, 0.33 * min(world_size, 2))

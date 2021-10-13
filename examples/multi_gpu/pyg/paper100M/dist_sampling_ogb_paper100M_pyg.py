@@ -92,7 +92,8 @@ def run(rank, world_size, quiver_feature, y, edge_index, split_idx, num_features
     train_loader = NeighborSampler(edge_index, node_idx=train_idx,
                                    sizes=[15, 10, 5], batch_size=1024,
                                    shuffle=True,
-                                   num_workers=5
+                                   num_workers=5,
+                                   persistent_workers=True
                                    )
     print("check train samples:", train_idx.shape)
 
@@ -142,7 +143,7 @@ if __name__ == '__main__':
     root = "/data/papers"
     LOAD_PREPROCESS = True
 
-    world_size = 1
+    world_size = 4
     ##############################
     # Create Sampler And Feature
     ##############################

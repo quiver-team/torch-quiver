@@ -27,14 +27,16 @@ def preprocess_paper100M(root):
     test_idx = torch.from_numpy(pd.read_csv(osp.join("/data/papers/ogbn_papers100M/split/time", 'test.csv')).values.T[0]).to(torch.long)
     split_idx = {"train": train_idx, "valid": valid_idx, "test": test_idx}
     saved_dataset = {
-        "label": torch.from_numpy(label["node_label"]),
+        "label": torch.from_numpy(label["node_label"]).type(torch.long).squeeze(),
         "csr_topo": csr_topo, 
         "sorted_feature": sorted_feature,
         "split_idx": split_idx,
         "edge_index": torch.from_numpy(data["edge_index"])
     }
     torch.save(saved_dataset, save_path)
-preprocess_paper100M("/data/papers/ogbn_papers100M/")
+
+if __name__ == "__main__":
+    preprocess_paper100M("/data/papers/ogbn_papers100M/")
 
 
 

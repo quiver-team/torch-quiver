@@ -163,30 +163,36 @@ def test_GraphSageSampler():
 def child_process(rank, sage_sampler):
 
     torch.cuda.set_device(rank)
-    seeds_size = 128 * 15 * 10
+    seeds_size = 1024
     neighbor_size = 5
+    node_count = sage_sampler.csr_topo.indptr.shape[0] - 1
     
-    seeds = np.arange(2000000)
+    seeds = np.arange(node_count)
     np.random.shuffle(seeds)
     seeds =seeds[:seeds_size]
     seeds = torch.from_numpy(seeds).type(torch.long)
     cuda_seeds = seeds.to(rank)
 
     res = sage_sampler.sample(cuda_seeds)
+    sample_times = []
+    for _ in range(200):
+
+        start = time.time()
+        res = sage_sampler.sample(cuda_seeds)
+        sample_times.append(time.time() - start)
     
-    res = sage_sampler.sample(cuda_seeds)
-    print(res)
+    print(f"consumed {time.time() - start}")
 
 
 def test_ipc():
-    root = "/home/dalong/data/products/"
+    root = "/home/dalong/products/"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     torch.cuda.set_device(0)
     data = dataset[0]
     csr_topo = quiver.CSRTopo(data.edge_index)
-    sage_sampler = quiver.pyg.GraphSageSampler(csr_topo, sizes=[5], device=0, mode="GPU")
+    sage_sampler = quiver.pyg.GraphSageSampler(csr_topo, sizes=[15, 10, 5], device=0, mode="GPU")
 
-    mp.spawn(child_process, args=(sage_sampler, ), nprocs=4, join=True)
+    mp.spawn(child_process, args=(sage_sampler), nprocs=1, join=True)
     
 def rebuild_pyg_sampler(cls, ipc_handle):
     print("rebuild sampler")

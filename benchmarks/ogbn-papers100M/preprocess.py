@@ -14,7 +14,7 @@ from numpy import genfromtxt
 from scipy.sparse import csr_matrix
 
 
-data_root = "/data/papers/ogbn_papers100M/raw/"
+data_root = "/ogb/papers/ogbn_papers100M/raw/"
 label = np.load(osp.join(data_root, "node-label.npz"))
 data = np.load(osp.join(data_root, "data.npz"))
 
@@ -45,8 +45,8 @@ def process_topo():
 
     print("LOG>>> Begin Save")
 
-    torch.save(indptr, "/data/papers/ogbn_papers100M/csr/indptr.pt")
-    torch.save(indices, "/data/papers/ogbn_papers100M/csr/indices.pt")
+    torch.save(indptr, "/ogb/papers/ogbn_papers100M/csr/indptr.pt")
+    torch.save(indices, "/ogb/papers/ogbn_papers100M/csr/indices.pt")
 
     csr_mat = get_csr_from_coo(edge_index, True)
     indptr_reverse = csr_mat.indptr
@@ -54,8 +54,8 @@ def process_topo():
     indptr_reverse = torch.from_numpy(indptr_reverse).type(torch.long)
     indices_reverse = torch.from_numpy(indices_reverse).type(torch.long)
     
-    torch.save(indptr_reverse, "/data/papers/ogbn_papers100M/csr/indptr_reverse.pt")
-    torch.save(indices_reverse, "/data/papers/ogbn_papers100M/csr/indices_reverse.pt")
+    torch.save(indptr_reverse, "/ogb/papers/ogbn_papers100M/csr/indptr_reverse.pt")
+    torch.save(indices_reverse, "/ogb/papers/ogbn_papers100M/csr/indices_reverse.pt")
 
 def process_feature():
     print("LOG>>> Load Finished")
@@ -64,18 +64,18 @@ def process_feature():
     nid_feat = data["node_feat"]
     tensor = torch.from_numpy(nid_feat).type(torch.float)
     print("LOG>>> Begin Process")
-    torch.save(tensor, "/data/papers/ogbn_papers100M/feat/feature.pt")
+    torch.save(tensor, "/ogb/papers/ogbn_papers100M/feat/feature.pt")
 
 def process_label():
     print("LOG>>> Load Finished")
     node_label = label["node_label"]
     tensor = torch.from_numpy(node_label).type(torch.long)
-    torch.save(tensor, "/data/papers/ogbn_papers100M/label/label.pt")
+    torch.save(tensor, "/ogb/papers/ogbn_papers100M/label/label.pt")
 
 def sort_feature():
     NUM_ELEMENT = 111059956
-    indptr = torch.load("/data/papers/ogbn_papers100M/csr/indptr_reverse.pt")
-    feature = torch.load("/data/papers/ogbn_papers100M/feat/feature.pt")
+    indptr = torch.load("/ogb/papers/ogbn_papers100M/csr/indptr_reverse.pt")
+    feature = torch.load("/ogb/papers/ogbn_papers100M/feat/feature.pt")
     prev = torch.LongTensor(indptr[:-1])
     sub = torch.LongTensor(indptr[1:])
     deg = sub - prev
@@ -83,17 +83,18 @@ def sort_feature():
     total_num = NUM_ELEMENT
     total_range = torch.arange(total_num, dtype=torch.long)
     feature = feature[prev_order]
-    torch.save(feature, "/data/papers/ogbn_papers100M/feat/sort_feature.pt")
-    torch.save(prev_order, "/data/papers/ogbn_papers100M/feat/prev_order.pt")
+    torch.save(feature, "/ogb/papers/ogbn_papers100M/feat/sort_feature.pt")
+    torch.save(prev_order, "/ogb/papers/ogbn_papers100M/feat/prev_order.pt")
 
 def process_index():
-    data = genfromtxt('/data/papers/ogbn_papers100M/split/train.csv', delimiter='\n')
+    data = genfromtxt('/ogb/papers/ogbn_papers100M/split/time/train.csv', delimiter='\n')
     data = data.astype(np.long)
     data = torch.from_numpy(data)
-    torch.save(data, "/data/papers/ogbn_papers100M/index/train_idx.pt")
+    torch.save(data, "/ogb/papers/ogbn_papers100M/index/train_idx.pt")
 
-process_topo()
+# process_topo()
 # process_feature()
 # process_label()
 # feature_test()
-sort_feature()
+# sort_feature()
+process_index()

@@ -9,7 +9,6 @@
 #include <c10/cuda/CUDAGuard.h>
 
 #include <torch/csrc/utils/python_numbers.h>
-//#include <ATen/MapAllocator.h>
 #include <atomic>
 #include <string>
 #include <iostream>
@@ -177,8 +176,8 @@ class ShardTensor
         
         }else{
             cudaSetDevice(device_);
-            // if target_device < 0, it means we use Zero-Copy 
-            cudaHostRegister(tensor.data_ptr<float>(), data_size, cudaHostRegisterMapped);
+            // if target_device < 0, it means we use Zero-Copy
+            quiverRegister(tensor.data_ptr<float>(), data_size, cudaHostRegisterMapped);
             cudaHostGetDevicePointer(&ptr, (void *)tensor.data_ptr<float>(), 0);
             access_book.push_back(1);
             //printf("%d <-> CPU support peer access \n", device_);

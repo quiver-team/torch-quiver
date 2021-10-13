@@ -380,7 +380,7 @@ TorchQuiver new_quiver_from_csr_array(torch::Tensor &input_indptr,
         if (!cuda) {
             const T *indptr_original = reinterpret_cast<const T *>(input_indptr.data_ptr<T>());
             // Register Buffer As Mapped Pinned Memory
-            cudaHostRegister((void *)indptr_original, sizeof(T) * node_count,
+            quiverRegister((void *)indptr_original, sizeof(T) * node_count,
                              cudaHostRegisterMapped);
             // Get Device Pointer In GPU Memory Space
             cudaHostGetDevicePointer((void **)&indptr_device_pointer,
@@ -401,7 +401,7 @@ TorchQuiver new_quiver_from_csr_array(torch::Tensor &input_indptr,
             const T *indices_original =
                 reinterpret_cast<const T *>(input_indices.data_ptr<T>());
             // Register Buffer As Mapped Pinned Memory
-            cudaHostRegister((void *)indices_original, sizeof(T) * edge_count,
+            quiverRegister((void *)indices_original, sizeof(T) * edge_count,
                              cudaHostRegisterMapped);
             // Get Device Pointer In GPU Memory Space
             cudaHostGetDevicePointer((void **)&indices_device_pointer,
@@ -423,7 +423,7 @@ TorchQuiver new_quiver_from_csr_array(torch::Tensor &input_indptr,
         if (!cuda) {
             const T *id_original = reinterpret_cast<const T *>(input_edge_idx.data_ptr<T>());
             // Register Buffer As Mapped Pinned Memory
-            cudaHostRegister((void *)id_original, sizeof(T) * edge_count,
+            quiverRegister((void *)id_original, sizeof(T) * edge_count,
                              cudaHostRegisterMapped);
             // Get Device Pointer In GPU Memory Space
             cudaHostGetDevicePointer((void **)&edge_id_device_pointer,

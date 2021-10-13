@@ -114,7 +114,7 @@ class SAGE(torch.nn.Module):
 
 def run(rank, world_size, csr_topo, quiver_feature, y, train_idx, num_features, num_classes):
     l = list(range(world_size))
-    # qv.init_p2p(l)
+    qv.init_p2p(l)
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
     dist.init_process_group('nccl', rank=rank, world_size=world_size)
@@ -191,17 +191,17 @@ def run(rank, world_size, csr_topo, quiver_feature, y, train_idx, num_features, 
 
 
 if __name__ == '__main__':
-    root = "/data/papers/"
+    root = "/ogb/papers/"
     # world_size = torch.cuda.device_count()
-    world_size = 1
-    dataset = Paper100MDataset(root, 0.15 * world_size if world_size < 5 else 0.8)
+    world_size = 2
+    dataset = Paper100MDataset(root, 0.33 * min(world_size, 2))
     
     ##############################
     # Create Sampler And Feature
     ##############################
     csr_topo = quiver.CSRTopo(indptr=dataset.indptr, indices=dataset.indices)
     new_order = dataset.new_order
-    quiver_feature = quiver.Feature(rank=0, device_list=list(range(world_size)), device_cache_size="10M", cache_policy="device_replicate", feature_order=new_order)
+    quiver_feature = quiver.Feature(rank=0, device_list=list(range(world_size)), device_cache_size="18G", cache_policy="numa_replicate", feature_order=new_order)
     quiver_feature.from_cpu_tensor(dataset.feature)
     del dataset.feature
 

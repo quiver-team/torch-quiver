@@ -12,29 +12,28 @@ __all__ = ["Feature"]
 
 class Feature:
     def __init__(self, rank, device_list, device_cache_size=0, cache_policy='device_replicate', csr_topo=None, feature_order=None):
-        assert cache_policy in ["device_replicate", "numa_replicate"], f"Feature cache_policy should be one of [device_replicate, numa_replicate]"
+        assert cache_policy in ["device_replicate", "p2p_clique_replicate"], f"Feature cache_policy should be one of [device_replicate, p2p_clique_replicate]"
         self.device_cache_size = device_cache_size
         self.cache_policy = cache_policy
         self.device_list = device_list
         self.device_tensor_list = {}
-        self.numa_tensor_list = {}
+        self.clique_tensor_list = {}
         self.rank = rank            
         self.topo = Topo(self.device_list)
         self.csr_topo = csr_topo
         self.feature_order = feature_order
         self.ipc_handle_ = None
-        if not self.numa_device_symmetry_check():
-            self.topo.info()
-            raise Exception("numa1 device num abd numa2 device num should equal")
+        assert self.clique_device_symmetry_check(), f"\n{self.topo.info()}\nDifferent p2p clique size NOT equal"
 
     
     
-    def numa_device_symmetry_check(self):
+    def clique_device_symmetry_check(self):
         if self.cache_policy == "device_replicate":
             return True
-        if len(self.topo.Numa2Device[1]) == 0:
+        print("WARNING: You are using p2p_clique_replicate mode, MAKE SURE you have called quiver.init_p2p() to enable p2p access")
+        if len(self.topo.p2pClique2Device.get(1, [])) == 0:
             return True
-        if len(self.topo.Numa2Device[1]) == len(self.topo.Numa2Device[0]):
+        if len(self.topo.p2pClique2Device.get(1, [])) == len(self.topo.p2pClique2Device[0]):
             return True
         return False
 
@@ -70,7 +69,7 @@ class Feature:
             cache_memory_budget = self.cal_memory_budget_bytes(self.device_cache_size)
             shuffle_ratio = 0.0
         else:
-            cache_memory_budget = self.cal_memory_budget_bytes(self.device_cache_size) * len(self.topo.Numa2Device[0])
+            cache_memory_budget = self.cal_memory_budget_bytes(self.device_cache_size) * len(self.topo.p2pClique2Device[0])
             shuffle_ratio = self.cal_size(cpu_tensor, cache_memory_budget) / cpu_tensor.size(0)
         
         print(f"LOG>>> {min(100, int(100 * cache_memory_budget / cpu_tensor.numel() / 4))}% data cached")
@@ -89,38 +88,38 @@ class Feature:
                 self.device_tensor_list[device] = shard_tensor
 
         elif cache_part.shape[0] > 0:
-            numa0_device_list = self.topo.Numa2Device[0]
-            numa1_device_list = self.topo.Numa2Device[1]
+            clique0_device_list = self.topo.p2pClique2Device.get(0, [])
+            clique1_device_list = self.topo.p2pClique2Device.get(1, [])
 
-            block_size = self.cal_size(cpu_tensor, cache_memory_budget // len(self.topo.Numa2Device[0]))
+            block_size = self.cal_size(cpu_tensor, cache_memory_budget // len(self.topo.p2pClique2Device[0]))
 
-            if len(numa0_device_list) > 0:
-                print(f"LOG>>> GPU {numa0_device_list} belong to the same NUMA Domain")
+            if len(clique0_device_list) > 0:
+                print(f"LOG>>> GPU {clique0_device_list} belong to the same NUMA Domain")
                 shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
                 cur_pos = 0
-                for idx, device in enumerate(numa0_device_list):
-                    if idx == len(numa0_device_list) - 1:
+                for idx, device in enumerate(clique0_device_list):
+                    if idx == len(clique0_device_list) - 1:
                         shard_tensor.append(cache_part[cur_pos:], device)
                     else:
 
                         shard_tensor.append(cache_part[cur_pos: cur_pos + block_size], device)
                         cur_pos += block_size
                     
-                self.numa_tensor_list[0] = shard_tensor
+                self.clique_tensor_list[0] = shard_tensor
             
-            if len(numa1_device_list) > 0:
-                print(f"LOG>>> GPU {numa1_device_list} belong to the same NUMA Domain")
+            if len(clique1_device_list) > 0:
+                print(f"LOG>>> GPU {clique1_device_list} belong to the same NUMA Domain")
                 shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
                 cur_pos = 0
-                for idx, device in enumerate(numa1_device_list):
-                    if idx == len(numa1_device_list) - 1:
+                for idx, device in enumerate(clique1_device_list):
+                    if idx == len(clique1_device_list) - 1:
                         shard_tensor.append(cache_part[cur_pos:], device)
                     else:
 
                         shard_tensor.append(cache_part[cur_pos: cur_pos + block_size], device)
                         cur_pos += block_size
 
-                self.numa_tensor_list[1] = shard_tensor
+                self.clique_tensor_list[1] = shard_tensor
 
         # 构建CPU Tensor
         if self.cpu_part.numel() > 0:
@@ -129,10 +128,10 @@ class Feature:
                 shard_tensor.append(self.cpu_part, -1)
                 self.device_tensor_list[self.rank] = shard_tensor
             else:
-                numa_id = self.topo.get_numa_node(self.rank)
-                shard_tensor = self.numa_tensor_list.get(numa_id, None) or ShardTensor(self.rank, ShardTensorConfig({}))
+                clique_id = self.topo.get_clique_id(self.rank)
+                shard_tensor = self.clique_tensor_list.get(clique_id, None) or ShardTensor(self.rank, ShardTensorConfig({}))
                 shard_tensor.append(self.cpu_part, -1)
-                self.numa_tensor_list[numa_id] = shard_tensor
+                self.clique_tensor_list[clique_id] = shard_tensor
             
         
     def __getitem__(self, node_idx):
@@ -144,8 +143,8 @@ class Feature:
             shard_tensor = self.device_tensor_list[self.rank]
             return shard_tensor[node_idx]
         else:
-            numa_id = self.topo.get_numa_node(self.rank)
-            shard_tensor = self.numa_tensor_list[numa_id]
+            clique_id = self.topo.get_clique_id(self.rank)
+            shard_tensor = self.clique_tensor_list[clique_id]
             return shard_tensor[node_idx]
     
     def size(self, dim):
@@ -154,8 +153,8 @@ class Feature:
             shard_tensor = self.device_tensor_list[self.rank]
             return shard_tensor.size(dim)
         else:
-            numa_id = self.topo.get_numa_node(self.rank)
-            shard_tensor = self.numa_tensor_list[numa_id]
+            clique_id = self.topo.get_clique_id(self.rank)
+            shard_tensor = self.clique_tensor_list[clique_id]
             return shard_tensor.size(dim)
 
     @property
@@ -165,8 +164,8 @@ class Feature:
             shard_tensor = self.device_tensor_list[self.rank]
             return shard_tensor.shape
         else:
-            numa_id = self.topo.get_numa_node(self.rank)
-            shard_tensor = self.numa_tensor_list[numa_id]
+            clique_id = self.topo.get_clique_id(self.rank)
+            shard_tensor = self.clique_tensor_list[clique_id]
             return shard_tensor.shape
     
 
@@ -184,8 +183,8 @@ class Feature:
             for device in self.device_tensor_list:
                 gpu_ipc_handle_dict[device] = self.device_tensor_list[device].share_ipc()[0]
         else:
-            for numa_node in self.numa_tensor_list:
-                gpu_ipc_handle_dict[numa_node] = self.numa_tensor_list[numa_node].share_ipc()[0]
+            for clique_id in self.clique_tensor_list:
+                gpu_ipc_handle_dict[clique_id] = self.clique_tensor_list[clique_id].share_ipc()[0]
         
         return gpu_ipc_handle_dict, self.cpu_part, self.device_list, self.device_cache_size, self.cache_policy, self.csr_topo
     
@@ -196,10 +195,10 @@ class Feature:
             self.device_tensor_list[self.rank] = shard_tensor
             
         else:
-            numa_node = self.topo.get_numa_node(self.rank)
-            ipc_handle = gpu_ipc_handle_dict.get(numa_node, []), cpu_tensor, ShardTensorConfig({})
+            clique_id = self.topo.get_clique_id(self.rank)
+            ipc_handle = gpu_ipc_handle_dict.get(clique_id, []), cpu_tensor, ShardTensorConfig({})
             shard_tensor = ShardTensor.new_from_share_ipc(ipc_handle, self.rank)
-            self.numa_tensor_list[numa_node] = shard_tensor
+            self.clique_tensor_list[clique_id] = shard_tensor
         
         self.cpu_part = cpu_tensor
         

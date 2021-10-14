@@ -2,55 +2,71 @@ from scipy.sparse import csr_matrix
 import numpy as np
 import torch
 import torch_quiver as torch_qv
-
+import copy
 from typing import List
 
+def find_cliques(adj_mat, clique_res, remaining_nodes, potential_clique, skip_nodes):
+
+    if len(remaining_nodes) == 0 and len(skip_nodes) == 0:
+        clique_res.append(potential_clique)
+        return 1
+    
+    found_cliques = 0
+    for node in remaining_nodes:
+
+        # Try adding the node to the current potential_clique to see if we can make it work.
+        new_potential_clique = potential_clique + [node]
+        new_remaining_nodes = [n for n in remaining_nodes if adj_mat[node][n] == 1]
+        new_skip_list = [n for n in skip_nodes if adj_mat[node][n] == 1]
+     
+        found_cliques += find_cliques(adj_mat, clique_res, new_remaining_nodes, new_potential_clique, new_skip_list)
+
+        # We're done considering this node.  If there was a way to form a clique with it, we
+        # already discovered its maximal clique in the recursive call above.  So, go ahead
+        # and remove it from the list of remaining nodes and add it to the skip list.
+        remaining_nodes.remove(node)
+        skip_nodes.append(node)
+    return found_cliques
 
 def color_mat(access_book, device_list):
-    device_count = access_book.shape[0]
+    device2clique = dict.fromkeys(device_list, -1)
+    clique2device = {}
+    clique_res = []
+    all_nodes = list(range(len(device_list)))
+    find_cliques(access_book, clique_res, all_nodes, [], [])
+    for index, clique in enumerate(clique_res):
+        clique2device[index] = []
+        for device_idx in clique:
+            clique2device[index].append(device_list[device_idx])
+            device2clique[device_list[device_idx]] = index
 
-    device2numa = dict.fromkeys(device_list, -1)
-    numa2device = {0: [], 1: []}
-    current_numa = 0
-    for src_device_idx in range(device_count):
-        src_device = device_list[src_device_idx]
-        if (device2numa[src_device] == -1):
-            device2numa[src_device] = current_numa
-            numa2device[current_numa].append(src_device)
-            current_numa += 1
-            for dst_device_idx in range(device_count):
-                if (dst_device_idx != src_device_idx
-                        and access_book[src_device_idx, dst_device_idx] == 1):
-                    dst_device = device_list[dst_device_idx]
-                    device2numa[dst_device] = device2numa[src_device]
-                    numa2device[device2numa[src_device]].append(dst_device)
-
-    return device2numa, numa2device
+    return device2clique, clique2device
 
 
 class Topo:
-
-    Numa2Device = {}
-    Device2Numa = {}
 
     def __init__(self, device_list: List[int]) -> None:
         access_book = torch.zeros((len(device_list), len(device_list)))
         for src_index, src_device in enumerate(device_list):
             for dst_index, dst_device in enumerate(device_list):
-                if torch_qv.can_device_access_peer(src_device, dst_device):
+                if src_index != dst_index and torch_qv.can_device_access_peer(src_device, dst_device):
                     access_book[src_index][dst_index] = 1
                     access_book[dst_index][src_index] = 1
-        self.Device2Numa, self.Numa2Device = color_mat(access_book,
-                                                       device_list)
+        self.Device2p2pClique, self.p2pClique2Device = color_mat(access_book, device_list)
 
-    def get_numa_node(self, device_id: int):
-        return self.Device2Numa[device_id]
+    def get_clique_id(self, device_id: int):
+        return self.Device2p2pClique[device_id]
 
     def info(self):
-        if len(self.Numa2Device[0]) > 0:
-            print(f"Devices {self.Numa2Device[0]} belong to the same numa domain")
-        if len(self.Numa2Device[1]) > 0:
-            print(f"Devices {self.Numa2Device[1]} belong to the same numa domain")
+        str = ""
+        for clique_idx in self.p2pClique2Device:
+            str += f"Devices {self.p2pClique2Device[clique_idx]} support p2p access with each other\n"
+        return str
+    
+    @property
+    def p2p_clique(self):
+        return self.p2pClique2Device
+    
 
 def get_csr_from_coo(edge_index):
     src = edge_index[0].numpy()

@@ -37,7 +37,6 @@ class ShardTensorConfig:
         self.tensor_offset_device = {}
 
         self.device_memory_budget = device_memory_budget
-        self.device_list_ = None
         for device in device_memory_budget:
             if isinstance(self.device_memory_budget[device], int):
                 continue
@@ -71,13 +70,8 @@ class ShardTensorConfig:
 
     @property
     def device_list(self):
-        if self.device_list_ is None:
-            self.device_list_ = list(self.device_memory_budget.keys())
-        return self.device_list_
-
-    @device_list.setter
-    def device_list(self, device_list):
-        self.device_list_ = device_list
+       
+        return list(self.device_memory_budget.keys())
 
 
 class ShardTensor:
@@ -87,7 +81,7 @@ class ShardTensor:
         self.current_device = current_device
         self.shard_tensor_config = shard_tensor_config or ShardTensorConfig({})
         self.topo = None
-        self.current_numa = None
+        self.current_clique = None
 
         self.device_stream = {}
 
@@ -95,18 +89,15 @@ class ShardTensor:
         self.cpu_tensor = None
         self.current_stream = torch.cuda.Stream(self.current_device)
 
-        # init config
-        self.init_topo()
-
     def init_topo(self):
-        if self.current_numa is not None:
+        if self.current_clique is not None:
             return
 
         device_list = set(self.shard_tensor_config.device_list)
         device_list.add(self.current_device)
         device_list = list(device_list)
         self.topo = Topo(device_list)
-        self.current_numa = self.topo.get_numa_node(self.current_device)
+        self.current_clique = self.topo.get_clique_id(self.current_device)
 
     def append(self, cpu_tensor, device):
 
@@ -211,21 +202,21 @@ class ShardTensor:
                                         device=self.current_device)
 
         # call inter request, we unfold for loop
-        inter_numa_devices = self.topo.Numa2Device[1 - self.current_numa]
+        inter_clique_devices = self.topo.p2pClique2Device.get(1 - self.current_clique, [])
 
         wait_streams = []
         wait_results = []
 
-        if (len(inter_numa_devices) > 0):
-            inter_device = inter_numa_devices[0]
+        if (len(inter_clique_devices) > 0):
+            inter_device = inter_clique_devices[0]
             self.current_stream.synchronize()
             if self.shard_tensor_config.tensor_offset_device.get(
                     inter_device, None) is not None:
                 self.collect_device(input_orders, nodes, inter_device,
                                     wait_streams, wait_results)
 
-        if (len(inter_numa_devices) > 1):
-            inter_device = inter_numa_devices[1]
+        if (len(inter_clique_devices) > 1):
+            inter_device = inter_clique_devices[1]
             self.current_stream.synchronize()
             if self.shard_tensor_config.tensor_offset_device.get(
                     inter_device, None) is not None:

@@ -112,6 +112,10 @@ class CSRTopo:
     @feature_order.setter
     def feature_order(self, feature_order):
         self.feature_order_ =  feature_order
+    
+    @property
+    def degree(self):
+        return self.indptr[1:] - self.indptr[:-1]
 
 
 def reindex_by_config(adj_csr: CSRTopo, graph_feature, gpu_portion):

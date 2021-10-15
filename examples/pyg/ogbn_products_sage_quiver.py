@@ -8,6 +8,7 @@ from tqdm import tqdm
 from ogb.nodeproppred import PygNodePropPredDataset, Evaluator
 from torch_geometric.loader import NeighborSampler
 from torch_geometric.nn import SAGEConv
+import time
 
 ######################
 # Import From Quiver
@@ -26,7 +27,7 @@ train_idx = split_idx['train']
 #############################
 # Original Pyg Code
 #############################
-#train_loader = NeighborSampler(data.edge_index, node_idx=train_idx,
+# train_loader = NeighborSampler(data.edge_index, node_idx=train_idx,
 #                               sizes=[15, 10, 5], batch_size=1024,
 #                               shuffle=True, num_workers=12)
 
@@ -35,7 +36,9 @@ train_loader = torch.utils.data.DataLoader(train_idx,
                                            shuffle=True,
                                            drop_last=True)
 
-quiver_sampler = GraphSageSampler(data.edge_index, sizes=[15, 10, 5], device=0)
+csr_topo = quiver.CSRTopo(data.edge_index)
+
+quiver_sampler = GraphSageSampler(csr_topo, sizes=[15, 10, 5], device=0)
 
 
 subgraph_loader = NeighborSampler(data.edge_index, node_idx=None, sizes=[-1],
@@ -112,7 +115,7 @@ model = model.to(device)
 ####################
 # x = data.x.to(device)
 
-x = quiver.Feature(rank=0, device_list=[0], device_cache_size="200M", cache_policy="device_replicate")
+x = quiver.Feature(rank=0, device_list=[0], device_cache_size="200M", cache_policy="device_replicate", csr_topo=csr_topo)
 feature = torch.zeros(data.x.shape)
 feature[:] = data.x
 x.from_cpu_tensor(feature)
@@ -131,7 +134,7 @@ def train(epoch):
     ######################
     # Original Pyg Code
     ######################
-    #for batch_size, n_id, adjs in train_loader:
+    # for batch_size, n_id, adjs in train_loader:
     for seeds in train_loader:
         n_id, batch_size, adjs = quiver_sampler.sample(seeds)
         # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
@@ -191,13 +194,14 @@ for run in range(1, 11):
 
     best_val_acc = final_test_acc = 0
     for epoch in range(1, 21):
+        epoch_start = time.time()
         loss, acc = train(epoch)
-        print(f'Epoch {epoch:02d}, Loss: {loss:.4f}, Approx. Train: {acc:.4f}')
+        print(f'Epoch {epoch:02d}, Loss: {loss:.4f}, Approx. Train: {acc:.4f}, Epoch Time: {time.time() - epoch_start}')
 
         if epoch > 5:
             train_acc, val_acc, test_acc = test()
             print(f'Train: {train_acc:.4f}, Val: {val_acc:.4f}, '
-                  f'Test: {test_acc:.4f}')
+                f'Test: {test_acc:.4f}')
 
             if val_acc > best_val_acc:
                 best_val_acc = val_acc

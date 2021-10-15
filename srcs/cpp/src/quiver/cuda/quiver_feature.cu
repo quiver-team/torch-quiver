@@ -9,10 +9,11 @@
 #include <c10/cuda/CUDAGuard.h>
 
 #include <torch/csrc/utils/python_numbers.h>
-//#include <ATen/MapAllocator.h>
 #include <atomic>
 #include <string>
 #include <iostream>
+#include <unordered_map>
+
 
 namespace quiver
 {
@@ -58,6 +59,7 @@ class ShardTensor
     {
 
         offset_list_.push_back(0);
+
     }
 
     size_t get_tensor_bytes(torch::Tensor tensor){
@@ -174,8 +176,8 @@ class ShardTensor
         
         }else{
             cudaSetDevice(device_);
-            // if target_device < 0, it means we use Zero-Copy 
-            cudaHostRegister(tensor.data_ptr<float>(), data_size, cudaHostRegisterMapped);
+            // if target_device < 0, it means we use Zero-Copy
+            quiverRegister(tensor.data_ptr<float>(), data_size, cudaHostRegisterMapped);
             cudaHostGetDevicePointer(&ptr, (void *)tensor.data_ptr<float>(), 0);
             access_book.push_back(1);
             //printf("%d <-> CPU support peer access \n", device_);
@@ -186,6 +188,39 @@ class ShardTensor
         shape_[0] += tensor.size(0);
         device_count_ += 1;
 
+    }
+
+    std::tuple<float**, int64_t*, int*> get_device_pointers(int device){
+        auto iter = device_pointers_map.find(device);
+        if(iter == device_pointers_map.end()){
+            float **buffers_device;
+            int64_t *offset_device;
+            int *access_book_device;
+
+            // Copy buffers Device
+            cudaMalloc((void ***)&buffers_device, sizeof(float *) * device_count_);
+            cudaMemcpy(buffers_device, &dev_ptrs_[0],
+                    sizeof(float *) * dev_ptrs_.size(), cudaMemcpyHostToDevice);
+            cudaCheckError();
+
+            // copy offset
+            cudaMalloc((void **)&offset_device,
+                    sizeof(int64_t) * offset_list_.size());
+            cudaMemcpy(offset_device, &offset_list_[0],
+                    sizeof(int64_t) * offset_list_.size(),
+                    cudaMemcpyHostToDevice);
+            cudaCheckError();
+
+            cudaMalloc((void **)&access_book_device,
+                    sizeof(int) * access_book.size());
+            cudaMemcpy(access_book_device, &access_book[0],
+                    sizeof(int) * access_book.size(),
+                    cudaMemcpyHostToDevice);
+            cudaCheckError();
+            device_pointers_map.emplace(device, std::make_tuple(buffers_device, offset_device, access_book_device));
+            iter = device_pointers_map.find(device);
+        }
+        return iter->second;
     }
 
     torch::Tensor operator[](torch::Tensor &indices)
@@ -214,32 +249,16 @@ class ShardTensor
         //    std::cout<<"offset " << offset_list_[index]<<std::endl;
         //    std::cout<<"access_book[index] " << access_book[index]<<std::endl;
         //}
-
+        
         float **buffers_device;
         int64_t *offset_device;
         int *access_book_device;
 
-        // Copy buffers Device
-        cudaMalloc((void ***)&buffers_device, sizeof(float *) * device_count_);
-        cudaMemcpy(buffers_device, &dev_ptrs_[0],
-                sizeof(float *) * dev_ptrs_.size(), cudaMemcpyHostToDevice);
-        cudaCheckError();
-
-        // copy offset
-        cudaMalloc((void **)&offset_device,
-                sizeof(int64_t) * offset_list_.size());
-        cudaMemcpy(offset_device, &offset_list_[0],
-                sizeof(int64_t) * offset_list_.size(),
-                cudaMemcpyHostToDevice);
-        cudaCheckError();
-
-        cudaMalloc((void **)&access_book_device,
-                sizeof(int) * access_book.size());
-        cudaMemcpy(access_book_device, &access_book[0],
-                sizeof(int) * access_book.size(),
-                cudaMemcpyHostToDevice);
-        cudaCheckError();
-    
+        auto val = get_device_pointers(current_device);
+        buffers_device = std::get<0>(val);
+        offset_device = std::get<1>(val);
+        access_book_device = std::get<2>(val);
+        
         int blockSize = 0;
         int numBlocks = 0;
         cudaOccupancyMaxPotentialBlockSize(&numBlocks, &blockSize,
@@ -318,6 +337,7 @@ class ShardTensor
     std::vector<int> access_book;
     std::vector<std::vector<int>> tensor_shapes_;
     std::vector<int64_t> shape_;
+    std::unordered_map<int, std::tuple<float **, int64_t*, int*>> device_pointers_map;
     int numa_broker_device;
     int device_;
     int device_count_;
@@ -326,14 +346,14 @@ class ShardTensor
 
 };
 
-void init_p2p(){
+void init_p2p(std::vector<int> devices){
     std::cout << "LOG>>> P2P Access Initilization" << std::endl;
-    int numGPUs;
-    cudaGetDeviceCount(&numGPUs);
-    for (int i = 0; i < numGPUs; i++) {
-        cudaSetDevice(i);
+    
+    for (int i = 0; i < devices.size(); i++) {
+        int src = devices[i];
+        cudaSetDevice(src);
         cudaDeviceProp prop;
-        cudaGetDeviceProperties(&prop, i);
+        cudaGetDeviceProperties(&prop, src);
 
         // CUDA IPC is only supported on devices with unified addressing
         if (!prop.unifiedAddressing) {
@@ -348,18 +368,19 @@ void init_p2p(){
             continue;
         }
         
-        for (int j = i + 1; j < numGPUs; j++) {
+        for (int j = i + 1; j < devices.size(); j++) {
+            int dst = devices[j];
             int access_i_j = 0;
             int access_j_i = 0;
-            cudaDeviceCanAccessPeer(&access_i_j, i, j);
-            cudaDeviceCanAccessPeer(&access_j_i, j, i);
+            cudaDeviceCanAccessPeer(&access_i_j, src, dst);
+            cudaDeviceCanAccessPeer(&access_j_i, dst, src);
             if (access_i_j && access_j_i) {
-                printf("Enable P2P Access Between %d <---> %d \n", i, j);
-                cudaSetDevice(i);
-                cudaDeviceEnablePeerAccess(j, 0);
+                printf("Enable P2P Access Between %d <---> %d \n", src, dst);
+                cudaSetDevice(src);
+                cudaDeviceEnablePeerAccess(dst, 0);
                 cudaCheckError();
-                cudaSetDevice(j);
-                cudaDeviceEnablePeerAccess(i, 0);
+                cudaSetDevice(dst);
+                cudaDeviceEnablePeerAccess(src, 0);
                 cudaCheckError();
             }
         }

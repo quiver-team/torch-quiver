@@ -9,11 +9,7 @@ from ogb.nodeproppred import PygNodePropPredDataset, Evaluator
 from torch_geometric.loader import NeighborSampler
 from torch_geometric.nn import SAGEConv
 
-######################
-# Import From Quiver
-######################
-import quiver
-from quiver.pyg import GraphSageSampler
+import time
 
 #root = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'products')
 root = "/home/dalong/data/products/"
@@ -26,7 +22,7 @@ train_idx = split_idx['train']
 
 train_loader = NeighborSampler(data.edge_index, node_idx=train_idx,
                                sizes=[15, 10, 5], batch_size=1024,
-                               shuffle=True, num_workers=12)
+                               shuffle=True, num_workers=12, persistent_workers=True)
 
 subgraph_loader = NeighborSampler(data.edge_index, node_idx=None, sizes=[-1],
                                   batch_size=4096, shuffle=False,
@@ -101,8 +97,6 @@ model = model.to(device)
 # Original Pyg Code
 ####################
 x = data.x.to(device)
-
-
 y = data.y.squeeze().to(device)
 
 
@@ -176,8 +170,9 @@ for run in range(1, 11):
 
     best_val_acc = final_test_acc = 0
     for epoch in range(1, 21):
+        epoch_start = time.time()
         loss, acc = train(epoch)
-        print(f'Epoch {epoch:02d}, Loss: {loss:.4f}, Approx. Train: {acc:.4f}')
+        print(f'Epoch {epoch:02d}, Loss: {loss:.4f}, Approx. Train: {acc:.4f}, Epoch Time: {time.time() - epoch_start}')
 
         if epoch > 5:
             train_acc, val_acc, test_acc = test()

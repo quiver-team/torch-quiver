@@ -112,14 +112,11 @@ class SAGE(torch.nn.Module):
         return x_all
 
 
-def run(rank, world_size, csr_topo, quiver_feature, y, train_idx, num_features, num_classes):
+def run(rank, world_size, quiver_sampler, quiver_feature, y, train_idx, num_features, num_classes):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
     dist.init_process_group('nccl', rank=rank, world_size=world_size)
-    device = rank
-    torch.cuda.set_device(device)
-
-    quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], device, mode="UVA")
+    torch.cuda.set_device(rank)
 
     train_idx = train_idx.split(train_idx.size(0) // world_size)[rank]
 
@@ -127,53 +124,39 @@ def run(rank, world_size, csr_topo, quiver_feature, y, train_idx, num_features, 
 
     train_loader = torch.utils.data.DataLoader(train_idx, batch_size=1024, pin_memory=True, shuffle=True)
 
-    model = SAGE(num_features, 256, num_classes, num_layers=3).to(device)
-    model = DistributedDataParallel(model, device_ids=[device])
+    model = SAGE(num_features, 256, num_classes, num_layers=3).to(rank)
+    model = DistributedDataParallel(model, device_ids=[rank])
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
-    y = y.to(device)
+    y = y.to(rank)
 
     for epoch in range(1, 21):
         model.train()
 
         epoch_start = time.time()
         step = 0
-        iter_tput = []
-        sample_time = []
-        feature_time = []
-        train_time = []
-        tic = time.time()
+        iter_times = []
         for seeds in train_loader:
-            tic_step = time.time()
-            beg = time.time()
+            iter_start = time.time()
             n_id, batch_size, adjs = quiver_sampler.sample(seeds)
-            adjs = [adj.to(device) for adj in adjs]
-            torch.cuda.synchronize()
-            sample_time.append(time.time() - beg)
-            beg = time.time()
+            adjs = [adj.to(rank) for adj in adjs]
             feat = quiver_feature[n_id]
-            torch.cuda.synchronize()
-            feature_time.append(time.time() - beg)
-            beg = time.time()
+           
             optimizer.zero_grad()
             out = model(feat, adjs)
             loss = F.nll_loss(out, y[n_id[:batch_size]])
             loss.backward()
             optimizer.step()
-            torch.cuda.synchronize()
-            train_time.append(time.time() - beg)
-            step += 1
-            iter_tput.append(len(seeds) / (time.time() - tic_step))
-            if step % 20 == 10 and rank == 0:
-                print(f'throughput {np.mean(iter_tput[-10:])}')
-                print(f'sample {np.mean(sample_time[-10:])}')
-                print(f'feature {np.mean(feature_time[-10:])}')
-                print(f'train {np.mean(train_time[-10:])}')
+            iter_times.append(time.time() - iter_start)
 
         dist.barrier()
 
+        iter_times = sorted(iter_times)
+        
+
         if rank == 0:
-            print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}, Epoch Time: {time.time() - epoch_start}')
+            # remove 10% minium values and 10% maximum values
+            print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}, Epoch Time: {np.mean(iter_times[int(0.1 * len(iter_times)): -int(0.1 * len(iter_times))]) * len(train_loader)}')
 
         # if rank == 0 and epoch % 5 == 0:  # We evaluate on a single GPU for now
         #     model.eval()
@@ -192,7 +175,7 @@ def run(rank, world_size, csr_topo, quiver_feature, y, train_idx, num_features, 
 
 if __name__ == '__main__':
     root = "/data/papers/"
-    # world_size = torch.cuda.device_count()
+    world_size = torch.cuda.device_count()
     world_size = 2
     dataset = Paper100MDataset(root, 0.33 * min(world_size, 2))
     
@@ -200,8 +183,9 @@ if __name__ == '__main__':
     # Create Sampler And Feature
     ##############################
     csr_topo = quiver.CSRTopo(indptr=dataset.indptr, indices=dataset.indices)
-    new_order = dataset.new_order
-    quiver_feature = quiver.Feature(rank=0, device_list=list(range(world_size)), device_cache_size="18G", cache_policy="numa_replicate", feature_order=new_order)
+    csr_topo.feature_order = dataset.new_order
+    quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], 0, mode="UVA")
+    quiver_feature = quiver.Feature(rank=0, device_list=list(range(world_size)), device_cache_size="8G", cache_policy="p2p_clique_replicate", csr_topo=csr_topo)
     quiver_feature.from_cpu_tensor(dataset.feature)
     l = list(range(world_size))
     qv.init_p2p(l)
@@ -210,7 +194,7 @@ if __name__ == '__main__':
     print('Let\'s use', world_size, 'GPUs!')
     mp.spawn(
         run,
-        args=(world_size, csr_topo, quiver_feature, dataset.label, dataset.train_idx, 128, 172),
+        args=(world_size, quiver_sampler, quiver_feature, dataset.label, dataset.train_idx, 128, 172),
         nprocs=world_size,
         join=True
     )

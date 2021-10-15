@@ -7,17 +7,15 @@ import os.path as osp
 
 import quiver
 
-print("\n\nNOTE: We Use Sampled Edges Per Second(SEPS) = #SampledEdges/Time as metric to evaluate sampler performance\n\n")
-
 def bench_on_ogbproduct():
     print("=" * 20  + "OGBn-Product" + "=" * 20)
-    root = "/home/dalong/data/products"
+    root = "/home/dalong/products"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     train_idx = dataset.get_idx_split()["train"]
     train_loader = torch.utils.data.DataLoader(train_idx, batch_size=1024, pin_memory=True, shuffle=True)
     csr_topo = quiver.CSRTopo(dataset[0].edge_index)
     quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], device=0, mode="UVA")
-    quiver_feature = quiver.Feature(rank=0, device_list=[0], device_cache_size="200M")
+    quiver_feature = quiver.Feature(rank=0, device_list=[0, 1], device_cache_size="200M", cache_policy="p2p_clique_replicate", csr_topo=csr_topo)
     feature = torch.zeros(dataset[0].x.shape)
     feature[:] = dataset[0].x
     quiver_feature.from_cpu_tensor(feature)
@@ -43,7 +41,7 @@ def bench_on_reddit():
     train_loader = torch.utils.data.DataLoader(train_idx, batch_size=1024, pin_memory=True, shuffle=True)
     csr_topo = quiver.CSRTopo(dataset[0].edge_index)
     quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [25, 10], device=0, mode="UVA")
-    quiver_feature = quiver.Feature(rank=0, device_list=[0], device_cache_size="110M", csr_topo=None)
+    quiver_feature = quiver.Feature(rank=0, device_list=[0, 1], device_cache_size="110M", cache_policy="p2p_clique_replicate", csr_topo=csr_topo)
     quiver_feature.from_cpu_tensor(dataset[0].x)
     accessed_feature_size = 0
     feature_time = 0
@@ -64,6 +62,7 @@ def bench_on_paper100M():
     
 
 if __name__ == "__main__":
-    bench_on_reddit()
+    quiver.init_p2p([0, 1])
+    #bench_on_reddit()
     bench_on_ogbproduct()
     #bench_on_paper100M()

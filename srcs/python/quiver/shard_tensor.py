@@ -186,18 +186,10 @@ class ShardTensor:
 
         wait_results = []
 
-        if (len(inter_clique_devices) > 0):
-            inter_device = inter_clique_devices[0]
-            if self.shard_tensor_config.tensor_offset_device.get(
-                    inter_device, None) is not None:
+        for inter_device in inter_clique_devices:
+            if self.shard_tensor_config.tensor_offset_device.get(inter_device, None) is not None:
                 self.collect_device(input_orders, nodes, inter_device, wait_results)
-
-        if (len(inter_clique_devices) > 1):
-            inter_device = inter_clique_devices[1]
-            if self.shard_tensor_config.tensor_offset_device.get(
-                    inter_device, None) is not None:
-                self.collect_device(input_orders, nodes, inter_device, wait_results)
-
+                
         for result in wait_results:
             feature[result[0]] = result[1]
 

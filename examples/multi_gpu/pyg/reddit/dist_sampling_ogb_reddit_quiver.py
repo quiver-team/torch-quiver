@@ -136,7 +136,7 @@ if __name__ == '__main__':
     ##############################
     quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [25, 10], 0)
 
-    quiver_feature = quiver.Feature(rank=0, device_list=list(range(world_size)), device_cache_size="200M", cache_policy="device_replicate", reorder=csr_topo)
+    quiver_feature = quiver.Feature(rank=0, device_list=list(range(world_size)), device_cache_size="200M", cache_policy="device_replicate", csr_topo=csr_topo)
     quiver_feature.from_cpu_tensor(data.x)
 
     print('Let\'s use', world_size, 'GPUs!')

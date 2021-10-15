@@ -115,7 +115,7 @@ model = model.to(device)
 ####################
 # x = data.x.to(device)
 
-x = quiver.Feature(rank=0, device_list=[0], device_cache_size="200M", cache_policy="device_replicate", reorder=None)
+x = quiver.Feature(rank=0, device_list=[0], device_cache_size="200M", cache_policy="device_replicate", csr_topo=csr_topo)
 feature = torch.zeros(data.x.shape)
 feature[:] = data.x
 x.from_cpu_tensor(feature)

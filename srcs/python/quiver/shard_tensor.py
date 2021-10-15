@@ -83,11 +83,8 @@ class ShardTensor:
         self.topo = None
         self.current_clique = None
 
-        self.device_stream = {}
-
         # cpu part
         self.cpu_tensor = None
-        self.current_stream = torch.cuda.Stream(self.current_device)
 
     def init_topo(self):
         if self.current_clique is not None:
@@ -162,72 +159,48 @@ class ShardTensor:
             )
             del tensor
 
-    def collect_device(self, input_orders, nodes, inter_device, wait_streams,
-                       wait_results):
-        with torch.cuda.stream(self.current_stream):
-            request_nodes_mask = (nodes >= self.shard_tensor_config.
-                                  tensor_offset_device[inter_device].start) & (
-                                      nodes < self.shard_tensor_config.
-                                      tensor_offset_device[inter_device].end)
-            request_nodes = torch.masked_select(nodes, request_nodes_mask)
-            part_orders = torch.masked_select(input_orders, request_nodes_mask)
-            request_nodes = request_nodes.to(inter_device)
-        self.current_stream.synchronize()
+    def collect_device(self, input_orders, nodes, inter_device, wait_results):
+
+        request_nodes_mask = (nodes >= self.shard_tensor_config.tensor_offset_device[inter_device].start) & (
+                                    nodes < self.shard_tensor_config.tensor_offset_device[inter_device].end)
+        request_nodes = torch.masked_select(nodes, request_nodes_mask)
+        part_orders = torch.masked_select(input_orders, request_nodes_mask)
+        request_nodes = request_nodes.to(inter_device)
 
         with torch.cuda.device(inter_device):
-            if self.device_stream.get(inter_device, None) is None:
-                self.device_stream[inter_device] = torch.cuda.Stream(
-                    inter_device)
-            with torch.cuda.stream(self.device_stream[inter_device]):
-                result = self.shard_tensor[request_nodes]
-                result = result.to(self.current_device, non_blocking=True)
-
-        wait_streams.append(self.device_stream[inter_device])
+            result = self.shard_tensor[request_nodes]
+        result = result.to(self.current_device)
         wait_results.append((part_orders, result))
 
     def __getitem__(self, nodes):
 
         self.init_topo()
+        nodes = nodes.to(self.current_device)
 
-        if self.device_stream.get(self.current_device, None) is None:
-            self.device_stream[self.current_device] = torch.cuda.Stream(
-                self.current_device)
+        feature = self.shard_tensor[nodes]
 
-        with torch.cuda.stream(self.device_stream[self.current_device]):
-            feature = self.shard_tensor[nodes]
-
-        with torch.cuda.stream(self.current_stream):
-            input_orders = torch.arange(nodes.size(0),
-                                        dtype=torch.long,
-                                        device=self.current_device)
+        input_orders = torch.arange(nodes.size(0), dtype=torch.long, device=self.current_device)
 
         # call inter request, we unfold for loop
         inter_clique_devices = self.topo.p2pClique2Device.get(1 - self.current_clique, [])
 
-        wait_streams = []
         wait_results = []
 
         if (len(inter_clique_devices) > 0):
             inter_device = inter_clique_devices[0]
-            self.current_stream.synchronize()
             if self.shard_tensor_config.tensor_offset_device.get(
                     inter_device, None) is not None:
-                self.collect_device(input_orders, nodes, inter_device,
-                                    wait_streams, wait_results)
+                self.collect_device(input_orders, nodes, inter_device, wait_results)
 
         if (len(inter_clique_devices) > 1):
             inter_device = inter_clique_devices[1]
-            self.current_stream.synchronize()
             if self.shard_tensor_config.tensor_offset_device.get(
                     inter_device, None) is not None:
-                self.collect_device(input_orders, nodes, inter_device,
-                                    wait_streams, wait_results)
+                self.collect_device(input_orders, nodes, inter_device, wait_results)
 
-        for stream, result in zip(wait_streams, wait_results):
-            stream.synchronize()
+        for result in wait_results:
             feature[result[0]] = result[1]
 
-        self.device_stream[self.current_device].synchronize()
         return feature
 
     @property
@@ -259,9 +232,6 @@ class ShardTensor:
         shard_tensor = cls(current_device, shard_tensor_config)
         shard_tensor.from_ipc_handle(gpu_part_ipc_list, cpu_tensor)
         return shard_tensor
-
-    def delete(self):
-        self.shard_tensor.unregister(self.cpu_tensor)
     
     def size(self, dim):
         return self.shard_tensor.size(dim)

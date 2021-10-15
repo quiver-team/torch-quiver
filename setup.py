@@ -28,7 +28,6 @@ def create_extension(with_cuda=False):
     libraries = []
     extra_cxx_flags = [
         '-std=c++17',
-        '-lnuma'
         # TODO: enforce strict build
         # '-Wall',
         # '-Werror',
@@ -67,7 +66,14 @@ package_dir = './srcs/python'
 
 setup(
     name='torch_quiver',
-    version='0.0.0',
+    version='0.0.1',
+    author='Zeyuan Tan',
+    author_email='zeyuan.tan@ed.ac.uk',
+    url='https://github.com/xpex-ai/gpex',
+    description=('Distributed Graph Learning Library for Pytorch Geometric'),
+    keywords=['pytorch', 'distributed', 'graph'],
+    license='Apache',
+    python_requires='>=3.6',
     package_dir={
         '': package_dir,
     },

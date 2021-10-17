@@ -114,6 +114,7 @@ Gpex提供了高吞吐的`quiver.Feature`用于进行特征聚合。`quiver.Feat
 ![device_replicate](multi_medias/imgs/device_replicate.png)
 
 **p2p_clique_replicate**
+
 考虑到当有NVLink的情况下，基于GPU之间P2P技术的特征聚合相比较从CPU内存中进行特征聚合的带宽更高，于是多卡训练时，处在同一个`p2p_clique`之内的GPU(即两两互相NVLink链接)共享缓存热数据。即如果每个GPU能缓存20%数据，一个大小为4的`p2p_clique`可以缓存80%的数据，同时所有处在`p2p_clique`内的GPU共享访问这些热数据。这样的策略下我们不仅在更多卡加入时能提供更大的缓存，同时由于这部分数据的访问贷款更高，我们便可以实现**特征聚合的多卡超线性加速**，即当有两个GPU加入时，两个GPU的特征聚合吞吐总速度大于一个只有一个GPU时的特征聚合吞吐速度。
 
 | Dataset | Device Num | Total Throughput(GB/s) |Speedup Over Single Device|
@@ -136,12 +137,45 @@ quiver_feature.from_cpu_tensor(dataset[0].x)
 Gpex为用户提供了高性能的GNN训练核心组件，用户可以自由和CPU采样/CPU特征聚合方式进行组合使用。接下来我们介绍使用Gpex可以达到的优异的单卡性能以及多卡扩展性。
 
 ### 3.1 cache_policy = device_replicate
-我们以`ogbn-product`为例子进行benchmark实验验证
+
+我们以`ogbn-product`为例子进行benchmark实验验证, 我们首先对比Gpex和使用CPU来进行特征聚合和采样的Pyg性能。实验中每个训练进程中的采样并行度为5。
+
+| Device Num | Pyg's Epoch Time | Pyg's  Scalability |Gpex's Epoch Time | Gpex's  Scalability|Gpex Over Pyg|
+| ------ | ------ | ------ |------|------|------|
+| 1 | 36.5 |  1.0|11.1|1.0|3.23|
+| 2| 30 | 1.22 |5.8|1.91|5.17|
+| 3 | 27.7 | 1.32|4.7|2.71|6.75|
+| 4 | 28.2|  1.28|3.25|3.42|8.68|
+
+即使是在Pyg将所有数据均放在GPU中并使用GPU进行特征聚合，Quiver仍然能在4卡训练时有比Pyg大约3倍的加速。
+
+| Device Num | Pyg's Epoch Time | Pyg's  Scalability |Gpex Over Pyg|
+| ------ | ------ | ------ |------|
+| 1 | 23.3 |  1.0|2.1|
+| 2| 14.7 | 1.59 |2.53|
+| 3 | 11.4 | 2.04|2.78|
+| 4 | 9.5|  2.45|2.92|
+
+我们发现Gpex拥有更好的性能的同时，多卡训练的扩展性上表现也更为优秀。
 
 ### 3.2 cache_policy = p2p_clique_replicate
 
+当我们在带有NVLink的机器上训练`ogb-product`数据以及`reddit`数据，两卡训练的加速比分别为2.25和2.75(batch_size=2048), 这是由于两卡训练时，采样和GPU模型计算部分性能为线性扩展，而特征聚合却为超线性扩展，故而带来了训练端到端性能的超线性扩展。
 
 
+## 四、未来展望
+本次我们只是开源了Gpex的单机版本。在未来我们将继续开源如下特性，敬请期待！：
+
+1. **基于CPU、GPU混合计算的采样和特征聚合**：目前我们的所有采样和特征获取均为GPU执行，而单机上的CPU所具备的强大算力同样不可忽视。未来我们将研究并开源`mode=MIXED`的模式下，借助CPU和GPU并行采样和特征聚合的加速。
+2. **分布式Gpex**：接下来我们将进一步研究并开源分布式版本的Gpex以帮助用户高效训练超大规模的图。
+
+
+
+## 四、总结
+
+路漫漫其修远兮，吾将上下而求索。**xpex-ai**社区致力于研究自适应，可扩展的AI系统，本次我们开源的Gpex致力于通过充分挖掘硬件性能来帮助用户更快速，更具有扩展性的训练GNN模型。Gpex还处在积极的开发中，我们也希望志同道合的朋友们能参与共建Gpex，一起向整个GNN社区提供更快的训练、推理系统。
+
+![logo](./multi_medias/imgs/logo.png)
 
 
 

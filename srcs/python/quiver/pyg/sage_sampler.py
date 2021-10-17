@@ -2,12 +2,12 @@ import torch
 from torch import Tensor
 from torch_sparse import SparseTensor
 import torch_quiver as qv
-from typing import List, Optional, Tuple, NamedTuple, Union, Callable
+from typing import List, Tuple, NamedTuple
 
 from .. import utils as quiver_utils
 
 
-__all__ = ["GraphSageSampler", "GraphStructure"]
+__all__ = ["GraphSageSampler"]
 
 
 class Adj(NamedTuple):
@@ -27,15 +27,13 @@ class GraphSageSampler:
     training is not feasible.
 
     Args:
-        csr_topo (quiver_utils.CSRTopo): A quiver_utils.CSRTopo
+        csr_topo (quiver.CSRTopo): A quiver.CSRTopo for graph topology
         sizes ([int]): The number of neighbors to sample for each node in each
-            layer. If set to :obj:`sizes[l] = -1`, all neighbors are included
-            in layer :obj:`l`.
+            layer. If set to `sizes[l] = -1`, all neighbors are included
+            in layer `l`.
         device (int): Device which sample kernel will be launched
         num_nodes (int, optional): The number of nodes in the graph.
-            (default: :obj:`None`)
-        mode (str): Sample mode, choices are [UVA, GPU].
-            (default: :obj: `UVA`)
+        mode (str): Sample mode, choices are [`UVA`, `GPU`], default is `UVA`.
     """
 
     def __init__(self, csr_topo: quiver_utils.CSRTopo, sizes: List[int], device, mode="UVA"):
@@ -75,6 +73,14 @@ class GraphSageSampler:
         return qv.reindex_single(inputs, outputs, counts)
 
     def sample(self, input_nodes):
+        """Sample k-hop neighbors from input_nodes
+
+        Args:
+            input_nodes (torch.LongTensor): seed nodes ids to sample from
+
+        Returns:
+            Tuple: Return results are the same with Pyg's sampler
+        """
         self.lazy_init_quiver()
         nodes = input_nodes.to(self.device)
         adjs = []
@@ -97,9 +103,22 @@ class GraphSageSampler:
         return nodes, batch_size, adjs[::-1]
 
     def share_ipc(self):
+        """Create ipc handle for multiprocessing
+
+        Returns:
+            tuple: ipc handle tuple
+        """
         return self.csr_topo, self.sizes, self.mode
     
     @classmethod
     def lazy_from_ipc_handle(cls, ipc_handle):
+        """Create from ipc handle
+
+        Args:
+            ipc_handle (tuple): ipc handle got from calling `share_ipc`
+
+        Returns:
+            quiver.pyg.GraphSageSampler: Sampler created from ipc handle
+        """
         csr_topo, sizes, mode = ipc_handle
         return cls(csr_topo, sizes, -1, mode)

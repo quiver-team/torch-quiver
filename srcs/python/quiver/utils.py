@@ -2,7 +2,6 @@ from scipy.sparse import csr_matrix
 import numpy as np
 import torch
 import torch_quiver as torch_qv
-import copy
 from typing import List
 
 def find_cliques(adj_mat, clique_res, remaining_nodes, potential_clique, skip_nodes):
@@ -44,6 +43,12 @@ def color_mat(access_book, device_list):
 
 
 class Topo:
+    """P2P access topology for devices
+    
+
+    Args:
+        device_list ([int]): device list for detecting p2p access topology
+    """
     def __init__(self, device_list: List[int]) -> None:
         access_book = torch.zeros((len(device_list), len(device_list)))
         for src_index, src_device in enumerate(device_list):
@@ -54,9 +59,22 @@ class Topo:
         self.Device2p2pClique, self.p2pClique2Device = color_mat(access_book, device_list)
 
     def get_clique_id(self, device_id: int):
+        """Get clique id for device with device_id 
+
+        Args:
+            device_id (int): device id of the device
+
+        Returns:
+            int: clique_id of the device
+        """
         return self.Device2p2pClique[device_id]
 
     def info(self):
+        """Get string description for p2p access topology
+
+        Returns:
+            str: p2p access topology for devices in device list
+        """
         str = ""
         for clique_idx in self.p2pClique2Device:
             str += f"Devices {self.p2pClique2Device[clique_idx]} support p2p access with each other\n"
@@ -64,6 +82,11 @@ class Topo:
     
     @property
     def p2p_clique(self):
+        """get all p2p_cliques constructed from devices in device_list
+
+        Returns:
+            Dict : p2p_cliques
+        """
         return self.p2pClique2Device
     
 
@@ -171,4 +194,9 @@ def reindex_feature(graph: CSRTopo, feature, ratio):
 
 
 def init_p2p(device_list: List[int]):
+    """Try to enable p2p acess between devices in device_list
+
+    Args:
+        device_list (List[int]): device list
+    """
     torch_qv.init_p2p(device_list)

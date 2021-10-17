@@ -1,9 +1,4 @@
 import torch
-import torch_quiver as torch_qv
-import random
-import numpy as np
-import time
-from typing import List
 from quiver.shard_tensor import ShardTensor, ShardTensorConfig, Topo
 from quiver.utils import reindex_feature
 

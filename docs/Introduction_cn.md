@@ -115,7 +115,11 @@ Gpex提供了高吞吐的`quiver.Feature`用于进行特征聚合。`quiver.Feat
 
 **p2p_clique_replicate**
 
-考虑到当有NVLink的情况下，基于GPU之间P2P技术的特征聚合相比较从CPU内存中进行特征聚合的带宽更高，于是多卡训练时，处在同一个`p2p_clique`之内的GPU(即两两互相NVLink链接)共享缓存热数据。即如果每个GPU能缓存20%数据，一个大小为4的`p2p_clique`可以缓存80%的数据，同时所有处在`p2p_clique`内的GPU共享访问这些热数据。这样的策略下我们不仅在更多卡加入时能提供更大的缓存，同时由于这部分数据的访问贷款更高，我们便可以实现**特征聚合的多卡超线性加速**，即当有两个GPU加入时，两个GPU的特征聚合吞吐总速度大于一个只有一个GPU时的特征聚合吞吐速度。
+考虑到当有NVLink的情况下，基于GPU之间P2P技术的特征聚合相比较从CPU内存中进行特征聚合的带宽更高，于是多卡训练时，处在同一个`p2p_clique`之内的GPU(即两两互相NVLink链接)共享缓存热数据。即如果每个GPU能缓存20%数据，一个大小为4的`p2p_clique`可以缓存80%的数据，同时所有处在`p2p_clique`内的GPU共享访问这些热数据。
+
+![p2p_clique_replicate](./multi_medias/imgs/p2p_clique_replicate.png)
+
+这样的策略下我们不仅在更多卡加入时能提供更大的缓存，同时由于这部分数据的访问贷款更高，我们便可以实现**特征聚合的多卡超线性加速**，即当有两个GPU加入时，两个GPU的特征聚合吞吐总速度大于一个只有一个GPU时的特征聚合吞吐速度。
 
 | Dataset | Device Num | Total Throughput(GB/s) |Speedup Over Single Device|
 | ------ | ------ | ------ |------|
@@ -125,6 +129,7 @@ Gpex提供了高吞吐的`quiver.Feature`用于进行特征聚合。`quiver.Feat
 | reddit | 2|  |3.91|88.34|4.13|
 
 特征聚合的超线性加速意味着我们在多卡训练时也有可能达到训练速度的多卡超线性加速。
+
 
 ``` python
 # set cache_policy="device_replicate" if you dont have NVLink

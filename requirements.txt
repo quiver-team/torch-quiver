@@ -2,4 +2,5 @@ ogb==1.2.3
 torch-scatter==2.0.5
 torch-sparse==0.6.7
 torch-geometric==1.6.1
-py-libnuma
+mkdocs-material
+mkdocstrings

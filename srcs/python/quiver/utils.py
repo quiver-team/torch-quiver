@@ -44,7 +44,6 @@ def color_mat(access_book, device_list):
 
 
 class Topo:
-
     def __init__(self, device_list: List[int]) -> None:
         access_book = torch.zeros((len(device_list), len(device_list)))
         for src_index, src_device in enumerate(device_list):
@@ -78,6 +77,13 @@ def get_csr_from_coo(edge_index):
     return csr_mat
 
 class CSRTopo:
+    """Graph topology in CSR format
+    Args:
+        edge_index ([torch.LongTensor], optinal): edge_index tensor for graph topo
+        indptr (torch.LongTensor, optinal): indptr for CSR format graph topo
+        indices (torch.LongTensor, optinal): indices for CSR format graph topo
+
+    """
     def __init__(self, edge_index=None, indptr=None, indices=None, eid=None):
         if edge_index is not None:
             csr_mat = get_csr_from_coo(edge_index)
@@ -87,7 +93,7 @@ class CSRTopo:
             if isinstance(indptr, torch.Tensor):
                 self.indptr_ = indptr.type(torch.long)
                 self.indices_ = indices.type(torch.long)
-            elif ininstance(indptr, np.ndarray):
+            elif isinstance(indptr, np.ndarray):
                 self.indptr_ = torch.from_numpy(indptr).type(torch.long)
                 self.indices_ = torch.from_numpy(indices).type(torch.long)
         self.eid_ = eid
@@ -95,10 +101,20 @@ class CSRTopo:
     
     @property
     def indptr(self):
+        """Get indptr
+
+        Returns:
+            torch.LongTensor: indptr 
+        """
         return self.indptr_
     
     @property
     def indices(self):
+        """Get indices
+
+        Returns:
+            torch.LongTensor: indices
+        """
         return self.indices_
     
     @property
@@ -107,14 +123,29 @@ class CSRTopo:
     
     @property
     def feature_order(self):
+        """Get feature order for this graph
+
+        Returns:
+            torch.LongTensor: feature order 
+        """
         return self.feature_order_
     
     @feature_order.setter
     def feature_order(self, feature_order):
+        """Set feature order
+
+        Args:
+            feature_order (torch.LongTensor): set feature order
+        """
         self.feature_order_ =  feature_order
     
     @property
     def degree(self):
+        """Get degree of each node in this graph
+
+        Returns:
+            [torch.LongTensor]: degree tensor for each node
+        """
         return self.indptr[1:] - self.indptr[:-1]
 
 

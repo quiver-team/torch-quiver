@@ -10,7 +10,7 @@
 
 一般情况下，我们选择使用CPU进行图采样和特征聚合，这种方案不仅会带来单卡训练的性能问题，同时由于采样与特征聚合均为CPU密集型操作，多卡训练时会**由于CPU计算资源的瓶颈导致训练扩展性不理想**。我们以`ogbn-product`数据集为例benchmark `Pyg`和`DGL`两个框架使用CPU采样和特征聚合时的多卡训练扩展性结果如下：
 
-`说明`: 测试代码见[这里](examples/multi_gpu/pyg/ogb-products/dist_sampling_ogb_products_pyg.py)
+`说明`: 测试代码见[这里](../examples/multi_gpu/pyg/ogb-products/dist_sampling_ogb_products_pyg.py)
 
 | Framework | Device Num | Epoch Time(s) |Scalability|
 | ------ | ------ | ------ |------|
@@ -33,7 +33,7 @@
 当前的开源系统中已经支持CPU采样和GPU采样，其中GPU采样需要将整个图存储到GPU显存中。CPU采样往往受困于采样性能以及训练扩展性，而GPU采样因为显存大小的限制，使得能够处理的图的尺寸往往有限。
 
 ### 2.2 Quiver方案
-`说明`: 测试代码见[这里](benchmarks/sample/bench_sampler.py)
+`说明`: 测试代码见[这里](../benchmarks/sample/bench_sampler.py)
 
 Quiver中向用户提供**UVA-Based**（Unified Virtual Addressing Based）图采样算子，支持用户在图拓扑数据较大时选择将图存储在CPU内存中的同时使用GPU进行采样。这样我们不仅获得了远高于CPU采样的性能收益，同时能够处理的图的大小从GPU显存大小限制扩展到了CPU内存大小(一般远远大于GPU显存)。我们在`ogbn-products`和`reddit`上的两个数据集上进行采样性能测试显示，UVA-Based的采样性能远远高于CPU采样性能(CPU采样使用Pyg的采样实现为基线)，我们衡量采样性能的指标为单位时间内的采样边数(**S**ampled **E**dges **P**er **S**econd, **SEPS**)。**我们可以看到在同样不需要存储图在GPU显存中的情况下，Quiver的采样在真实数据集上提供大约20倍的性能加速**。
 
@@ -61,7 +61,7 @@ Quiver中向用户提供**UVA-Based**（Unified Virtual Addressing Based）图�
 
 
 ## 三、图特征聚合（Feature Collection）
-`说明`: 测试代码见[这里](benchmarks/feature/bench_feature.py)
+`说明`: 测试代码见[这里](../benchmarks/feature/bench_feature.py)
 
 ### 3.1 当前已有方案
 由于GNN训练时一个batch的特征数据往往有数百MB甚至几个GB，这些特征数据任何一次在CPU内存中的搬运，以及CPU到GPU之间的数据搬运都有着较大的耗时。图特征聚合优化的核心在于优化端到端的吞吐，即从特征获取到传输到GPU过程的吞吐。现有的方案一般分为两种:

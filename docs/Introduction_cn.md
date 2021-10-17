@@ -1,7 +1,7 @@
-# Gpex
+# Quiver
 
 ## 一、整体介绍
-所有研究图机器学习系统的团队都知道基于采样的图模型训练性能瓶颈在图采样和特征聚合上，但两个瓶颈背后的本质到底是什么？Gpex核心观点是：
+所有研究图机器学习系统的团队都知道基于采样的图模型训练性能瓶颈在图采样和特征聚合上，但两个瓶颈背后的本质到底是什么？Quiver核心观点是：
 - 图采样是一个**latency critical problem**，高性能的采样核心在于通过大量并行掩盖访问延迟。
 - 特征聚合是一个**bandwidth critical problem**，高性能的特征聚合在于优化聚合带宽。
 
@@ -25,17 +25,17 @@
 
 
 
-我们本次开源的单机版本的Gpex是一个即插即用并且充分压榨硬件潜力的高性能GNN训练组件，用户可使用Gpex在单机上训练GNN时拥有**更好的性能**，并且拥有**更好的多卡扩展性**，甚至在拥有NVLink的情况下，获得**多卡超线性加速收益**。接下来我们分别介绍我们在图采样和特征聚合性能优化上的工作与经验。
+我们本次开源的单机版本的Quiver是一个即插即用并且充分压榨硬件潜力的高性能GNN训练组件，用户可使用Quiver在单机上训练GNN时拥有**更好的性能**，并且拥有**更好的多卡扩展性**，甚至在拥有NVLink的情况下，获得**多卡超线性加速收益**。接下来我们分别介绍我们在图采样和特征聚合性能优化上的工作与经验。
 
 ## 二、图采样
 
 ### 2.1 当前已有方案
 当前的开源系统中已经支持CPU采样和GPU采样，其中GPU采样需要将整个图存储到GPU显存中。CPU采样往往受困于采样性能以及训练扩展性，而GPU采样因为显存大小的限制，使得能够处理的图的尺寸往往有限。
 
-### 2.2 Gpex方案
+### 2.2 Quiver方案
 `说明`: 测试代码见[这里](benchmarks/sample/bench_sampler.py)
 
-Gpex中向用户提供**UVA-Based**（Unified Virtual Addressing Based）图采样算子，支持用户在图拓扑数据较大时选择将图存储在CPU内存中的同时使用GPU进行采样。这样我们不仅获得了远高于CPU采样的性能收益，同时能够处理的图的大小从GPU显存大小限制扩展到了CPU内存大小(一般远远大于GPU显存)。我们在`ogbn-products`和`reddit`上的两个数据集上进行采样性能测试显示，UVA-Based的采样性能远远高于CPU采样性能(CPU采样使用Pyg的采样实现为基线)，我们衡量采样性能的指标为单位时间内的采样边数(**S**ampled **E**dges **P**er **S**econd, **SEPS**)。**我们可以看到在同样不需要存储图在GPU显存中的情况下，Gpex的采样在真实数据集上提供大约20倍的性能加速**。
+Quiver中向用户提供**UVA-Based**（Unified Virtual Addressing Based）图采样算子，支持用户在图拓扑数据较大时选择将图存储在CPU内存中的同时使用GPU进行采样。这样我们不仅获得了远高于CPU采样的性能收益，同时能够处理的图的大小从GPU显存大小限制扩展到了CPU内存大小(一般远远大于GPU显存)。我们在`ogbn-products`和`reddit`上的两个数据集上进行采样性能测试显示，UVA-Based的采样性能远远高于CPU采样性能(CPU采样使用Pyg的采样实现为基线)，我们衡量采样性能的指标为单位时间内的采样边数(**S**ampled **E**dges **P**er **S**econd, **SEPS**)。**我们可以看到在同样不需要存储图在GPU显存中的情况下，Quiver的采样在真实数据集上提供大约20倍的性能加速**。
 
 | Dataset | Parameter | Sampler |SEPS|Speedup Over CPU|
 | ------ | ------ | ------ |------|------|
@@ -44,7 +44,7 @@ Gpex中向用户提供**UVA-Based**（Unified Virtual Addressing Based）图采�
 | reddit | [25, 10] | CPU |2 M|1.0|
 | reddit | [25, 10] | UVA(`on host memory`) |33.15 M|16.575|
 
-同时，Gpex的采样算子不仅可以工作在UVA模式下，当用户的GPU足够放下整个图的拓扑数据时，可通过设置采样参数`mode='GPU'`选择将图放置在GPU上以获得更高的性能。从我们过往的实验中发现，设置`mode='GPU'`, 相比较UVA模式能够带来30%-40%的性能提升。
+同时，Quiver的采样算子不仅可以工作在UVA模式下，当用户的GPU足够放下整个图的拓扑数据时，可通过设置采样参数`mode='GPU'`选择将图放置在GPU上以获得更高的性能。从我们过往的实验中发现，设置`mode='GPU'`, 相比较UVA模式能够带来30%-40%的性能提升。
 
 ![uva-sampler](./multi_medias/imgs/UVA-Sampler.png)
 
@@ -71,9 +71,9 @@ Gpex中向用户提供**UVA-Based**（Unified Virtual Addressing Based）图采�
 
 同样，基于CPU的方案1面临着吞吐性能的问题，同时CPU的Feature Collection本身为CPU密集型操作，同样面临着多卡训练时由于对CPU资源的竞争导致特征聚合的多卡扩展性较差。而基于GPU存储的方案2也同样面临着处理的图特征受限于GPU显存大小。
 
-### 3.2 Gpex方案
+### 3.2 Quiver方案
 
-Gpex提供了高吞吐的`quiver.Feature`用于进行特征聚合。`quiver.Feature`的实现主要基于如下两个观察：
+Quiver提供了高吞吐的`quiver.Feature`用于进行特征聚合。`quiver.Feature`的实现主要基于如下两个观察：
 
 1. 真实图往往具有幂律分布特性，少部分节点占据了整图大部分的连接数，而大部分基于图拓扑进行采样的算法，最终一个Epoch中每个节点被采样到的概率与该节点的连接数成正相关。我们在下面的表格中展示两个数据集中节点度高于整个图的平均节点度的点的数目，以及这些点的连接数占整个全图的连接数的比值。我们发现训练中少部分节点的特征将被高频访问。
 
@@ -85,7 +85,7 @@ Gpex提供了高吞吐的`quiver.Feature`用于进行特征聚合。`quiver.Feat
 
 2. 一个AI Server中的各种访问传输带宽大小关系如下 GPU Global Memory > GPU P2P With NVLink > Pinned Memory > Pageble Memory。
 
-考虑到上述的访问带宽层级关系以及图节点的访问不均匀性质，Gpex中的`quiver.Feature`根据用户配置的参数将特征进行自动划分存储在GPU显存以及CPU Pinned Memory中。并将热点数据存储在GPU，冷数据存储在CPU中（用户需要传入`csr_topo`参数），特征聚合时使用GPU来进行统一访问。
+考虑到上述的访问带宽层级关系以及图节点的访问不均匀性质，Quiver中的`quiver.Feature`根据用户配置的参数将特征进行自动划分存储在GPU显存以及CPU Pinned Memory中。并将热点数据存储在GPU，冷数据存储在CPU中（用户需要传入`csr_topo`参数），特征聚合时使用GPU来进行统一访问。
 
 ![single_devce](./multi_medias/imgs/single_device.png)
 
@@ -98,9 +98,9 @@ Gpex提供了高吞吐的`quiver.Feature`用于进行特征聚合。`quiver.Feat
 | Dataset | Feature | Throughput(GB/s) |Speedup Over CPU|
 | ------ | ------ | ------ |------|
 | ogbn-product | CPU |  1.27|1.0|
-| ogbn-product | Gpex | 14.82 |10|
+| ogbn-product | Quiver | 14.82 |10|
 | reddit | CPU | 2.98 |1.0|
-| reddit | Gpex|11.66  |3.91|
+| reddit | Quiver|11.66  |3.91|
 
 
 #### 3.2.2 多卡
@@ -139,13 +139,13 @@ quiver_feature.from_cpu_tensor(dataset[0].x)
 
 ## 三、端到端性能
 
-Gpex为用户提供了高性能的GNN训练核心组件，用户可以自由和CPU采样/CPU特征聚合方式进行组合使用。接下来我们介绍使用Gpex可以达到的优异的单卡性能以及多卡扩展性。
+Quiver为用户提供了高性能的GNN训练核心组件，用户可以自由和CPU采样/CPU特征聚合方式进行组合使用。接下来我们介绍使用Quiver可以达到的优异的单卡性能以及多卡扩展性。
 
 ### 3.1 cache_policy = device_replicate
 
-我们以`ogbn-product`为例子进行benchmark实验验证, 我们首先对比Gpex和使用CPU来进行特征聚合和采样的Pyg性能。实验中每个训练进程中的采样并行度为5。
+我们以`ogbn-product`为例子进行benchmark实验验证, 我们首先对比Quiver和使用CPU来进行特征聚合和采样的Pyg性能。实验中每个训练进程中的采样并行度为5。
 
-| Device Num | Pyg's Epoch Time | Pyg's  Scalability |Gpex's Epoch Time | Gpex's  Scalability|Gpex Over Pyg|
+| Device Num | Pyg's Epoch Time | Pyg's  Scalability |Quiver's Epoch Time | Quiver's  Scalability|Quiver Over Pyg|
 | ------ | ------ | ------ |------|------|------|
 | 1 | 36.5 |  1.0|11.1|1.0|3.23|
 | 2| 30 | 1.22 |5.8|1.91|5.17|
@@ -154,14 +154,14 @@ Gpex为用户提供了高性能的GNN训练核心组件，用户可以自由和C
 
 即使是在Pyg将所有数据均放在GPU中并使用GPU进行特征聚合，Quiver仍然能在4卡训练时有比Pyg大约3倍的加速。
 
-| Device Num | Pyg's Epoch Time | Pyg's  Scalability |Gpex Over Pyg|
+| Device Num | Pyg's Epoch Time | Pyg's  Scalability |Quiver Over Pyg|
 | ------ | ------ | ------ |------|
 | 1 | 23.3 |  1.0|2.1|
 | 2| 14.7 | 1.59 |2.53|
 | 3 | 11.4 | 2.04|2.78|
 | 4 | 9.5|  2.45|2.92|
 
-我们发现Gpex拥有更好的性能的同时，多卡训练的扩展性上表现也更为优秀。
+我们发现Quiver拥有更好的性能的同时，多卡训练的扩展性上表现也更为优秀。
 
 ### 3.2 cache_policy = p2p_clique_replicate
 
@@ -169,16 +169,16 @@ Gpex为用户提供了高性能的GNN训练核心组件，用户可以自由和C
 
 
 ## 四、未来展望
-本次我们只是开源了Gpex的单机版本。在未来我们将继续开源如下特性，敬请期待！：
+本次我们只是开源了Quiver的单机版本。在未来我们将继续开源如下特性，敬请期待！：
 
 1. **基于CPU、GPU混合计算的采样和特征聚合**：目前我们的所有采样和特征获取均为GPU执行，而单机上的CPU所具备的强大算力同样不可忽视。未来我们将研究并开源`mode=MIXED`的模式下，借助CPU和GPU并行采样和特征聚合的加速。
-2. **分布式Gpex**：接下来我们将进一步研究并开源分布式版本的Gpex以帮助用户高效训练超大规模的图。
+2. **分布式Quiver**：接下来我们将进一步研究并开源分布式版本的Quiver以帮助用户高效训练超大规模的图。
 
 
 
 ## 四、总结
 
-路漫漫其修远兮，吾将上下而求索。**xpex-ai**社区致力于研究自适应，可扩展的AI系统，本次我们开源的Gpex致力于通过充分挖掘硬件性能来帮助用户更快速，更具有扩展性的训练GNN模型。Gpex还处在积极的开发中，我们也希望志同道合的朋友们能参与共建Gpex，一起向整个GNN社区提供更快的训练、推理系统。
+路漫漫其修远兮，吾将上下而求索。**quiver-team**社区致力于研究自适应，可扩展的AI系统，本次我们开源的Quiver致力于通过充分挖掘硬件性能来帮助用户更快速，更具有扩展性的训练GNN模型。Quiver还处在积极的开发中，我们也希望志同道合的朋友们能参与共建Quiver，一起向整个GNN社区提供更快的训练、推理系统。
 
 ![logo](./multi_medias/imgs/logo.png)
 

@@ -22,3 +22,10 @@ Code Structure
 Develop
 
 - run ./scripts/lint.sh to format python code before push
+
+### Generate docs
+
+    pip install mkdocs-material
+    pip install mkdocstrings
+    mkdocs serve
+

@@ -1,0 +1,8 @@
+include README
+include LICENSE
+recursive-include srcs *
+recursive-include tests *
+recursive-include examples *
+recursive-include auto *
+recursive-include benchmarks *
+recursive-include scripts *

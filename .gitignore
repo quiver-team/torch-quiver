@@ -2,6 +2,7 @@
 *.dylib
 *.so
 *.whl
+/dist
 /3rdparty
 /KungFu
 /Makefile

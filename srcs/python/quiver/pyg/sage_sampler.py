@@ -21,10 +21,10 @@ class Adj(NamedTuple):
                    
 class GraphSageSampler:
     r"""
-    The graphsage sampler from the `"Inductive Representation Learning on
-    Large Graphs" <https://arxiv.org/abs/1706.02216>`_ paper, which allows
-    for mini-batch training of GNNs on large-scale graphs where full-batch
-    training is not feasible.
+    Quiver's GraphSageSampler behaves just like Pyg's `NeighborSampler` but with much higher performance.
+    It can work in `UVA` mode or `GPU` mode. You can set `mode=GPU` if you have enough GPU memory to place graph's topology data which will offer the best sample performance.
+    When your graph is too big for GPU memory, you can set `mode=UVA` to still use GPU to perform sample but place the data in host memory. `UVA` mode suffers 30%-40% performance loss compared to `GPU` mode
+    but is much faster than CPU sampling(normally 16x~20x) and it consumes much less GPU memory compared to `GPU` mode.
 
     Args:
         csr_topo (quiver.CSRTopo): A quiver.CSRTopo for graph topology

@@ -43,11 +43,17 @@ def color_mat(access_book, device_list):
 
 
 class Topo:
-    """P2P access topology for devices
+    """P2P access topology for devices. Normally we use this class to detect the connection topology of GPUs on the machine.
     
+    ```python
+    >>> p2p_clique_topo = p2pCliqueTopo([0,1])
+    >>> print(p2p_clique_topo.info())
+    ```
 
     Args:
         device_list ([int]): device list for detecting p2p access topology
+        
+    
     """
     def __init__(self, device_list: List[int]) -> None:
         access_book = torch.zeros((len(device_list), len(device_list)))
@@ -70,7 +76,7 @@ class Topo:
         return self.Device2p2pClique[device_id]
 
     def info(self):
-        """Get string description for p2p access topology
+        """Get string description for p2p access topology, you can call `info()` to check the topology of your GPUs 
 
         Returns:
             str: p2p access topology for devices in device list
@@ -85,7 +91,7 @@ class Topo:
         """get all p2p_cliques constructed from devices in device_list
 
         Returns:
-            Dict : p2p_cliques
+            Dict : {clique_id:[devices in this clique]}
         """
         return self.p2pClique2Device
     
@@ -100,12 +106,17 @@ def get_csr_from_coo(edge_index):
     return csr_mat
 
 class CSRTopo:
-    """Graph topology in CSR format
+    """Graph topology in CSR format.
+    
+    ```python
+    >>> csr_topo = CSRTopo(edge_index=edge_index)
+    >>> csr_topo = CSRTopo(indptr=indptr, indices=indices)
+    ```
+    
     Args:
         edge_index ([torch.LongTensor], optinal): edge_index tensor for graph topo
         indptr (torch.LongTensor, optinal): indptr for CSR format graph topo
         indices (torch.LongTensor, optinal): indices for CSR format graph topo
-
     """
     def __init__(self, edge_index=None, indptr=None, indices=None, eid=None):
         if edge_index is not None:

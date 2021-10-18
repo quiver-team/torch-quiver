@@ -123,7 +123,7 @@ class CSRTopo:
     
     @property
     def edge_count(self):
-        return self.indices_.shape[1] - 1
+        return self.indices_.shape[0] - 1
 
 
 def reindex_by_config(adj_csr: CSRTopo, graph_feature, gpu_portion):

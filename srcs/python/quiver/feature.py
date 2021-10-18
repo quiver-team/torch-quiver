@@ -6,7 +6,7 @@ __all__ = ["Feature"]
 
 
 class Feature(object):
-    """quiver.Feature for high throughput feature collection 
+    """Feature partitions data onto different GPUs' memory and CPU memory and does feature collection with high performance
 
     Args:
         rank (int): device for feature collection kernel to launch

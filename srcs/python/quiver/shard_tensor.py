@@ -31,7 +31,7 @@ class DeviceCollectionJob:
 
 
 class ShardTensorConfig:
-    """[summary]
+    """
     """
     def __init__(self, device_memory_budget):
         self.tensor_offset_device = {}

@@ -116,6 +116,14 @@ class CSRTopo:
     @property
     def degree(self):
         return self.indptr[1:] - self.indptr[:-1]
+    
+    @property
+    def node_count(self):
+        return self.indptr_.shape[0] - 1
+    
+    @property
+    def edge_count(self):
+        return self.indices_.shape[1] - 1
 
 
 def reindex_by_config(adj_csr: CSRTopo, graph_feature, gpu_portion):

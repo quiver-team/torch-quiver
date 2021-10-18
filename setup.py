@@ -22,7 +22,7 @@ def create_extension(with_cuda=False):
     srcs += glob.glob('srcs/cpp/src/quiver/torch/*.cpp')
 
     include_dirs = [
-        glob.glob('srcs/cpp/include/*.hpp')
+        os.path.join(os.path.dirname(__file__), './srcs/cpp/include')
     ]
     library_dirs = []
     libraries = []

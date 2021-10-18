@@ -31,6 +31,8 @@
         - indices
         - feature_order
         - degree
+        - node_count
+        - edge_count
     rendering:
       show_source: true
       show_root_heading: true

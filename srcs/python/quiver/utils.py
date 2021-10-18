@@ -173,10 +173,20 @@ class CSRTopo:
     
     @property
     def node_count(self):
+        """Node count of the graph
+
+        Returns:
+            int: node count
+        """
         return self.indptr_.shape[0] - 1
     
     @property
     def edge_count(self):
+        """Edge count of the graph
+
+        Returns:
+            int: edge count
+        """
         return self.indices_.shape[0] - 1
 
 

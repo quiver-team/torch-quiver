@@ -59,6 +59,7 @@ class GraphSageSampler:
 
         batch_size: int = len(batch)
         n_id = batch.to(torch.device(self.device))
+        size = size if size != -1 else self.csr_topo.node_count
         n_id, count = self.quiver.sample_neighbor(0, n_id, size)
         return n_id, count
 

@@ -85,7 +85,7 @@ def bench_on_reddit_cpu():
     feature = dataset[0].x
     train_mask = dataset[0].train_mask
     train_idx = train_mask.nonzero(as_tuple=False).view(-1)
-    train_loader = NeighborSampler(dataset[0].edge_index, node_idx=train_idx, sizes=[15, 10, 5], batch_size=1024, shuffle=True)
+    train_loader = NeighborSampler(dataset[0].edge_index, node_idx=train_idx, sizes=[25, 10], batch_size=1024, shuffle=True)
     accessed_feature_size = 0
     feature_time = 0
     for batch_size, n_id, adjs in train_loader:

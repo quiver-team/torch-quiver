@@ -71,6 +71,8 @@ We provide serveral examples to show how to use Quiver in single GPU training an
 - [single device on ogbn-product](examples/pyg/) and [single device on reddit](examples/pyg/) show how simple to integrate Quiver in PyG's training pipeline.
 - [multi-gpu on ogbn-product](examples/multi-gpu/pyg/ogb-products/) and [multi-gpu on reddit](examples/multi-gpu/pyg/reddit/) show how to use Quiver in multi-gpu training.
 
+### API docs
+please refer to [our API doc](docs/) to learn how to use Quiver.
 
 ## Architecture Overview
 Key reasons behind Quiver's high performance are that it provides two key components: `quiver.Feature` and `quiver.Sampler`.
@@ -115,6 +117,7 @@ $ git clone git@github.com:quiver-team/torch-quiver.git
 $ sh ./install.sh
 ```
 
+
 ## Benchmarks
 
 Here we show benchmark about graph sample, feature collection and end2end training. They are all tested on open dataset.
@@ -144,6 +147,7 @@ With high performance sampler and feature collection, Quiver not only achieve go
 When training with multi-GPU and there are no NVLinks between these GPUs, Quiver will use `device_replicate` cache policy by default(you can refer to our [introduction](docs/Introductions_en.md) to learn more about this cache policy). If you have NVLinks, Quiver can make several GPUs share their GPU memory and cache more data to achieve higher feature collection throughput. Our test machine has 2 GPUs connected with NVLink and we still constrain each GPU caching 20% percent of feature data(which means 40% feature data are cached on GPU with 2 GPUs), we show our scalability results here:
 
 ![](docs/multi_medias/imgs/nvlink_e2e.png)
+
 
 
 ## Note

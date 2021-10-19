@@ -1,4 +1,5 @@
 import torch
+import torch.multiprocessing as mp
 from ogb.nodeproppred import PygNodePropPredDataset
 from torch_geometric.loader import NeighborSampler
 from torch_geometric.datasets import Reddit
@@ -89,23 +90,11 @@ def bench_on_reddit_cpu():
         sample_start = time.time()
     print(f"Sample Speed {sampled_edges / sample_time / 1000000}M SEPS")
 
-
-def bench_on_paper100M():
-    print("=" * 20  + "Paper100M" + "=" * 20)
-    root = "/home/dalong/data/papers/"
-    data_dir = osp.join(root, 'ogbn_papers100M')
-    indptr_root = osp.join(data_dir, 'csr', 'indptr.pt')
-    indices_root = osp.join(data_dir, 'csr', 'indices.pt') 
-    index_root = osp.join(data_dir, 'index', 'train_idx.pt')
-    
-
-    train_idx = torch.load(index_root)
-    indptr = torch.load(indptr_root)
-    indices = torch.load(indices_root)
-
+def bench_child(rank, train_idx, indptr, indices, mode):
+    torch.cuda.set_device(rank)
     train_loader = torch.utils.data.DataLoader(train_idx, batch_size=1024, pin_memory=True, shuffle=True)
     csr_topo = quiver.CSRTopo(indptr=indptr, indices=indices)
-    quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], device=0, mode="UVA")
+    quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], device=rank, mode=mode)
 
     
     sampled_edges = 0
@@ -116,10 +105,36 @@ def bench_on_paper100M():
         sample_time += time.time() - sample_start
         for adj in adjs:
             sampled_edges += adj.edge_index.shape[1]
-    print(f"mean degree {np.mean(csr_topo.degree.numpy())}\tSample Speed {sampled_edges / sample_time / 1000000}M SEPS")
+    print(f"mean degree {np.mean(csr_topo.degree.to('cpu').numpy())}\tSample Speed {sampled_edges / sample_time / 1000000}M SEPS")
+
+def bench_on_paper100M_dist():
+    print("=" * 20  + "Paper100M" + "=" * 20)
+    root = "/data/papers/"
+    data_dir = osp.join(root, 'ogbn_papers100M')
+    indptr_root = osp.join(data_dir, 'csr', 'indptr.pt')
+    indices_root = osp.join(data_dir, 'csr', 'indices.pt') 
+    index_root = osp.join(data_dir, 'index', 'train_idx.pt')
+    
+
+    train_idx = torch.load(index_root)
+    indptr = torch.load(indptr_root)
+    indices = torch.load(indices_root)
+
+    mode = "GPU"
+    world_size = 2
+    procs = []
+    for i in range(world_size):
+        proc = mp.Process(target=bench_child, args=(i, train_idx, indptr, indices, mode))
+        proc.start()
+        procs.append(proc)
+    for proc in procs:
+        proc.join()
 
 if __name__ == "__main__":
-    #bench_on_ogbproduct()
-    #bench_on_ogbproduct_cpu()
-    bench_on_reddit()
-    bench_on_reddit_cpu()
+    mp.set_start_method('spawn')
+    # bench_on_ogbproduct()
+    # bench_on_ogbproduct_cpu()
+    # bench_on_reddit()
+    # bench_on_reddit_cpu()
+    # bench_on_paper100M()
+    bench_on_paper100M_dist()

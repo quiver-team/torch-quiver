@@ -5,6 +5,7 @@ import torch_quiver as qv
 from typing import List, Optional, Tuple, NamedTuple, Union, Callable
 
 from .. import utils as quiver_utils
+import time
 
 
 __all__ = ["GraphSageSampler", "GraphStructure"]

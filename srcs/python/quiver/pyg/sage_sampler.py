@@ -2,13 +2,12 @@ import torch
 from torch import Tensor
 from torch_sparse import SparseTensor
 import torch_quiver as qv
-from typing import List, Optional, Tuple, NamedTuple, Union, Callable
+from typing import List, Tuple, NamedTuple
 
 from .. import utils as quiver_utils
-import time
 
 
-__all__ = ["GraphSageSampler", "GraphStructure"]
+__all__ = ["GraphSageSampler"]
 
 
 class Adj(NamedTuple):
@@ -22,21 +21,18 @@ class Adj(NamedTuple):
                    
 class GraphSageSampler:
     r"""
-    The graphsage sampler from the `"Inductive Representation Learning on
-    Large Graphs" <https://arxiv.org/abs/1706.02216>`_ paper, which allows
-    for mini-batch training of GNNs on large-scale graphs where full-batch
-    training is not feasible.
+    Quiver's GraphSageSampler behaves just like Pyg's `NeighborSampler` but with much higher performance.
+    It can work in `UVA` mode or `GPU` mode. You can set `mode=GPU` if you have enough GPU memory to place graph's topology data which will offer the best sample performance.
+    When your graph is too big for GPU memory, you can set `mode=UVA` to still use GPU to perform sample but place the data in host memory. `UVA` mode suffers 30%-40% performance loss compared to `GPU` mode
+    but is much faster than CPU sampling(normally 16x~20x) and it consumes much less GPU memory compared to `GPU` mode.
 
     Args:
-        csr_topo (quiver_utils.CSRTopo): A quiver_utils.CSRTopo
+        csr_topo (quiver.CSRTopo): A quiver.CSRTopo for graph topology
         sizes ([int]): The number of neighbors to sample for each node in each
-            layer. If set to :obj:`sizes[l] = -1`, all neighbors are included
-            in layer :obj:`l`.
+            layer. If set to `sizes[l] = -1`, all neighbors are included
+            in layer `l`.
         device (int): Device which sample kernel will be launched
-        num_nodes (int, optional): The number of nodes in the graph.
-            (default: :obj:`None`)
-        mode (str): Sample mode, choices are [UVA, GPU].
-            (default: :obj: `UVA`)
+        mode (str): Sample mode, choices are [`UVA`, `GPU`], default is `UVA`.
     """
 
     def __init__(self, csr_topo: quiver_utils.CSRTopo, sizes: List[int], device, mode="UVA"):
@@ -77,6 +73,14 @@ class GraphSageSampler:
         return qv.reindex_single(inputs, outputs, counts)
 
     def sample(self, input_nodes):
+        """Sample k-hop neighbors from input_nodes
+
+        Args:
+            input_nodes (torch.LongTensor): seed nodes ids to sample from
+
+        Returns:
+            Tuple: Return results are the same with Pyg's sampler
+        """
         self.lazy_init_quiver()
         nodes = input_nodes.to(self.device)
         adjs = []
@@ -99,9 +103,22 @@ class GraphSageSampler:
         return nodes, batch_size, adjs[::-1]
 
     def share_ipc(self):
+        """Create ipc handle for multiprocessing
+
+        Returns:
+            tuple: ipc handle tuple
+        """
         return self.csr_topo, self.sizes, self.mode
     
     @classmethod
     def lazy_from_ipc_handle(cls, ipc_handle):
+        """Create from ipc handle
+
+        Args:
+            ipc_handle (tuple): ipc handle got from calling `share_ipc`
+
+        Returns:
+            quiver.pyg.GraphSageSampler: Sampler created from ipc handle
+        """
         csr_topo, sizes, mode = ipc_handle
         return cls(csr_topo, sizes, -1, mode)

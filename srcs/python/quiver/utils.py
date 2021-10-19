@@ -2,7 +2,6 @@ from scipy.sparse import csr_matrix
 import numpy as np
 import torch
 import torch_quiver as torch_qv
-import copy
 from typing import List
 
 def find_cliques(adj_mat, clique_res, remaining_nodes, potential_clique, skip_nodes):
@@ -44,7 +43,18 @@ def color_mat(access_book, device_list):
 
 
 class Topo:
+    """P2P access topology for devices. Normally we use this class to detect the connection topology of GPUs on the machine.
+    
+    ```python
+    >>> p2p_clique_topo = p2pCliqueTopo([0,1])
+    >>> print(p2p_clique_topo.info())
+    ```
 
+    Args:
+        device_list ([int]): device list for detecting p2p access topology
+        
+    
+    """
     def __init__(self, device_list: List[int]) -> None:
         access_book = torch.zeros((len(device_list), len(device_list)))
         for src_index, src_device in enumerate(device_list):
@@ -55,9 +65,22 @@ class Topo:
         self.Device2p2pClique, self.p2pClique2Device = color_mat(access_book, device_list)
 
     def get_clique_id(self, device_id: int):
+        """Get clique id for device with device_id 
+
+        Args:
+            device_id (int): device id of the device
+
+        Returns:
+            int: clique_id of the device
+        """
         return self.Device2p2pClique[device_id]
 
     def info(self):
+        """Get string description for p2p access topology, you can call `info()` to check the topology of your GPUs 
+
+        Returns:
+            str: p2p access topology for devices in device list
+        """
         str = ""
         for clique_idx in self.p2pClique2Device:
             str += f"Devices {self.p2pClique2Device[clique_idx]} support p2p access with each other\n"
@@ -65,6 +88,11 @@ class Topo:
     
     @property
     def p2p_clique(self):
+        """get all p2p_cliques constructed from devices in device_list
+
+        Returns:
+            Dict : {clique_id:[devices in this clique]}
+        """
         return self.p2pClique2Device
     
 
@@ -78,6 +106,18 @@ def get_csr_from_coo(edge_index):
     return csr_mat
 
 class CSRTopo:
+    """Graph topology in CSR format.
+    
+    ```python
+    >>> csr_topo = CSRTopo(edge_index=edge_index)
+    >>> csr_topo = CSRTopo(indptr=indptr, indices=indices)
+    ```
+    
+    Args:
+        edge_index ([torch.LongTensor], optinal): edge_index tensor for graph topo
+        indptr (torch.LongTensor, optinal): indptr for CSR format graph topo
+        indices (torch.LongTensor, optinal): indices for CSR format graph topo
+    """
     def __init__(self, edge_index=None, indptr=None, indices=None, eid=None):
         if edge_index is not None:
             csr_mat = get_csr_from_coo(edge_index)
@@ -87,7 +127,7 @@ class CSRTopo:
             if isinstance(indptr, torch.Tensor):
                 self.indptr_ = indptr.type(torch.long)
                 self.indices_ = indices.type(torch.long)
-            elif ininstance(indptr, np.ndarray):
+            elif isinstance(indptr, np.ndarray):
                 self.indptr_ = torch.from_numpy(indptr).type(torch.long)
                 self.indices_ = torch.from_numpy(indices).type(torch.long)
         self.eid_ = eid
@@ -95,10 +135,20 @@ class CSRTopo:
     
     @property
     def indptr(self):
+        """Get indptr
+
+        Returns:
+            torch.LongTensor: indptr 
+        """
         return self.indptr_
     
     @property
     def indices(self):
+        """Get indices
+
+        Returns:
+            torch.LongTensor: indices
+        """
         return self.indices_
     
     @property
@@ -107,22 +157,47 @@ class CSRTopo:
     
     @property
     def feature_order(self):
+        """Get feature order for this graph
+
+        Returns:
+            torch.LongTensor: feature order 
+        """
         return self.feature_order_
     
     @feature_order.setter
     def feature_order(self, feature_order):
+        """Set feature order
+
+        Args:
+            feature_order (torch.LongTensor): set feature order
+        """
         self.feature_order_ =  feature_order
     
     @property
     def degree(self):
+        """Get degree of each node in this graph
+
+        Returns:
+            [torch.LongTensor]: degree tensor for each node
+        """
         return self.indptr[1:] - self.indptr[:-1]
     
     @property
     def node_count(self):
+        """Node count of the graph
+
+        Returns:
+            int: node count
+        """
         return self.indptr_.shape[0] - 1
     
     @property
     def edge_count(self):
+        """Edge count of the graph
+
+        Returns:
+            int: edge count
+        """
         return self.indices_.shape[0] - 1
 
 
@@ -148,4 +223,9 @@ def reindex_feature(graph: CSRTopo, feature, ratio):
 
 
 def init_p2p(device_list: List[int]):
+    """Try to enable p2p acess between devices in device_list
+
+    Args:
+        device_list (List[int]): device list
+    """
     torch_qv.init_p2p(device_list)

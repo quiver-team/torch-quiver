@@ -1,17 +1,32 @@
 import torch
-import torch_quiver as torch_qv
-import random
-import numpy as np
-import time
-from typing import List
 from quiver.shard_tensor import ShardTensor, ShardTensorConfig, Topo
-from quiver.utils import reindex_feature
+from quiver.utils import reindex_feature, CSRTopo
+from typing import List
 
 __all__ = ["Feature"]
 
 
-class Feature:
-    def __init__(self, rank, device_list, device_cache_size=0, cache_policy='device_replicate', csr_topo=None):
+class Feature(object):
+    """Feature partitions data onto different GPUs' memory and CPU memory and does feature collection with high performance.
+    You will need to set `device_cache_size` to tell Feature how much data it can cached on GPUs memory. By default, it will partition data by your  `device_cache_size`, if you want to cache hot data, you can pass
+    graph topology `csr_topo` so that Feature will reorder all data by nodes' degree which we expect to provide higher cache hit rate and will offer better performance with regard to cache random data.
+    
+    ```python
+    >>> cpu_tensor = torch.load("cpu_tensor.pt")
+    >>> feature = Feature(0, device_list=[0, 1], device_cache_size='200M')
+    >>> feature.from_cpu_tensor(cpu_tensor)
+    >>> choose_idx = torch.randint(0, feature.size(0), 100)
+    >>> selected_feature = feature[choose_idx]
+    ```
+    Args:
+        rank (int): device for feature collection kernel to launch
+        device_list ([int]): device list for data placement
+        device_cache_size (Union[int, str]): cache data size for each device, can be like `0.9M` or `3GB`
+        cache_policy (str, optional): cache_policy for hot data, can be `device_replicate` or `p2p_clique_replicate`, choose `p2p_clique_replicate` when you have NVLinks between GPUs, else choose `device_replicate`. (default: `device_replicate`)
+        csr_topo (quiver.CSRTopo): CSRTopo of the graph for feature reordering
+        
+    """
+    def __init__(self, rank: int, device_list: List[int], device_cache_size: int=0, cache_policy: str='device_replicate', csr_topo: CSRTopo=None):
         assert cache_policy in ["device_replicate", "p2p_clique_replicate"], f"Feature cache_policy should be one of [device_replicate, p2p_clique_replicate]"
         self.device_cache_size = device_cache_size
         self.cache_policy = cache_policy
@@ -52,17 +67,22 @@ class Feature:
         return memory_budget
 
 
-    def cal_size(self, cpu_tensor, cache_memory_budget):
+    def cal_size(self, cpu_tensor: torch.Tensor, cache_memory_budget: int):
         element_size = cpu_tensor.shape[1] * 4
         cache_size = cache_memory_budget // element_size
         return cache_size
 
-    def partition(self, cpu_tensor, cache_memory_budget):
+    def partition(self, cpu_tensor: torch.Tensor, cache_memory_budget: int):
         
         cache_size = self.cal_size(cpu_tensor, cache_memory_budget)
         return [cpu_tensor[:cache_size], cpu_tensor[cache_size: ]]
 
-    def from_cpu_tensor(self, cpu_tensor):
+    def from_cpu_tensor(self, cpu_tensor: torch.Tensor):
+        """Create quiver.Feature from a pytorh cpu float tensor
+
+        Args:
+            cpu_tensor (torch.FloatTensor): input cpu tensor
+        """
         if self.cache_policy == "device_replicate":
             cache_memory_budget = self.cal_memory_budget_bytes(self.device_cache_size)
             shuffle_ratio = 0.0
@@ -130,7 +150,7 @@ class Feature:
                 self.clique_tensor_list[clique_id] = shard_tensor
             
         
-    def __getitem__(self, node_idx):
+    def __getitem__(self, node_idx: torch.Tensor):
         self.lazy_init_from_ipc_handle()
         node_idx = node_idx.to(self.rank)
         if self.feature_order is not None:
@@ -144,7 +164,15 @@ class Feature:
             return shard_tensor[node_idx]
 
     
-    def size(self, dim):
+    def size(self, dim: int):
+        """ Get dim size for quiver.Feature
+
+        Args:
+            dim (int): dimension 
+
+        Returns:
+            int: dimension size for dim
+        """
         self.lazy_init_from_ipc_handle()
         if self.cache_policy == "device_replicate":
             shard_tensor = self.device_tensor_list[self.rank]
@@ -175,6 +203,11 @@ class Feature:
         self.ipc_handle_ = ipc_handle
 
     def share_ipc(self):
+        """Get ipc handle for multiprocessing
+
+        Returns:
+            tuples: ipc handles for ShardTensor and torch.Tensor and python native objects
+        """
         gpu_ipc_handle_dict = {}
         if self.cache_policy == "device_replicate":
             for device in self.device_tensor_list:
@@ -202,12 +235,21 @@ class Feature:
         
     @classmethod
     def new_from_ipc_handle(cls, rank, ipc_handle):
+        """Create from ipc handle
+
+        Args:
+            rank (int): device rank for feature collection kernels to launch
+            ipc_handle (tuple): ipc handle create from `share_ipc`
+
+        Returns:
+            [quiver.Feature]: created quiver.Feature
+        """
         gpu_ipc_handle_dict, cpu_part, device_list, device_cache_size, cache_policy, csr_topo = ipc_handle
         feature = cls(rank, device_list, device_cache_size, cache_policy)
         feature.from_gpu_ipc_handle_dict(gpu_ipc_handle_dict, cpu_part)
         if csr_topo is not None:
             feature.feature_order = csr_topo.feature_order.to(rank)
-        self.csr_topo = csr_topo
+        feature.csr_topo = csr_topo
         return feature
     
     @classmethod

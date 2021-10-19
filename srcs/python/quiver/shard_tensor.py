@@ -1,7 +1,6 @@
 import torch_quiver as torch_qv
 import torch
-import random
-from typing import List
+
 from .utils import Topo
 
 class Offset:
@@ -33,6 +32,8 @@ class DeviceCollectionJob:
 
 
 class ShardTensorConfig:
+    """
+    """
     def __init__(self, device_memory_budget):
         self.tensor_offset_device = {}
 
@@ -75,6 +76,8 @@ class ShardTensorConfig:
 
 
 class ShardTensor:
+    """[summary]
+    """
     def __init__(self, current_device: int,
                  shard_tensor_config: ShardTensorConfig):
         self.shard_tensor = torch_qv.ShardTensor(current_device)

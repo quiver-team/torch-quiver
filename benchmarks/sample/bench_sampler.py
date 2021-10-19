@@ -114,8 +114,8 @@ def bench_on_ogbproduct_dist():
     train_idx = dataset.get_idx_split()["train"]
     csr_topo = quiver.CSRTopo(dataset[0].edge_index)
 
-    mode = "GPU"
-    world_size = 4
+    mode = "UVA"
+    world_size = 1
     procs = []
     for i in range(world_size):
         proc = mp.Process(target=bench_child, args=(i, train_idx, csr_topo.indptr, csr_topo.indices, mode))
@@ -127,6 +127,7 @@ def bench_on_ogbproduct_dist():
 def bench_on_paper100M_dist():
     print("=" * 20  + "Paper100M" + "=" * 20)
     root = "/data/papers/"
+
     data_dir = osp.join(root, 'ogbn_papers100M')
     indptr_root = osp.join(data_dir, 'csr', 'indptr.pt')
     indices_root = osp.join(data_dir, 'csr', 'indices.pt') 

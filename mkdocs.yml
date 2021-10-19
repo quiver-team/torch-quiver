@@ -1,0 +1,21 @@
+site_name: Quiver
+site_url: https://quiver.com/
+nav:
+    - 中文介绍: Introduction_cn.md
+    - Introduction: Introduction_en.md
+    - API: api.md
+
+theme: material
+
+plugins:
+  - search
+  - autorefs
+  - mkdocstrings:
+      handlers:
+        python:
+          setup_commands:
+            - "import os, sys"
+            - "sys.path.append('./srcs/python/quiver/')"
+            - "sys.path.append('./')"
+      watch:
+        - ./srcs/python/quiver

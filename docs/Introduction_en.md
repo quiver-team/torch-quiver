@@ -81,7 +81,7 @@ Quiver provides feature collection `quiver.Feature` with high throughput. The im
 
 2. Memory bandwidth relationship of a GPU server is: GPU Global Memory > GPU P2P With NVLink > Pinned Memory > Pageble Memory.
 
-Considering the bandwidth and the power law, Quiver's `quiver.Feature` can allocate features automatically to GPU memory adn CPU Pinned Memory. It can also host hold data on GPU and cold data on CPU (if `csr_topo` is provided). We collect features with GPU.
+Considering the bandwidth and the power law, Quiver's `quiver.Feature` can allocate features automatically to GPU memory and CPU Pinned Memory. It can also host hot data on GPU and cold data on CPU (if `csr_topo` is provided). We collect features with GPU.
 
 ![single_devce](./multi_medias/imgs/single_device.png)
 

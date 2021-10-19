@@ -120,6 +120,10 @@ Quiver提供了高吞吐的`quiver.Feature`用于进行特征聚合。`quiver.Fe
 
 ![p2p_clique_replicate](./multi_medias/imgs/p2p_clique_replicate.png)
 
+
+![p2p_access](multi_medias/imgs/p2p_access.png)
+
+
 这样的策略下我们不仅在更多卡加入时能提供更大的缓存，同时由于这部分数据的访问贷款更高，我们便可以实现**特征聚合的多卡超线性加速**，即当有两个GPU加入时，两个GPU的特征聚合吞吐总速度大于一个只有一个GPU时的特征聚合吞吐速度。
 
 | Dataset | Device Num | Total Throughput(GB/s) |Speedup Over Single Device|

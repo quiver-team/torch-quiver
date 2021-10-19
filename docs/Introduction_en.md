@@ -113,6 +113,9 @@ When NVLink is supported, feature collection with P2P between GPUs has a higher 
 
 ![p2p_clique_replicate](./multi_medias/imgs/p2p_clique_replicate.png)
 
+![p2p_access](multi_medias/imgs/p2p_access.png)
+
+
 In this way we provide larger cache size, and we achieve **super-linear scalability** because the interconnects between hot cache partitions are much higher.
 
 | Dataset | Device Num | Total Throughput(GB/s) |Speedup Over Single Device|

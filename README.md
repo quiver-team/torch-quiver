@@ -14,17 +14,17 @@
 
 ## Library Highlights
 
-If you are a GNN researcher or you are a `PyG`'s or `DGL`'s user and you are suffering from consuming too much time on graph sampling and feature collection when training your GNN models, ere are some reasons to try out Quiver for your GNN training.
+If you are a GNN researcher or you are a `PyG`'s or `DGL`'s user and you are suffering from consuming too much time on graph sampling and feature collection when training your GNN models, then here are some reasons to try out Quiver for your GNN model trainning.
 
-* **Really Easy-to-use and unified API**:
-  All it takes is 5-10 lines of code to integrate Quiver into your training pipepline, whether you are using `PyG` or `DGL` (see the next section for a [quick tour](#quick-tour-for-new-users)). 
+* **Easy-to-use and unified API**:
+Integrate Quiver into your training pipeline in `PyG` or `DGL` is just a matter of several lines of code change. We've also implemented IPC mechanism which makes it also a piece of cake to use Quiver to speedup your multi-gpu GNN model training (see the next section for a [quick tour](#quick-tour-for-new-users)). 
 
-* **Impressed performance and scalibility**: Graph sampling and feature collection often consume much of training time in GNN thus cause low utilization of GPU resources. What's even worse is that sample and feature collection with CPU have severe scalability problem because of limited CPU resources. Quiver tackles these two problem and achieve much better performance and scales much better.
+* **Greate performance and scalibility**: Using CPU to do graph sample and feature collection not only leads to poor performance, but also leads to poor scalability because of CPU contention. Quiver, however, can achieve much better scalability and can even achieve `super linear scalibility` on machines equipped with NVLink.
 
 
 ## Quick Tour for New Users
 
-In this quick tour, we highlight the ease of creating and training a GNN model with only a few lines of code change.
+In this quick tour, we highlight the ease of integrating Quiver into your training pipeline with only a few lines of code change.
 
 ### A simple example
 
@@ -66,19 +66,21 @@ x.from_cpu_tensor(data.x)
 ```
 
 ### More examples
-We provide examples to show how to use Quiver in single GPU training or multi-gpu traning.
+We provide serveral examples to show how to use Quiver in single GPU training and multi-gpu traning.
 
 - [single device on ogbn-product](examples/pyg/) and [single device on reddit](examples/pyg/) show how simple to integrate Quiver in PyG's training pipeline.
 - [multi-gpu on ogbn-product](examples/multi-gpu/pyg/ogb-products/) and [multi-gpu on reddit](examples/multi-gpu/pyg/reddit/) show how to use Quiver in multi-gpu training.
 
 
 ## Architecture Overview
-Quiver provide users with **UVA-Based**（Unified Virtual Addressing Based）graph sampling operator, supporting storing graph structure in CPU memory and sampling the graph with GPU when the graph is large. In this way, we not only get performance benefits beyond CPU sampling, but also sample the graph whose size is beyond GPU memory.
+Key reasons behind Quiver's high performance are that it provides two key components: `quiver.Feature` and `quiver.Sampler`.
+
+Quiver provide users with **UVA-Based**（Unified Virtual Addressing Based）graph sampling operator, supporting storing graph topology data in CPU memory and sampling the graph with GPU. In this way, we not only get performance benefits beyond CPU sampling, but can also process graphs whose size are too large to host in GPU memory. With UVA, Quiver achieves nearly **20x** sample performance compared with CPU doing graph sample. Besides `UVA mode`, Quiver also support `GPU` sampling mode which will host graph topology data all into GPU memory and will give you 40% ~ 50% performance benifit w.r.t `UVA` sample.
 
 ![uva_sample](docs/multi_medias/imgs/UVA-Sampler.png)
 
 
-Quiver achieves 4-10x higher feature collection throughput compared to conventional approach using cpu. Quiver automatically partitions data in different GPUs's memory and host memory. Real graph datasets usually follow the power low distribution, which means most of the edges in the graph are associated with a small portion of nodes and these high-degree nodes's feature are frequently accessed, Quiver can also automatically do preprocess to ensure hotted data are cached on GPU if user provide graph topology to `quiver.Feature` by passing  `csr_topo`.
+A training batch in GNN also consumed hundreds of MBs memory and move memory of this size across CPU memory or between CPU memory and GPU memory consumes hundreds of milliseconds.Quiver utilizes high throughput between page locked memory and GPU memory, high throughput of p2p memory access between different GPUs' memory when they are connected with NVLinks and high throughput of local GPU global memory access to achieve 4-10x higher feature collection throughput compared to conventional method(i.e. use CPU to do sparse feature collection and transfer data to GPU). It partitons data to local GPU memory, other GPUs's memory(if they connected to current GPU with NVLink) and CPU page locked memory.
 
 ![feature_collection](docs/multi_medias/imgs/single_device.png)
 

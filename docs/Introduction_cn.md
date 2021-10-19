@@ -76,7 +76,7 @@ Quiver中向用户提供**UVA-Based**（Unified Virtual Addressing Based）图�
 
 Quiver提供了高吞吐的`quiver.Feature`用于进行特征聚合。`quiver.Feature`的实现主要基于如下两个观察：
 
-1. 真实图往往具有幂律分布特性，少部分节点占据了整图大部分的连接数，而大部分基于图拓扑进行采样的算法，最终一个Epoch中每个节点被采样到的概率与该节点的连接数成正相关。我们在下面的表格中展示两个数据集中节点度高于整个图的平均节点度的点的数目，以及这些点的连接数占整个全图的连接数的比值。我们发现训练中少部分节点的特征将被高频访问。
+- 1 真实图往往具有幂律分布特性，少部分节点占据了整图大部分的连接数，而大部分基于图拓扑进行采样的算法，最终一个Epoch中每个节点被采样到的概率与该节点的连接数成正相关。我们在下面的表格中展示两个数据集中节点度高于整个图的平均节点度的点的数目，以及这些点的连接数占整个全图的连接数的比值。我们发现训练中少部分节点的特征将被高频访问。
 
 | Dataset | #(degree > average_degree)/total_nodes_count | 连接数高于平均节点度的点度 |
 | ------ | ------ | ------ |
@@ -84,7 +84,7 @@ Quiver提供了高吞吐的`quiver.Feature`用于进行特征聚合。`quiver.Fe
 | reddit | 29.8% | 77.1% |
 
 
-2. 一个AI Server中的各种访问传输带宽大小关系如下 GPU Global Memory > GPU P2P With NVLink > Pinned Memory > Pageble Memory。
+- 2 一个AI Server中的各种访问传输带宽大小关系如下 GPU Global Memory > GPU P2P With NVLink > Pinned Memory > Pageble Memory。
 
 考虑到上述的访问带宽层级关系以及图节点的访问不均匀性质，Quiver中的`quiver.Feature`根据用户配置的参数将特征进行自动划分存储在GPU显存以及CPU Pinned Memory中。并将热点数据存储在GPU，冷数据存储在CPU中（用户需要传入`csr_topo`参数），特征聚合时使用GPU来进行统一访问。
 

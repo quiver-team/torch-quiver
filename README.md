@@ -108,7 +108,7 @@ clone this project run script
 
 ```cmd
 $ git clone git@github.com:quiver-team/torch-quiver.git
-$ ./U
+$ sh ./install.sh
 ```
 
 ## Benchmarks

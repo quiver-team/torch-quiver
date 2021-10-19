@@ -107,6 +107,23 @@ def bench_child(rank, train_idx, indptr, indices, mode):
             sampled_edges += adj.edge_index.shape[1]
     print(f"mean degree {np.mean(csr_topo.degree.to('cpu').numpy())}\tSample Speed {sampled_edges / sample_time / 1000000}M SEPS")
 
+def bench_on_ogbproduct_dist():
+    print("=" * 20  + "OGBn-Product Gpex" + "=" * 20)
+    root = "/data/products"
+    dataset = PygNodePropPredDataset('ogbn-products', root)
+    train_idx = dataset.get_idx_split()["train"]
+    csr_topo = quiver.CSRTopo(dataset[0].edge_index)
+
+    mode = "GPU"
+    world_size = 4
+    procs = []
+    for i in range(world_size):
+        proc = mp.Process(target=bench_child, args=(i, train_idx, csr_topo.indptr, csr_topo.indices, mode))
+        proc.start()
+        procs.append(proc)
+    for proc in procs:
+        proc.join()
+
 def bench_on_paper100M_dist():
     print("=" * 20  + "Paper100M" + "=" * 20)
     root = "/data/papers/"
@@ -120,8 +137,8 @@ def bench_on_paper100M_dist():
     indptr = torch.load(indptr_root)
     indices = torch.load(indices_root)
 
-    mode = "GPU"
-    world_size = 2
+    mode = "UVA"
+    world_size = 1
     procs = []
     for i in range(world_size):
         proc = mp.Process(target=bench_child, args=(i, train_idx, indptr, indices, mode))
@@ -137,4 +154,5 @@ if __name__ == "__main__":
     # bench_on_reddit()
     # bench_on_reddit_cpu()
     # bench_on_paper100M()
-    bench_on_paper100M_dist()
+    # bench_on_paper100M_dist()
+    bench_on_ogbproduct_dist()

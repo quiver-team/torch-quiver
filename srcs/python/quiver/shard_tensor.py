@@ -1,5 +1,6 @@
 import torch_quiver as torch_qv
 import torch
+
 from .utils import Topo
 
 class Offset:

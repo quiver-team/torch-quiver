@@ -377,7 +377,7 @@ TorchQuiver new_quiver_from_csr_array(torch::Tensor &input_indptr,
     T *indices_device_pointer = nullptr;
     T *edge_id_device_pointer = nullptr;
     {
-        if (!cuda) {
+        /*if (!cuda) {
             const T *indptr_original = reinterpret_cast<const T *>(input_indptr.data_ptr<T>());
             // Register Buffer As Mapped Pinned Memory
             quiverRegister((void *)indptr_original, sizeof(T) * node_count,
@@ -385,7 +385,7 @@ TorchQuiver new_quiver_from_csr_array(torch::Tensor &input_indptr,
             // Get Device Pointer In GPU Memory Space
             cudaHostGetDevicePointer((void **)&indptr_device_pointer,
                                      (void *)indptr_original, 0);
-        } else {
+        } else */{
             const T *indptr_original = reinterpret_cast<const T *>(input_indptr.data_ptr<T>());
             T *indptr_copy;
             cudaMalloc((void **)&indptr_copy, sizeof(T) * node_count);

@@ -13,14 +13,17 @@
 
 #include <cuda_runtime.h>
 
-#define quiverRegister(ptr, size, flag); \
-    { size_t BLOCK = 1000000000; \
-    void *register_ptr = (void *)ptr; \
-    for (size_t pos = 0; pos < size; pos += BLOCK) { \
-        size_t s = BLOCK; \
-        if (size - pos < BLOCK) { s = size - pos; } \
-        cudaHostRegister(register_ptr + pos, s, flag); \
-    }}
+#define quiverRegister(ptr, size, flag)                                        \
+    ;                                                                          \
+    {                                                                          \
+        size_t BLOCK = 1000000000;                                             \
+        void *register_ptr = (void *)ptr;                                      \
+        for (size_t pos = 0; pos < size; pos += BLOCK) {                       \
+            size_t s = BLOCK;                                                  \
+            if (size - pos < BLOCK) { s = size - pos; }                        \
+            cudaHostRegister(register_ptr + pos, s, flag);                     \
+        }                                                                      \
+    }
 
 namespace quiver
 {
@@ -367,19 +370,24 @@ class quiver<T, CUDA>
                     int input_size, T *output_ptr_begin, T *output_count_begin,
                     T *output_begin, T *output_idx) const
     {
-        constexpr int BLOCK_ROWS = 128 / WARP_SIZE;
-        const dim3 block(WARP_SIZE, BLOCK_ROWS);
-        const dim3 grid((input_size + block.y - 1) / block.y);
+        constexpr int BLOCK_WARPS = 128 / WARP_SIZE;
+        // the number of rows each thread block will cover
+        constexpr int TILE_SIZE = BLOCK_WARPS * 16;
+        const dim3 block(WARP_SIZE, BLOCK_WARPS);
+        const dim3 grid((input_size + TILE_SIZE - 1) / TILE_SIZE);
         if (quiver_mode == DMA) {
-            CSRRowWiseSampleKernel<T, BLOCK_ROWS><<<grid, block, 0, stream>>>(
-                0, k, input_size, input_begin,
-                thrust::raw_pointer_cast(row_ptr_.data()),
-                thrust::raw_pointer_cast(col_idx_.data()), output_ptr_begin,
-                output_count_begin, output_begin, output_idx);
+            CSRRowWiseSampleKernel<T, BLOCK_WARPS, TILE_SIZE>
+                <<<grid, block, 0, stream>>>(
+                    0, k, input_size, input_begin,
+                    thrust::raw_pointer_cast(row_ptr_.data()),
+                    thrust::raw_pointer_cast(col_idx_.data()), output_ptr_begin,
+                    output_count_begin, output_begin, output_idx);
         } else {
-            CSRRowWiseSampleKernel<T, BLOCK_ROWS><<<grid, block, 0, stream>>>(
-                0, k, input_size, input_begin, row_ptr_mapped_, col_idx_mapped_,
-                output_ptr_begin, output_count_begin, output_begin, output_idx);
+            CSRRowWiseSampleKernel<T, BLOCK_WARPS, TILE_SIZE>
+                <<<grid, block, 0, stream>>>(
+                    0, k, input_size, input_begin, row_ptr_mapped_,
+                    col_idx_mapped_, output_ptr_begin, output_count_begin,
+                    output_begin, output_idx);
         }
     }
 

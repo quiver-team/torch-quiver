@@ -22,7 +22,7 @@ constexpr int WARP_SIZE = 32;
  * @param out_cols The columns of the output COO (output).
  * @param out_idxs The data array of the output COO (output).
  */
-template <typename T, int BLOCK_ROWS>
+template <typename T, int BLOCK_WARPS, int TILE_SIZE>
 __global__ void CSRRowWiseSampleKernel(
     const uint64_t rand_seed, int num_picks, const int64_t num_rows,
     const T *const in_rows, const T *const in_ptr, const T *const in_index,
@@ -30,21 +30,17 @@ __global__ void CSRRowWiseSampleKernel(
 {
     // we assign one warp per row
     assert(blockDim.x == WARP_SIZE);
-    assert(blockDim.y == BLOCK_ROWS);
+    assert(blockDim.y == BLOCK_WARPS);
 
-    // we need one state per 256 threads
-    constexpr int NUM_RNG = ((WARP_SIZE * BLOCK_ROWS) + 255) / 256;
-    __shared__ curandState rng_array[NUM_RNG];
-    assert(blockDim.x >= NUM_RNG);
-    if (threadIdx.y == 0 && threadIdx.x < NUM_RNG) {
-        curand_init(rand_seed, 0, threadIdx.x, rng_array + threadIdx.x);
-    }
-    __syncthreads();
-    curandState *const rng =
-        rng_array + ((threadIdx.x + WARP_SIZE * threadIdx.y) / 256);
+    int64_t out_row = blockIdx.x * TILE_SIZE + threadIdx.y;
+    const int64_t last_row =
+        min(static_cast<int64_t>(blockIdx.x + 1) * TILE_SIZE, num_rows);
 
-    int64_t out_row = blockIdx.x * BLOCK_ROWS + threadIdx.y;
-    while (out_row < num_rows) {
+    curandState rng;
+    curand_init(rand_seed * gridDim.x + blockIdx.x,
+                threadIdx.y * WARP_SIZE + threadIdx.x, 0, &rng);
+
+    while (out_row < last_row) {
         const int64_t row = in_rows[out_row];
 
         const int64_t in_row_start = in_ptr[row];
@@ -67,7 +63,7 @@ __global__ void CSRRowWiseSampleKernel(
 
             for (int idx = num_picks + threadIdx.x; idx < deg;
                  idx += WARP_SIZE) {
-                const int num = curand(rng) % (idx + 1);
+                const int num = curand(&rng) % (idx + 1);
                 if (num < num_picks) {
                     // use max so as to achieve the replacement order the serial
                     // algorithm would have
@@ -86,7 +82,7 @@ __global__ void CSRRowWiseSampleKernel(
             }
         }
 
-        out_row += gridDim.x * BLOCK_ROWS;
+        out_row += BLOCK_WARPS;
     }
 }
 

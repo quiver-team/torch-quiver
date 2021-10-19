@@ -32,7 +32,6 @@ class GraphSageSampler:
             layer. If set to `sizes[l] = -1`, all neighbors are included
             in layer `l`.
         device (int): Device which sample kernel will be launched
-        num_nodes (int, optional): The number of nodes in the graph.
         mode (str): Sample mode, choices are [`UVA`, `GPU`], default is `UVA`.
     """
 

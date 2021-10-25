@@ -2,9 +2,20 @@ from numpy.core.numeric import indices
 import torch
 
 import numpy as np
+import os
 import os.path as osp
 from torch_geometric.utils import to_undirected
 from scipy.sparse import csr_matrix, coo_matrix, csc_matrix
+
+os.mkdir('fake')
+os.mkdir('fake/csr')
+os.mkdir('fake/feat')
+os.mkdir('fake/index')
+os.mkdir('fake/label')
+csr_root = osp.join('./fake', 'csr')
+label_root = osp.join('./fake', 'label')
+feat_root = osp.join('./fake', 'feat')
+index_root = osp.join('./fake', 'index')
 
 num_node = 10000000
 num_feat = 1024
@@ -41,3 +52,10 @@ print(torch.max(sorted_deg))
 print(torch.mean(sorted_deg.float()))
 
 feature = torch.rand(num_node, num_feat)
+label = torch.randint(0, high=100, size=(num_node,1))
+train_idx = torch.randperm(num_node)
+torch.save(feature, osp.join(feat_root, 'feat.pt'))
+torch.save(label, osp.join(label_root, 'label.pt'))
+torch.save(train_idx, osp.join(index_root, 'index.pt'))
+torch.save(indptr, osp.join(csr_root, 'indptr.pt'))
+torch.save(indices, osp.join(csr_root, 'indices.pt'))

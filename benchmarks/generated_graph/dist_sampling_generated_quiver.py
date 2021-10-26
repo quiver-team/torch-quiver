@@ -22,9 +22,9 @@ import torch_quiver as qv
 ####################
 import quiver
 
-class FakeDataset:
+class GeneratedDataset:
     def __init__(self, root, gpu_portion):
-        data_dir = osp.join(root, 'fake')
+        data_dir = osp.join(root, 'generated')
         feat_root = osp.join(data_dir, 'feat', 'feat.pt')
         indptr_root = osp.join(data_dir, 'csr', 'indptr.pt')
         indices_root = osp.join(data_dir, 'csr', 'indices.pt')
@@ -183,7 +183,7 @@ if __name__ == '__main__':
     root = "."
     world_size = torch.cuda.device_count()
     world_size = 2
-    dataset = FakeDataset(root, 0.2 * min(world_size, 2))
+    dataset = GeneratedDataset(root, 0.2 * min(world_size, 2))
     
     ##############################
     # Create Sampler And Feature

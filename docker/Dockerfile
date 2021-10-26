@@ -152,3 +152,5 @@ RUN pip install --no-index torch-scatter -f https://data.pyg.org/whl/torch-1.7.1
 
 # Set the default command to python3.
 CMD ["python3"]
+
+RUN pip install torch_quiver

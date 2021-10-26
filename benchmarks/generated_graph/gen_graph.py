@@ -7,15 +7,15 @@ import os.path as osp
 from torch_geometric.utils import to_undirected
 from scipy.sparse import csr_matrix, coo_matrix, csc_matrix
 
-os.mkdir('fake')
-os.mkdir('fake/csr')
-os.mkdir('fake/feat')
-os.mkdir('fake/index')
-os.mkdir('fake/label')
-csr_root = osp.join('./fake', 'csr')
-label_root = osp.join('./fake', 'label')
-feat_root = osp.join('./fake', 'feat')
-index_root = osp.join('./fake', 'index')
+os.mkdir('generated')
+os.mkdir('generated/csr')
+os.mkdir('generated/feat')
+os.mkdir('generated/index')
+os.mkdir('generated/label')
+csr_root = osp.join('./generated', 'csr')
+label_root = osp.join('./generated', 'label')
+feat_root = osp.join('./generated', 'feat')
+index_root = osp.join('./generated', 'index')
 
 num_node = 10000000
 num_feat = 1024

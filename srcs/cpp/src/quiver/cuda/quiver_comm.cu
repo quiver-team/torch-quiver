@@ -55,7 +55,7 @@ class NcclComm
                  nccl_comm, stream);
     }
 
-    void allreduce(torch::tensor tensor)
+    void allreduce(torch::Tensor tensor)
     {
         auto stream = c10::cuda::getCurrentCUDAStream();
         ncclDataType_t type = ncclFloat32;

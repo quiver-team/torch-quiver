@@ -86,7 +86,7 @@ x.from_cpu_tensor(data.x)
 
 ```
 
-A full example is available [here](https://github.com/pyg-team/pytorch_geometric/blob/master/examples/reddit.py) where Quiver can achieve 2x performance improvement.
+A full example is available [here](https://github.com/pyg-team/pytorch_geometric/blob/master/examples/reddit.py) where Quiver can achieve 2x performance improvement on a 4-GPU server.
 
 <!-- You can check [our reddit example](examples/pyg/reddit_quiver.py) for details. -->
 

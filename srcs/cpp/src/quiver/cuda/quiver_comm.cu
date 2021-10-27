@@ -1,8 +1,8 @@
+#include <c10/cuda/CUDAStream.h>
 #include <nccl.h>
 #include <pybind11/numpy.h>
 #include <string>
 #include <torch/extension.h>
-#include <c10/cuda/CUDAStream.h>
 
 namespace quiver
 {
@@ -39,7 +39,8 @@ class NcclComm
     {
         auto stream = c10::cuda::getCurrentCUDAStream();
         ncclDataType_t type = ncclFloat32;
-        // if (tensor.options().dtype() == torch::kFloat16) { type = ncclFloat16; }
+        // if (tensor.options().dtype() == torch::kFloat16) { type =
+        // ncclFloat16; }
         ncclSend((void *)tensor.data_ptr<float>(), tensor.size(0), type, dst,
                  nccl_comm, stream);
     }
@@ -48,9 +49,20 @@ class NcclComm
     {
         auto stream = c10::cuda::getCurrentCUDAStream();
         ncclDataType_t type = ncclFloat32;
-        // if (tensor.options().dtype() == torch::kFloat16) { type = ncclFloat16; }
+        // if (tensor.options().dtype() == torch::kFloat16) { type =
+        // ncclFloat16; }
         ncclRecv((void *)tensor.data_ptr<float>(), tensor.size(0), type, src,
                  nccl_comm, stream);
+    }
+
+    void allreduce(torch::tensor tensor)
+    {
+        auto stream = c10::cuda::getCurrentCUDAStream();
+        ncclDataType_t type = ncclFloat32;
+        ncclRedOp_t op = ncclAvg;
+        ncclAllReduce((void *)tensor.data_ptr<float>(),
+                      (void *)tensor.data_ptr<float>(), tensor.size(0), type,
+                      op, nccl_comm, stream);
     }
 
   private:
@@ -70,5 +82,6 @@ void register_cuda_quiver_comm(pybind11::module &m)
         .def("size", &quiver::NcclComm::get_size)
         .def("device", &quiver::NcclComm::get_device)
         .def("send", &quiver::NcclComm::send)
-        .def("recv", &quiver::NcclComm::recv);
+        .def("recv", &quiver::NcclComm::recv)
+        .def("allreduce", &quiver::NcclComm::allreduce);
 }

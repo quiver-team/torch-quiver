@@ -17,11 +17,14 @@ class NcclComm:
     def device(self):
         return self.comm.device()
 
-    def send(self, tensor, dst, stream):
-        return self.comm.send(tensor, dst, stream)
+    def send(self, tensor, dst):
+        return self.comm.send(tensor, dst)
 
-    def recv(self, tensor, dst, stream):
-        return self.comm.recv(tensor, dst, stream)
+    def recv(self, tensor, src):
+        return self.comm.recv(tensor, src)
+
+    def allreduce(self, tensor):
+        return self.comm.allreduce(tensor)
 
 
 def getNcclId():

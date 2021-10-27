@@ -15,7 +15,7 @@ Quiver is a distributed graph learning library for PyTorch. The goal of Quiver i
 
 ## Why Quiver?
 
-The primary motivation for this project to make it easy to take a single-GPU/CPU `PyG` or `DGL` script, and efficiently scale it across many GPUs and CPUs in parallel. To achieve this, Quiver provides several features:
+The primary motivation for this project to make it easy to take a single-GPU `PyG` script, and efficiently scale it across many GPUs and CPUs in parallel. To achieve this, Quiver provides several features:
 <!-- 
 If you are a GNN researcher or you are a `PyG`'s or `DGL`'s user and you are suffering from consuming too much time on graph sampling and feature collection when training your GNN models, then here are some reasons to try out Quiver for your GNN model trainning. -->
 
@@ -60,13 +60,13 @@ $ sh ./install.sh
 
 ## Quick Start
 
-Quiver comes into the play by replacing PyG's slow graph sampler and feature collector with `quiver.Sampler` and `quiver.Feature`, respectively. This replacement can be done by changing a few lines of code in existing PyG programs, as shown below:
+Quiver comes into the play by replacing PyG's slow graph sampler and feature collector with `quiver.Sampler` and `quiver.Feature`, respectively. This replacement can be done by changing a few lines of code in existing PyG programs. In the below example, the `PyG` user wants to modify a single-GPU program to leverage a 4-GPU server:
 
 ```python
 ...
 
+# Step 1: Parallel graph sampling
 # train_loader = NeighborSampler(...) # Comment out PyG sampler
-
 # Start: Enable Quiver sampler
 train_loader = torch.utils.data.DataLoader(train_idx,
                                            batch_size=1024,
@@ -78,18 +78,34 @@ quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, sizes=[25, 10])
 
 ...
 
+# Step 2: Parallel feature collection 
 # x = data.x.to(device) # Comment out PyG feature collector
-
 # Start: Eanble Quiver feature collector
 x = quiver.Feature(rank=0, device_list=[0], device_cache_size="1G", cache_policy="device_replicate", csr_topo=csr_topo)
 x.from_cpu_tensor(data.x)
 # End
 
+# Step 3: Data parallel training
+# TODO
+
+
 ...
 
 ```
 
-A full example is available [here](https://github.com/pyg-team/pytorch_geometric/blob/master/examples/reddit.py) where Quiver can achieve 2x performance improvement on a 4-GPU server.
+To run a Quiver program on a 4-GPU server, try:
+
+```cmd
+$ python ..........
+```
+
+A full example is available [here](https://github.com/pyg-team/pytorch_geometric/blob/master/examples/reddit.py) where Quiver can achieve 2x performance improvement with the Reddit dataset on a 4-GPU server.
+
+If you have multiple multi-GPU servers, try:
+
+```cmd
+$ python ..........
+```
 
 <!-- You can check [our reddit example](examples/pyg/reddit_quiver.py) for details. -->
 

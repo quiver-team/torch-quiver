@@ -7,75 +7,106 @@
 
 --------------------------------------------------------------------------------
 
+Quiver is a distributed graph learning library for PyTorch. The goal of Quiver is to make distributed graph learning fast and easy to use.
 
-**Quiver** is a high-performance GNN training add-on which can fully utilize the hardware to achive the best GNN trainning performance. By integrating Quiver into your GNN training pipeline with **just serveral lines of code change**, you can enjoy **much better end-to-end performance** and **much better scalability with multi-gpus**, you can even achieve **super linear scalability** if your GPUs are connected with NVLink, Quiver will help you make full use of NVLink.
+<!-- **Quiver** is a high-performance GNN training add-on which can fully utilize the hardware to achive the best GNN trainning performance. By integrating Quiver into your GNN training pipeline with **just serveral lines of code change**, you can enjoy **much better end-to-end performance** and **much better scalability with multi-gpus**, you can even achieve **super linear scalability** if your GPUs are connected with NVLink, Quiver will help you make full use of NVLink. -->
 
 --------------------------------------------------------------------------------
 
-## Library Highlights
+## Why Quiver?
 
-If you are a GNN researcher or you are a `PyG`'s or `DGL`'s user and you are suffering from consuming too much time on graph sampling and feature collection when training your GNN models, then here are some reasons to try out Quiver for your GNN model trainning.
+The primary motivation for this project to make it easy to take a single-GPU/CPU `PyG` or `DGL` script, and efficiently scale it across many GPUs and CPUs in parallel. To achieve this, Quiver provides several features:
+<!-- 
+If you are a GNN researcher or you are a `PyG`'s or `DGL`'s user and you are suffering from consuming too much time on graph sampling and feature collection when training your GNN models, then here are some reasons to try out Quiver for your GNN model trainning. -->
 
-* **Easy-to-use and unified API**:
-Integrate Quiver into your training pipeline in `PyG` or `DGL` is just a matter of several lines of code change. We've also implemented IPC mechanism which makes it also a piece of cake to use Quiver to speedup your multi-gpu GNN model training (see the next section for a [quick tour](#quick-tour-for-new-users)). 
+* **High performance**: Quiver enables GPUs to be efficiently used in accelerating graph sampling, feature construction and data parallel training, which usually become bottlenecks in large-scale graph learning.
 
-* **Greate performance and scalibility**: Using CPU to do graph sample and feature collection not only leads to poor performance, but also leads to poor scalability because of CPU contention. Quiver, however, can achieve much better scalability and can even achieve `super linear scalibility` on machines equipped with NVLink.
+* **High scalability**: Quiver can achieve even super linear scalablity in distributed graph learning. This is contributed by novel communication-efficient data/processor management techniques and an effective utilisation of emerging networking technologies (e.g., NVLink and RDMA).
+
+<!-- * **Greate performance and scalibility**: Using CPU to do graph sample and feature collection not only leads to poor performance, but also leads to poor scalability because of CPU contention. Quiver, however, can achieve much better scalability and can even achieve `super linear scalibility` on machines equipped with NVLink. -->
+
+* **Easy to use**: Quiver requires only a few lines of code changes in existing `PyG` programs, and it has no external dependency. This makes Quiver easy to be adopted by both `PyG` beginners and professional users.
+
+<!-- * **Easy-to-use and unified API**:
+Integrate Quiver into your training pipeline in `PyG` or `DGL` is just a matter of several lines of code change. We've also implemented IPC mechanism which makes it also a piece of cake to use Quiver to speedup your multi-gpu GNN model training (see the next section for a [quick tour](#quick-tour-for-new-users)).  -->
+
+Below is a chart represeting the benchmark that evaluates the performance of Quiver, PyG and DGL on X servers with X GPUs each. 
+
+![e2e_benchmark](docs/multi_medias/imgs/benchmark_e2e_performance.png)
+
+For system design details, see Quiver's [design overview](docs/Introduction_en.md) (Chinese version: [设计简介](docs/Introduction_cn.md)).
+
+## Install
+
+Assuming `PyG` has been installed locally, you can install Quiver as follow:
+
+```
+pip install torch-quiver
+```
+
+Quiver has been tested with Cuda 10.2 and 11.1 on Linux:
+
+|     OS        | `cu102` | `cu111` |
+|-------------|---------|---------|
+| **Linux**   | ✅      | ✅      |
 
 
-## Quick Tour for New Users
+Quiver can be also built from source:
 
-In this quick tour, we highlight the ease of integrating Quiver into your training pipeline with only a few lines of code change.
+```cmd
+$ git clone git@github.com:quiver-team/torch-quiver.git
+$ sh ./install.sh
+```
 
-### A simple example
+## Quick Start
 
-In the first glimpse of Quiver, we integrate it into the training pipeline of [offical redit examples from PyG](https://github.com/pyg-team/pytorch_geometric/blob/master/examples/reddit.py). With about 5 lines of code change, you can achieve about 2x training speedup. You can check [our reddit example](examples/pyg/reddit_quiver.py) for details.
+Quiver comes into the play by replacing PyG's slow graph sampler and feature collector with `quiver.Sampler` and `quiver.Feature`, respectively. This replacement can be done by changing a few lines of code in existing PyG programs, as shown below:
 
 ```python
 ...
-#############################################
-# Original PyG's Code About Sampler
-############################################
-#train_loader = NeighborSampler(data.edge_index, node_idx=data.train_mask,
-#                               sizes=[25, 10], batch_size=1024, shuffle=True,
-#                               num_workers=12)
 
-#############################################
-# Integrate Quiver: Using Quiver's sampler
-############################################
+# train_loader = NeighborSampler(...) # Comment out PyG sampler
+
+# Start: Quiver sampler
 train_loader = torch.utils.data.DataLoader(train_idx,
                                            batch_size=1024,
                                            shuffle=True,
                                            drop_last=True)
-
 csr_topo = quiver.CSRTopo(data.edge_index)
 quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, sizes=[25, 10])
+# End
+
 ...
 
-######################
-# Original Pyg's Code
-######################
-#x = data.x.to(device)
-
-#############################################
-# Integrate Quiver: Using Quiver's Feature
-############################################
-x = quiver.Feature(rank=0, device_list=[0], device_cache_size="1G", cache_policy="device_replicate", csr_topo=csr_topo)
+# x = data.x.to(device) # Comment out PyG feature collector
+x = quiver.Feature(rank=0, device_list=[0], device_cache_size="1G", cache_policy="device_replicate", csr_topo=csr_topo) # Quiver feature collector
 x.from_cpu_tensor(data.x)
+
 ...
 
 ```
 
-### More examples
-We provide serveral examples to show how to use Quiver in single GPU training and multi-gpu traning.
+A full example is available [here](https://github.com/pyg-team/pytorch_geometric/blob/master/examples/reddit.py) where Quiver can achieve 2x performance improvement.
 
-- [single device on ogbn-product](examples/pyg/) and [single device on reddit](examples/pyg/) show how simple to integrate Quiver in PyG's training pipeline.
-- [multi-gpu on ogbn-product](examples/multi-gpu/pyg/ogb-products/) and [multi-gpu on reddit](examples/multi-gpu/pyg/reddit/) show how to use Quiver in multi-gpu training.
+<!-- You can check [our reddit example](examples/pyg/reddit_quiver.py) for details. -->
 
-### API docs
+## Examples
 
-please refer to [our API doc](docs/) to learn how to use Quiver.
+We provide a large collection of examples to demonsrate how to use Quiver in practice:
 
-## Architecture Overview
+- Quiver can be eaisly enabled in the PyG examples for [ogbn-product](examples/pyg/) and [reddit](examples/pyg/).
+- Multi-GPU Quiver is also easy to be enabled in PyG's examples for [ogbn-product](examples/multi-gpu/pyg/ogb-products/) and [reddit](examples/multi-gpu/pyg/reddit/).
+
+## Documentation
+
+Please refer to the [API Document](docs/) if you want to learn more how to use Quiver.
+
+
+## License
+
+Quiver is released under the Apache 2.0 license. 
+
+<!-- ## Architecture Overview
 Key reasons behind Quiver's high performance are that it provides two key components: `quiver.Feature` and `quiver.Sampler`.
 
 Quiver provide users with **UVA-Based**（Unified Virtual Addressing Based）graph sampling operator, supporting storing graph topology data in CPU memory and sampling the graph with GPU. In this way, we not only get performance benefits beyond CPU sampling, but can also process graphs whose size are too large to host in GPU memory. With UVA, Quiver achieves nearly **20x** sample performance compared with CPU doing graph sample. Besides `UVA mode`, Quiver also support `GPU` sampling mode which will host graph topology data all into GPU memory and will give you 40% ~ 50% performance benifit w.r.t `UVA` sample.
@@ -89,37 +120,10 @@ We also discovered that real graphs nodes' degree often obeys power-law distribu
 
 ![feature_collection](docs/multi_medias/imgs/single_device.png)
 
-For system design details, you can read our (introduction)[docs/Introduction_en.md], we also provide chinese version: [中文版本系统介绍](docs/Introduction_cn.md)
-
-## Install
-
-## Install by pip
-
-To install the binaries, simply run
-
-```
-pip install torch-quiver
-```
-
-cuda10.2 and cuda11.1 on Linux are fully tested
-
-|     OS        | `cu102` | `cu111` |
-|-------------|---------|---------|
-| **Linux**   | ✅      | ✅      |
+For system design details, you can read our (introduction)[docs/Introduction_en.md], we also provide chinese version: [中文版本系统介绍](docs/Introduction_cn.md) -->
 
 
-
-### Build from  source
-
-clone this project run script
-
-```cmd
-$ git clone git@github.com:quiver-team/torch-quiver.git
-$ sh ./install.sh
-```
-
-
-## Benchmarks
+<!-- ## Benchmarks
 
 Here we show benchmark about graph sample, feature collection and end2end training. They are all tested on open dataset.
 
@@ -149,12 +153,12 @@ With high performance sampler and feature collection, Quiver not only achieve go
 
 When training with multi-GPU and there are no NVLinks between these GPUs, Quiver will use `device_replicate` cache policy by default(you can refer to our [introduction](docs/Introductions_en.md) to learn more about this cache policy). If you have NVLinks, Quiver can make several GPUs share their GPU memory and cache more data to achieve higher feature collection throughput. Our test machine has 2 GPUs connected with NVLink and we still constrain each GPU caching 20% percent of feature data(which means 40% feature data are cached on GPU with 2 GPUs), we show our scalability results here:
 
-![](docs/multi_medias/imgs/nvlink_e2e.png)
+![](docs/multi_medias/imgs/nvlink_e2e.png) -->
 
 
 
-## Note
+<!-- ## Note
 
 If you notice anything unexpected, please open an [issue](https://github.com/quiver-team/torch-quiver/issues) and let us know.
 If you have any questions or are missing a specific feature, feel free to discuss them with us.
-We are motivated to constantly make Quiver even better.
+We are motivated to constantly make Quiver even better. -->

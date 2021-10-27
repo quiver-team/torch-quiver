@@ -59,7 +59,7 @@ def child_sendrecv_proc_pair(rank, ws, id):
     num = 10000
     size = 1024 * 1024
     large = torch.zeros(size, device=rank // 2)
-    for i in range(num):
+    for i in range(5):
         if rank % 2 == 0:
             comm.send(large, rank + 1)
         else:
@@ -67,15 +67,15 @@ def child_sendrecv_proc_pair(rank, ws, id):
         torch.cuda.current_stream().synchronize()
     t0 = time.time()
     for i in range(num):
-        if rank == 0:
+        if rank % 2 == 0:
             comm.send(large, rank + 1)
         else:
             comm.recv(large, rank - 1)
         torch.cuda.current_stream().synchronize()
     t1 = time.time()
     if rank % 2 == 1:
-        print(f"Latency {(t1 - t0) / num}")
-        print(f"Throughput {num * size * 4 / 1024 / 1024 / 1024 / (t1 - t0)}")
+        print(f"{rank} Latency {(t1 - t0) / num}")
+        print(f"{rank} Throughput {num * size * 4 / 1024 / 1024 / 1024 / (t1 - t0)}")
 
 
 def child_allreduce_proc(rank, ws, id):

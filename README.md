@@ -67,7 +67,7 @@ Quiver comes into the play by replacing PyG's slow graph sampler and feature col
 
 # train_loader = NeighborSampler(...) # Comment out PyG sampler
 
-# Start: Quiver sampler
+# Start: Enable Quiver sampler
 train_loader = torch.utils.data.DataLoader(train_idx,
                                            batch_size=1024,
                                            shuffle=True,
@@ -79,8 +79,11 @@ quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, sizes=[25, 10])
 ...
 
 # x = data.x.to(device) # Comment out PyG feature collector
-x = quiver.Feature(rank=0, device_list=[0], device_cache_size="1G", cache_policy="device_replicate", csr_topo=csr_topo) # Quiver feature collector
+
+# Start: Eanble Quiver feature collector
+x = quiver.Feature(rank=0, device_list=[0], device_cache_size="1G", cache_policy="device_replicate", csr_topo=csr_topo)
 x.from_cpu_tensor(data.x)
+# End
 
 ...
 
@@ -99,7 +102,7 @@ We provide a large collection of examples to demonsrate how to use Quiver in pra
 
 ## Documentation
 
-Please refer to the [API Document](docs/) if you want to learn more how to use Quiver.
+Please refer to the [API Document](docs/) to learn more about the arguments passed to the Quiver's graph sampler and feature collector.
 
 
 ## License

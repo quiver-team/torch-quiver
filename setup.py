@@ -66,7 +66,7 @@ package_dir = './srcs/python'
 
 setup(
     name='torch_quiver',
-    version='0.0.1',
+    version='0.0.22',
     author='Zeyuan Tan',
     author_email='zeyuan.tan@ed.ac.uk',
     url='https://github.com/xpex-ai/gpex',

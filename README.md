@@ -65,8 +65,9 @@ Quiver comes into the play by replacing PyG's slow graph sampler and feature col
 ```python
 ...
 
-# Step 1: Parallel graph sampling
+## Step 1: Parallel graph sampling
 # train_loader = NeighborSampler(...) # Comment out PyG sampler
+
 # Start: Enable Quiver sampler
 train_loader = torch.utils.data.DataLoader(train_idx,
                                            batch_size=1024,
@@ -78,14 +79,15 @@ quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, sizes=[25, 10])
 
 ...
 
-# Step 2: Parallel feature collection 
+## Step 2: Parallel feature collection
 # x = data.x.to(device) # Comment out PyG feature collector
+
 # Start: Eanble Quiver feature collector
 x = quiver.Feature(rank=0, device_list=[0], device_cache_size="1G", cache_policy="device_replicate", csr_topo=csr_topo)
 x.from_cpu_tensor(data.x)
 # End
 
-# Step 3: Data parallel training
+## Step 3: Data parallel training
 # TODO
 
 

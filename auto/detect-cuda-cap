@@ -1,0 +1,17 @@
+# -*- mode: sh -*-
+
+cd $(dirname $0)
+W=$PWD
+
+TMP_DIR=$(mktemp -d -t ci-XXXXXXXXXX)
+
+CUDA_HOME=/usr/local/cuda
+NVCC=$CUDA_HOME/bin/nvcc
+
+LINK_FLAGS="-lcuda"
+
+CUDA_CAP=$TMP_DIR/detect_cuda
+
+$NVCC -o $CUDA_CAP cuda-cap.c $LINK_FLAGS
+
+$CUDA_CAP

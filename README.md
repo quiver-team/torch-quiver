@@ -63,50 +63,40 @@ $ sh ./install.sh
 Quiver comes into the play by replacing PyG's slow graph sampler and feature collector with `quiver.Sampler` and `quiver.Feature`, respectively. This replacement can be done by changing a few lines of code in existing PyG programs. In the below example, the `PyG` user wants to modify a single-GPU program to leverage a 4-GPU server:
 
 ```python
+import quiver
+
 ...
 
 ## Step 1: Parallel graph sampling
-# train_loader = NeighborSampler(...) # Comment out PyG sampler
-
-# Start: Enable Quiver sampler
-train_loader = torch.utils.data.DataLoader(train_idx,
-                                           batch_size=1024,
-                                           shuffle=True,
-                                           drop_last=True)
-csr_topo = quiver.CSRTopo(data.edge_index)
-quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, sizes=[25, 10])
-# End
+# train_loader = NeighborSampler(train_idx, ...) # Comment out PyG sampler
+train_loader = torch.utils.data.DataLoader(train_idx) # Quiver: PyTorch Dataloader
+quiver_sampler = quiver.pyg.GraphSageSampler(quiver.CSRTopo(data.edge_index), sizes=[25, 10]) # Quiver: Graph sampler
 
 ...
 
 ## Step 2: Parallel feature collection
 # x = data.x.to(device) # Comment out PyG feature collector
-
-# Start: Eanble Quiver feature collector
-x = quiver.Feature(rank=0, device_list=[0], device_cache_size="1G", cache_policy="device_replicate", csr_topo=csr_topo)
-x.from_cpu_tensor(data.x)
-# End
+x = quiver.Feature(rank=0, device_list=[0,1,2,3]).from_cpu_tensor(data.x) # Quiver: Feature collector
 
 ## Step 3: Data parallel training
 # TODO
-
 
 ...
 
 ```
 
-To run a Quiver program on a 4-GPU server, try:
+Run this Quiver program on a 4-GPU server:
 
 ```cmd
-$ python ..........
+$ python3 ..........
 ```
 
 A full example is available [here](https://github.com/pyg-team/pytorch_geometric/blob/master/examples/reddit.py) where Quiver can achieve 2x performance improvement with the Reddit dataset on a 4-GPU server.
 
-If you have multiple multi-GPU servers, try:
+For multi-node deployment, run this Quiver program on **each** node:
 
 ```cmd
-$ python ..........
+$ python3 ..........
 ```
 
 <!-- You can check [our reddit example](examples/pyg/reddit_quiver.py) for details. -->

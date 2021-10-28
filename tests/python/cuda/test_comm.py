@@ -25,7 +25,7 @@ def child_sendrecv_proc(rank, ws, id):
     num = 10000
     size = 1024 * 1024
     large = torch.zeros(size, device=rank)
-    for i in range(num):
+    for i in range(5):
         if rank == 0:
             comm.send(large, 1)
         else:
@@ -59,7 +59,7 @@ def child_sendrecv_proc_pair(rank, ws, id):
     num = 10000
     size = 1024 * 1024
     large = torch.zeros(size, device=rank // 2)
-    for i in range(num):
+    for i in range(5):
         if rank % 2 == 0:
             comm.send(large, rank + 1)
         else:
@@ -71,6 +71,55 @@ def child_sendrecv_proc_pair(rank, ws, id):
             comm.send(large, rank + 1)
         else:
             comm.recv(large, rank - 1)
+        torch.cuda.current_stream().synchronize()
+    t1 = time.time()
+    if rank % 2 == 1:
+        print(f"Latency {(t1 - t0) / num}")
+        print(f"Throughput {num * size * 4 / 1024 / 1024 / 1024 / (t1 - t0)}")
+
+
+def child_sendrecv_proc_pair_bidirect(rank, ws, id):
+    torch.cuda.set_device(rank // 2)
+    comm = torch_qv.NcclComm(rank, ws, id)
+    print(f"{rank} ready")
+    if rank % 2 == 0:
+        a = torch.zeros(10, device=rank // 2)
+        comm.send(a, rank + 1)
+    else:
+        a = torch.ones(10, device=rank // 2)
+        comm.recv(a, rank - 1)
+    torch.cuda.current_stream().synchronize()
+    print(f"{rank} tensor {a}")
+    num = 10000
+    size = 1024 * 1024
+    large = torch.zeros(size, device=rank // 2)
+    large_inverse = torch.zeros(size, device=rank // 2)
+    stream = torch.cuda.Stream()
+    stream_inverse = torch.cuda.Stream()
+    for i in range(5):
+        if rank // 2 == 0:
+            if rank % 2 == 0:
+                comm.send(large, rank + 1)
+            else:
+                comm.recv(large, rank - 1)
+        else:
+            if rank % 2 == 0:
+                comm.recv(large, rank + 1)
+            else:
+                comm.send(large, rank - 1)
+        torch.cuda.current_stream().synchronize()
+    t0 = time.time()
+    for i in range(num):
+        if rank // 2 == 0:
+            if rank % 2 == 0:
+                comm.send(large, rank + 1)
+            else:
+                comm.recv(large, rank - 1)
+        else:
+            if rank % 2 == 0:
+                comm.recv(large_inverse, rank + 1)
+            else:
+                comm.send(large_inverse, rank - 1)
         torch.cuda.current_stream().synchronize()
     t1 = time.time()
     if rank % 2 == 1:
@@ -176,6 +225,26 @@ def test_dist_pair(rank):
         proc.join()
 
 
+def test_dist_pair_bidirect(rank):
+    local_size = 2
+    store = dist.TCPStore(MASTER_ADDR, MASTER_PORT, 2,
+                          MASTER_ADDR == LOCAL_ADDR)
+    if rank == 0:
+        id = quiver.comm.getNcclId()
+        store.set("id", id)
+    else:
+        id = store.get("id")
+    print(f"{rank} init store {id}")
+    procs = []
+    for i in range(local_size):
+        proc = mp.Process(target=child_sendrecv_proc_pair_bidirect,
+                          args=(i * 2 + rank, 2 * local_size, id))
+        proc.start()
+        procs.append(proc)
+    for proc in procs:
+        proc.join()
+
+
 def test_nccl_allreduce(rank):
     ws = 2
     store = dist.TCPStore(MASTER_ADDR, MASTER_PORT, ws,
@@ -212,5 +281,5 @@ def test_nccl_allreduce_pair(rank):
 if __name__ == "__main__":
     mp.set_start_method('spawn')
     # test_local()
-    # test_dist_pair(0)
-    test_nccl_allreduce_pair(0)
+    test_dist_pair_bidirect(0)
+    # test_nccl_allreduce_pair(0)

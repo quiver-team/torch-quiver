@@ -59,10 +59,9 @@ class NcclComm
     {
         auto stream = c10::cuda::getCurrentCUDAStream();
         ncclDataType_t type = ncclFloat32;
-        ncclRedOp_t op = ncclAvg;
         ncclAllReduce((void *)tensor.data_ptr<float>(),
                       (void *)tensor.data_ptr<float>(), tensor.size(0), type,
-                      op, nccl_comm, stream);
+                      ncclSum, nccl_comm, stream);
     }
 
   private:

@@ -15,6 +15,7 @@ Quiver is a distributed graph learning library for PyTorch. The goal of Quiver i
 
 ## Why Quiver?
 
+----
 The primary motivation for this project to make it easy to take a single-GPU `PyG` script, and efficiently scale it across many GPUs and CPUs in parallel. To achieve this, Quiver provides several features:
 <!-- 
 If you are a GNN researcher or you are a `PyG`'s or `DGL`'s user and you are suffering from consuming too much time on graph sampling and feature collection when training your GNN models, then here are some reasons to try out Quiver for your GNN model trainning. -->
@@ -38,8 +39,12 @@ For system design details, see Quiver's [design overview](docs/Introduction_en.m
 
 ## Install
 
-Assuming `PyG` has been installed locally, you can install Quiver as follow:
+----
 
+To install Quiver:
+  1. Install [Pytorch](https://pytorch.org/get-started/locally/)
+  2. Install [PyG](https://github.com/pyg-team/pytorch_geometric)
+  3. Install the `Quiver` pip package
 ```
 pip install torch-quiver
 ```
@@ -51,10 +56,11 @@ Quiver has been tested with Cuda 10.2 and 11.1 on Linux:
 | **Linux**   | ✅      | ✅      |
 
 
-Quiver can be also built from source:
+You can also install from source code for development 
 
 ```cmd
 $ git clone git@github.com:quiver-team/torch-quiver.git
+$ cd torch-quiver
 $ sh ./install.sh
 ```
 

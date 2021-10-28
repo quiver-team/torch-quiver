@@ -82,11 +82,15 @@ quiver_sampler = quiver.pyg.GraphSageSampler(quiver.CSRTopo(data.edge_index), si
 
 ## Step 2: Parallel feature collection
 # x = data.x.to(device) # Comment out PyG feature collector
-x = quiver.Feature(rank=0, device_list=[0,1,2,3]).from_cpu_tensor(data.x) # Quiver: Feature collector
+x = quiver.Feature(rank=0, device_list=[0]).from_cpu_tensor(data.x) # Quiver: Feature collector
 
-## Step 3: Data parallel training
-# TODO
+  
+## Step 3: Sample Based Training
 
+# for batch_size, n_id, adjs in train_loader: # Comment out PyG train_loader
+for seeds in train_loader:
+  n_id, batch_size, adjs = quiver_sampler.sample(seeds)  # Quiver: Use Quiver's Sampler
+  ...
 ...
 
 ```

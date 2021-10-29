@@ -66,7 +66,10 @@ $ sh ./install.sh
 
 ## Quick Start
 
-Quiver comes into the play by replacing PyG's slow graph sampler and feature collector with `quiver.Sampler` and `quiver.Feature`, respectively. This replacement can be done by changing a few lines of code in existing PyG programs. In the below example, the `PyG` user wants to modify a single-GPU program to leverage a 4-GPU server:
+Quiver comes into the play by replacing PyG's slow graph sampler and feature collector with `quiver.Sampler` and `quiver.Feature`, respectively. This replacement can be done by changing a few lines of code in existing PyG programs. 
+
+### Use Quiver In Single-GPU Training
+In the below example, the `PyG` user wants to modify an original single-GPU program to use Quiver to speedup training :
 
 ```python
 import quiver
@@ -74,7 +77,7 @@ import quiver
 ...
 
 ## Step 1: Parallel graph sampling
-# train_loader = NeighborSampler(train_idx, ...) # Comment out PyG sampler
+# train_loader = NeighborSampler(data.edge_index, ...) # Comment out PyG sampler
 train_loader = torch.utils.data.DataLoader(train_idx) # Quiver: PyTorch Dataloader
 quiver_sampler = quiver.pyg.GraphSageSampler(quiver.CSRTopo(data.edge_index), sizes=[25, 10]) # Quiver: Graph sampler
 
@@ -86,28 +89,40 @@ x = quiver.Feature(rank=0, device_list=[0]).from_cpu_tensor(data.x) # Quiver: Fe
 
   
 ## Step 3: Sample Based Training
-
 # for batch_size, n_id, adjs in train_loader: # Comment out PyG train_loader
 for seeds in train_loader:
   n_id, batch_size, adjs = quiver_sampler.sample(seeds)  # Quiver: Use Quiver's Sampler
+  feature = x[n_id]
   ...
 ...
 
 ```
+### Use Quiver In Multi-GPU Training
 
-Run this Quiver program on a 4-GPU server:
+We have implemented IPC mechanism for `quiver.Feature` and `quiver.Sampler` so they can be passed as parameter when launch child processes in DDP training.
 
-```cmd
-$ python3 ..........
+```python
+
+def ddp_train(rank, feature, sampler):
+  # model train
+  pass
+## Step 1: Build Quiver Sampler
+quiver_sampler = ....
+
+## Step 2: Build Quiver Feature
+quiver_feature = ...
+
+## Step 3: Start DDP Training 
+mp.spawn(
+      ddp_train, 
+      args=(quiver_feature, quiver_sampler),
+      nprocs=world_size,
+      join=True
+  )
 ```
 
-A full example is available [here](https://github.com/pyg-team/pytorch_geometric/blob/master/examples/reddit.py) where Quiver can achieve 2x performance improvement with the Reddit dataset on a 4-GPU server.
 
-For multi-node deployment, run this Quiver program on **each** node:
-
-```cmd
-$ python3 ..........
-```
+A full multi-gpu example is available [here](examples/multi_gpu/pyg/ogb-products/dist_sampling_ogb_products_quiver.py).
 
 <!-- You can check [our reddit example](examples/pyg/reddit_quiver.py) for details. -->
 

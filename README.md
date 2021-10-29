@@ -37,9 +37,10 @@ Below is a chart representing the benchmark that evaluates the performance of Qu
 
 For system design details, see Quiver's [design overview](docs/Introduction_en.md) (Chinese version: [设计简介](docs/Introduction_cn.md)).
 
-## Install
+## Install 
 
 ----
+### Install from pip
 
 To install Quiver:
   1. Install [Pytorch](https://pytorch.org/get-started/locally/)
@@ -56,6 +57,7 @@ Quiver has been tested with Cuda 10.2 and 11.1 on Linux:
 | **Linux**   | ✅      | ✅      |
 
 
+### Install from source
 You can also install from source code for development 
 
 ```cmd
@@ -63,6 +65,12 @@ $ git clone git@github.com:quiver-team/torch-quiver.git
 $ cd torch-quiver
 $ sh ./install.sh
 ```
+
+### Install from docker
+
+Please refer [this](docker/README.md) to use Quiver in docker 
+
+### Test your installation
 
 If your installation is successful, when you run:
 
@@ -74,10 +82,15 @@ Then you will get output as below after each epoch is finished:
 
 `Epoch xx, Loss: xx.yy, Approx. Train: xx.yy`
 
-
 ## Quick Start
 
 Quiver comes into the play by replacing PyG's slow graph sampler and feature collector with `quiver.Sampler` and `quiver.Feature`, respectively. This replacement can be done by changing a few lines of code in existing PyG programs. 
+
+### Share Memory Set
+
+```
+  sudo sysctl -w kernel.shmmax=64000000
+```
 
 ### Use Quiver In Single-GPU Training
 In the below example, the `PyG` user wants to modify an original single-GPU program to use Quiver to speedup training :
@@ -95,15 +108,15 @@ quiver_sampler = quiver.pyg.GraphSageSampler(quiver.CSRTopo(data.edge_index), si
 ...
 
 ## Step 2: Parallel feature collection
-# x = data.x.to(device) # Comment out PyG feature collector
-x = quiver.Feature(rank=0, device_list=[0]).from_cpu_tensor(data.x) # Quiver: Feature collector
+# feature = data.x.to(device) # Comment out PyG feature collector
+quiver_feature = quiver.Feature(rank=0, device_list=[0]).from_cpu_tensor(data.x) # Quiver: Feature collector
 
   
 ## Step 3: Sample Based Training
 # for batch_size, n_id, adjs in train_loader: # Comment out PyG train_loader
 for seeds in train_loader:
   n_id, batch_size, adjs = quiver_sampler.sample(seeds)  # Quiver: Use Quiver's Sampler
-  feature = x[n_id]
+  batch_feature = quiver_feature[n_id]
   ...
 ...
 
@@ -116,11 +129,11 @@ We have implemented IPC mechanism for `quiver.Feature` and `quiver.Sampler` so t
 
 def ddp_train(rank, feature, sampler):
   # model train
-  pass
+  ...
 ## Step 1: Build Quiver Sampler
 quiver_sampler = ....
 
-## Step 2: Build Quiver Feature
+## Step 2: Build Quiver Feature, Just Like 
 quiver_feature = ...
 
 ## Step 3: Start DDP Training 

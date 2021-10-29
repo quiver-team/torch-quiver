@@ -17,7 +17,7 @@ import quiver
 from quiver.pyg import GraphSageSampler
 
 #root = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'products')
-root = "/home/dalong/data/products/"
+root = "/data/products/"
 dataset = PygNodePropPredDataset('ogbn-products', root)
 split_idx = dataset.get_idx_split()
 evaluator = Evaluator(name='ogbn-products')

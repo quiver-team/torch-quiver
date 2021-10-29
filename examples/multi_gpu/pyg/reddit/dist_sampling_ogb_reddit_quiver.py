@@ -124,7 +124,7 @@ def run(rank, world_size, data_split, edge_index, x, quiver_sampler, y, num_feat
 
 
 if __name__ == '__main__':
-    dataset = Reddit('/home/dalong/data/Reddit')
+    dataset = Reddit('/data/Reddit')
     world_size = torch.cuda.device_count()
 
     data = dataset[0]

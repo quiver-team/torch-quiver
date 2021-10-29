@@ -31,7 +31,7 @@ If you are a GNN researcher or you are a `PyG`'s or `DGL`'s user and you are suf
 <!-- * **Easy-to-use and unified API**:
 Integrate Quiver into your training pipeline in `PyG` or `DGL` is just a matter of several lines of code change. We've also implemented IPC mechanism which makes it also a piece of cake to use Quiver to speedup your multi-gpu GNN model training (see the next section for a [quick tour](#quick-tour-for-new-users)).  -->
 
-Below is a chart represeting the benchmark that evaluates the performance of Quiver, PyG and DGL on X servers with X GPUs each. 
+Below is a chart representing the benchmark that evaluates the performance of Quiver and PyG with multiple GPUs.
 
 ![e2e_benchmark](docs/multi_medias/imgs/benchmark_e2e_performance.png)
 
@@ -63,6 +63,17 @@ $ git clone git@github.com:quiver-team/torch-quiver.git
 $ cd torch-quiver
 $ sh ./install.sh
 ```
+
+If your installation is successful, when you run:
+
+```cmd
+$ python3 examples/pyg/reddit_quiver.py
+```
+
+Then you will get output as below after each epoch is finished:
+
+`Epoch xx, Loss: xx.yy, Approx. Train: xx.yy`
+
 
 ## Quick Start
 
@@ -124,6 +135,14 @@ mp.spawn(
 
 A full multi-gpu example is available [here](examples/multi_gpu/pyg/ogb-products/dist_sampling_ogb_products_quiver.py).
 
+To launch either single-GPU or multi-GPU jobs, only a single python script needs to be lanched. For example:
+
+```cmd
+$ python3 examples/pyg/reddit_quiver.py
+```
+
+We will also provide multi-host examples in the near future. We are developing an adaptive end-to-end parallelism system in a distributed cluster. 
+
 <!-- You can check [our reddit example](examples/pyg/reddit_quiver.py) for details. -->
 
 ## Examples
@@ -131,7 +150,7 @@ A full multi-gpu example is available [here](examples/multi_gpu/pyg/ogb-products
 We provide a large collection of examples to demonsrate how to use Quiver in practice:
 
 - Quiver can be eaisly enabled in the PyG examples for [ogbn-product](examples/pyg/) and [reddit](examples/pyg/).
-- Multi-GPU Quiver is also easy to be enabled in PyG's examples for [ogbn-product](examples/multi-gpu/pyg/ogb-products/) and [reddit](examples/multi-gpu/pyg/reddit/).
+- Multi-GPU Quiver is also easy to be enabled in PyG's examples for [ogbn-product](examples/multi_gpu/pyg/ogb_products/) and [reddit](examples/multi_gpu/pyg/reddit/).
 
 ## Documentation
 

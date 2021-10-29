@@ -139,7 +139,7 @@ def test_GraphSageSampler():
     #home = os.getenv('HOME')
     #ata_dir = osp.join(home, '.pyg')
     #root = osp.join(data_dir, 'data', 'products')
-    root = "/home/dalong/data/products/"
+    root = "/data/data/products/"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     torch.cuda.set_device(0)
     data = dataset[0]
@@ -185,7 +185,7 @@ def child_process(rank, sage_sampler):
 
 
 def test_ipc():
-    root = "/home/dalong/products/"
+    root = "/data/products/"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     torch.cuda.set_device(0)
     data = dataset[0]

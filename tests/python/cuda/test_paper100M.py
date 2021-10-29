@@ -15,7 +15,7 @@ from torch_geometric.utils import to_undirected, dropout_adj
 from scipy.sparse import csr_matrix
 
 
-# data_root = "/home/zy/papers/ogbn_papers100M/raw/"
+# data_root = "/data/papers/ogbn_papers100M/raw/"
 # label = np.load(osp.join(data_root, "node-label.npz"))
 # data = np.load(osp.join(data_root, "data.npz"))
 
@@ -44,8 +44,8 @@ def process_topo():
     
     print("LOG>>> Begin Save")
 
-    torch.save(indptr, "/home/zy/papers/ogbn_papers100M/csr/indptr.pt")
-    torch.save(indices, "/home/zy/papers/ogbn_papers100M/csr/indices.pt")
+    torch.save(indptr, "/data/papers/ogbn_papers100M/csr/indptr.pt")
+    torch.save(indices, "/data/papers/ogbn_papers100M/csr/indices.pt")
 
 def pyshard_tensor_ipc_child_proc(rank, ipc_handle, tensor):
 
@@ -83,13 +83,13 @@ def process_feature():
     nid_feat = data["node_feat"]
     tensor = torch.from_numpy(nid_feat).type(torch.float)
     print("LOG>>> Begin Process")
-    torch.save(tensor, "/home/zy/papers/ogbn_papers100M/feat/feature.pt")
+    torch.save(tensor, "/data/papers/ogbn_papers100M/feat/feature.pt")
 
 def process_label():
     print("LOG>>> Load Finished")
     node_label = label["node_label"]
     tensor = torch.from_numpy(node_label).type(torch.float)
-    torch.save(tensor, "/home/zy/papers/ogbn_papers100M/label/label.pt")
+    torch.save(tensor, "/data/papers/ogbn_papers100M/label/label.pt")
 
 def feature_test():
     SAMPLE_SIZE = 100000
@@ -100,7 +100,7 @@ def feature_test():
     device_indices = indices.to(0)
 
     print("LOG>>> Begin Process")
-    tensor = torch.load("/home/zy/papers/ogbn_papers100M/feat/sort_feature.pt")
+    tensor = torch.load("/data/papers/ogbn_papers100M/feat/sort_feature.pt")
 
     
     shard_tensor_config = ShardTensorConfig({})
@@ -135,8 +135,8 @@ def feature_test():
 
 def sort_feature():
     NUM_ELEMENT = 111059956
-    indptr = torch.load("/home/zy/papers/ogbn_papers100M/csr/indptr.pt")
-    feature = torch.load("/home/zy/papers/ogbn_papers100M/feat/feature.pt")
+    indptr = torch.load("/data/papers/ogbn_papers100M/csr/indptr.pt")
+    feature = torch.load("/data/papers/ogbn_papers100M/feat/feature.pt")
     prev = torch.LongTensor(indptr[:-1])
     sub = torch.LongTensor(indptr[1:])
     deg = sub - prev
@@ -144,8 +144,8 @@ def sort_feature():
     total_num = NUM_ELEMENT
     total_range = torch.arange(total_num, dtype=torch.long)
     feature = feature[prev_order]
-    torch.save(feature, "/home/zy/papers/ogbn_papers100M/feat/sort_feature.pt")
-    torch.save(prev_order, "/home/zy/papers/ogbn_papers100M/feat/prev_order.pt")
+    torch.save(feature, "/data/papers/ogbn_papers100M/feat/sort_feature.pt")
+    torch.save(prev_order, "/data/papers/ogbn_papers100M/feat/prev_order.pt")
 
 # process_topo()
 # qv.init_p2p()

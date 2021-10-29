@@ -137,7 +137,7 @@ def run(rank, world_size, quiver_sampler, quiver_feature, y, edge_index, split_i
 
 
 if __name__ == '__main__':
-    root = "/home/dalong/data/products"
+    root = "/data/products"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     data = dataset[0]
 

@@ -154,7 +154,7 @@ def torch_child_proc(rank, ws, cpu_tensor, gpu_tensors, range_list, indices):
 def test_products():
 
     from ogb.nodeproppred import PygNodePropPredDataset
-    root = "/home/dalong/data/products/"
+    root = "/data/data/products/"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     data = dataset[0]
 

@@ -4,21 +4,26 @@ import torch
 import torch_quiver as torch_qv
 from typing import List
 
-def find_cliques(adj_mat, clique_res, remaining_nodes, potential_clique, skip_nodes):
+
+def find_cliques(adj_mat, clique_res, remaining_nodes, potential_clique,
+                 skip_nodes):
 
     if len(remaining_nodes) == 0 and len(skip_nodes) == 0:
         clique_res.append(potential_clique)
         return 1
-    
+
     found_cliques = 0
     for node in remaining_nodes:
 
         # Try adding the node to the current potential_clique to see if we can make it work.
         new_potential_clique = potential_clique + [node]
-        new_remaining_nodes = [n for n in remaining_nodes if adj_mat[node][n] == 1]
+        new_remaining_nodes = [
+            n for n in remaining_nodes if adj_mat[node][n] == 1
+        ]
         new_skip_list = [n for n in skip_nodes if adj_mat[node][n] == 1]
-     
-        found_cliques += find_cliques(adj_mat, clique_res, new_remaining_nodes, new_potential_clique, new_skip_list)
+
+        found_cliques += find_cliques(adj_mat, clique_res, new_remaining_nodes,
+                                      new_potential_clique, new_skip_list)
 
         # We're done considering this node.  If there was a way to form a clique with it, we
         # already discovered its maximal clique in the recursive call above.  So, go ahead
@@ -26,6 +31,7 @@ def find_cliques(adj_mat, clique_res, remaining_nodes, potential_clique, skip_no
         remaining_nodes.remove(node)
         skip_nodes.append(node)
     return found_cliques
+
 
 def color_mat(access_book, device_list):
     device2clique = dict.fromkeys(device_list, -1)
@@ -59,10 +65,12 @@ class Topo:
         access_book = torch.zeros((len(device_list), len(device_list)))
         for src_index, src_device in enumerate(device_list):
             for dst_index, dst_device in enumerate(device_list):
-                if src_index != dst_index and torch_qv.can_device_access_peer(src_device, dst_device):
+                if src_index != dst_index and torch_qv.can_device_access_peer(
+                        src_device, dst_device):
                     access_book[src_index][dst_index] = 1
                     access_book[dst_index][src_index] = 1
-        self.Device2p2pClique, self.p2pClique2Device = color_mat(access_book, device_list)
+        self.Device2p2pClique, self.p2pClique2Device = color_mat(
+            access_book, device_list)
 
     def get_clique_id(self, device_id: int):
         """Get clique id for device with device_id 
@@ -85,7 +93,7 @@ class Topo:
         for clique_idx in self.p2pClique2Device:
             str += f"Devices {self.p2pClique2Device[clique_idx]} support p2p access with each other\n"
         return str
-    
+
     @property
     def p2p_clique(self):
         """get all p2p_cliques constructed from devices in device_list
@@ -94,7 +102,7 @@ class Topo:
             Dict : {clique_id:[devices in this clique]}
         """
         return self.p2pClique2Device
-    
+
 
 def get_csr_from_coo(edge_index):
     src = edge_index[0].numpy()
@@ -104,6 +112,7 @@ def get_csr_from_coo(edge_index):
     csr_mat = csr_matrix(
         (data, (edge_index[0].numpy(), edge_index[1].numpy())))
     return csr_mat
+
 
 class CSRTopo:
     """Graph topology in CSR format.
@@ -132,7 +141,7 @@ class CSRTopo:
                 self.indices_ = torch.from_numpy(indices).type(torch.long)
         self.eid_ = eid
         self.feature_order_ = None
-    
+
     @property
     def indptr(self):
         """Get indptr
@@ -141,7 +150,7 @@ class CSRTopo:
             torch.LongTensor: indptr 
         """
         return self.indptr_
-    
+
     @property
     def indices(self):
         """Get indices
@@ -150,11 +159,11 @@ class CSRTopo:
             torch.LongTensor: indices
         """
         return self.indices_
-    
+
     @property
     def eid(self):
         return self.eid_
-    
+
     @property
     def feature_order(self):
         """Get feature order for this graph
@@ -163,7 +172,7 @@ class CSRTopo:
             torch.LongTensor: feature order 
         """
         return self.feature_order_
-    
+
     @feature_order.setter
     def feature_order(self, feature_order):
         """Set feature order
@@ -171,8 +180,8 @@ class CSRTopo:
         Args:
             feature_order (torch.LongTensor): set feature order
         """
-        self.feature_order_ =  feature_order
-    
+        self.feature_order_ = feature_order
+
     @property
     def degree(self):
         """Get degree of each node in this graph
@@ -181,7 +190,7 @@ class CSRTopo:
             [torch.LongTensor]: degree tensor for each node
         """
         return self.indptr[1:] - self.indptr[:-1]
-    
+
     @property
     def node_count(self):
         """Node count of the graph
@@ -190,7 +199,7 @@ class CSRTopo:
             int: node count
         """
         return self.indptr_.shape[0] - 1
-    
+
     @property
     def edge_count(self):
         """Edge count of the graph
@@ -202,7 +211,7 @@ class CSRTopo:
 
 
 def reindex_by_config(adj_csr: CSRTopo, graph_feature, gpu_portion):
-   
+
     node_count = adj_csr.indptr.shape[0] - 1
     total_range = torch.arange(node_count, dtype=torch.long)
     perm_range = torch.randperm(int(node_count * gpu_portion))
@@ -215,11 +224,11 @@ def reindex_by_config(adj_csr: CSRTopo, graph_feature, gpu_portion):
     graph_feature = graph_feature[prev_order]
     return graph_feature, new_order
 
+
 def reindex_feature(graph: CSRTopo, feature, ratio):
     assert isinstance(graph, CSRTopo), "Input graph should be CSRTopo object"
     feature, new_order = reindex_by_config(graph, feature, ratio)
     return feature, new_order
-
 
 
 def init_p2p(device_list: List[int]):

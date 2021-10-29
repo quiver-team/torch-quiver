@@ -22,6 +22,7 @@ import torch_quiver as qv
 ####################
 import quiver
 
+
 class Paper100MDataset:
     def __init__(self, root, gpu_portion):
         data_dir = osp.join(root, 'ogbn_papers100M')
@@ -38,7 +39,7 @@ class Paper100MDataset:
         total_range = torch.arange(node_count, dtype=torch.long)
         perm_range = torch.randperm(int(node_count * gpu_portion))
         new_order = torch.zeros_like(prev_order)
-        prev_order[: int(node_count * gpu_portion)] = prev_order[perm_range]
+        prev_order[:int(node_count * gpu_portion)] = prev_order[perm_range]
         new_order[prev_order] = total_range
         feature = feat[prev_order]
         print('reorder feature')
@@ -112,7 +113,8 @@ class SAGE(torch.nn.Module):
         return x_all
 
 
-def run(rank, world_size, quiver_sampler, quiver_feature, y, train_idx, num_features, num_classes):
+def run(rank, world_size, quiver_sampler, quiver_feature, y, train_idx,
+        num_features, num_classes):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
     dist.init_process_group('nccl', rank=rank, world_size=world_size)
@@ -122,7 +124,10 @@ def run(rank, world_size, quiver_sampler, quiver_feature, y, train_idx, num_feat
 
     torch.manual_seed(123 + 45 * rank)
 
-    train_loader = torch.utils.data.DataLoader(train_idx, batch_size=1024, pin_memory=True, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(train_idx,
+                                               batch_size=1024,
+                                               pin_memory=True,
+                                               shuffle=True)
 
     model = SAGE(num_features, 256, num_classes, num_layers=3).to(rank)
     model = DistributedDataParallel(model, device_ids=[rank])
@@ -141,7 +146,7 @@ def run(rank, world_size, quiver_sampler, quiver_feature, y, train_idx, num_feat
             n_id, batch_size, adjs = quiver_sampler.sample(seeds)
             adjs = [adj.to(rank) for adj in adjs]
             feat = quiver_feature[n_id]
-           
+
             optimizer.zero_grad()
             out = model(feat, adjs)
             loss = F.nll_loss(out, y[n_id[:batch_size]])
@@ -152,11 +157,12 @@ def run(rank, world_size, quiver_sampler, quiver_feature, y, train_idx, num_feat
         dist.barrier()
 
         iter_times = sorted(iter_times)
-        
 
         if rank == 0:
             # remove 10% minium values and 10% maximum values
-            print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}, Epoch Time: {np.mean(iter_times[int(0.1 * len(iter_times)): -int(0.1 * len(iter_times))]) * len(train_loader)}')
+            print(
+                f'Epoch: {epoch:03d}, Loss: {loss:.4f}, Epoch Time: {np.mean(iter_times[int(0.1 * len(iter_times)): -int(0.1 * len(iter_times))]) * len(train_loader)}'
+            )
 
         # if rank == 0 and epoch % 5 == 0:  # We evaluate on a single GPU for now
         #     model.eval()
@@ -176,25 +182,29 @@ def run(rank, world_size, quiver_sampler, quiver_feature, y, train_idx, num_feat
 if __name__ == '__main__':
     root = "/data/papers/"
     world_size = torch.cuda.device_count()
-    world_size = 2
-    dataset = Paper100MDataset(root, 0.33 * min(world_size, 2))
-    
+    dataset = Paper100MDataset(root, 0.15 * min(world_size, 4))
+
     ##############################
     # Create Sampler And Feature
     ##############################
     csr_topo = quiver.CSRTopo(indptr=dataset.indptr, indices=dataset.indices)
     csr_topo.feature_order = dataset.new_order
-    quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], 0, mode="UVA")
-    quiver_feature = quiver.Feature(rank=0, device_list=list(range(world_size)), device_cache_size="8G", cache_policy="p2p_clique_replicate", csr_topo=csr_topo)
+    quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5],
+                                                 0,
+                                                 mode="UVA")
+    quiver_feature = quiver.Feature(rank=0,
+                                    device_list=list(range(world_size)),
+                                    device_cache_size="8G",
+                                    cache_policy="p2p_clique_replicate",
+                                    csr_topo=csr_topo)
     quiver_feature.from_cpu_tensor(dataset.feature)
     l = list(range(world_size))
     qv.init_p2p(l)
     del dataset.feature
 
     print('Let\'s use', world_size, 'GPUs!')
-    mp.spawn(
-        run,
-        args=(world_size, quiver_sampler, quiver_feature, dataset.label, dataset.train_idx, 128, 172),
-        nprocs=world_size,
-        join=True
-    )
+    mp.spawn(run,
+             args=(world_size, quiver_sampler, quiver_feature, dataset.label,
+                   dataset.train_idx, 128, 172),
+             nprocs=world_size,
+             join=True)

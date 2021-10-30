@@ -86,12 +86,6 @@ Then you will get output as below after each epoch is finished:
 
 Quiver comes into the play by replacing PyG's slow graph sampler and feature collector with `quiver.Sampler` and `quiver.Feature`, respectively. This replacement can be done by changing a few lines of code in existing PyG programs. 
 
-### Share Memory Set
-
-```
-  sudo sysctl -w kernel.shmmax=64000000
-```
-
 ### Use Quiver In Single-GPU Training
 In the below example, the `PyG` user wants to modify an original single-GPU program to use Quiver to speedup training :
 

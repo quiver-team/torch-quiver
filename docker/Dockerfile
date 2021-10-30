@@ -13,7 +13,3 @@ RUN pip install --no-index torch-scatter -f https://data.pyg.org/whl/torch-1.9.0
 
 # Set the default command to python3.
 CMD ["python3"]
-
-ARG QUIVER_ENABLE_CUDA=1
-
-RUN pip install torch_quiver==0.0.23

@@ -1,5 +1,8 @@
-
-def find_cliques(adj_mat, clique_res, potential_clique=[], remaining_nodes=[], skip_nodes=[]):
+def find_cliques(adj_mat,
+                 clique_res,
+                 potential_clique=[],
+                 remaining_nodes=[],
+                 skip_nodes=[]):
 
     if len(remaining_nodes) == 0 and len(skip_nodes) == 0:
         clique_res.append(potential_clique)
@@ -10,10 +13,14 @@ def find_cliques(adj_mat, clique_res, potential_clique=[], remaining_nodes=[], s
 
         # Try adding the node to the current potential_clique to see if we can make it work.
         new_potential_clique = potential_clique + [node]
-        new_remaining_nodes = [n for n in remaining_nodes if adj_mat[node][n] == 1]
+        new_remaining_nodes = [
+            n for n in remaining_nodes if adj_mat[node][n] == 1
+        ]
         new_skip_list = [n for n in skip_nodes if adj_mat[node][n] == 1]
-     
-        found_cliques += find_cliques(adj_mat, clique_res, new_potential_clique, new_remaining_nodes, new_skip_list)
+
+        found_cliques += find_cliques(adj_mat, clique_res,
+                                      new_potential_clique,
+                                      new_remaining_nodes, new_skip_list)
 
         # We're done considering this node.  If there was a way to form a clique with it, we
         # already discovered its maximal clique in the recursive call above.  So, go ahead

@@ -1,5 +1,5 @@
 import torch
-import numpy as np 
+import numpy as np
 import scipy.sparse as sp
 import torch_quiver as qv
 
@@ -17,17 +17,19 @@ def get_csr_from_coo(edge_index):
     dst = edge_index[1].numpy()
     node_count = max(np.max(src), np.max(dst))
     data = np.zeros(dst.shape, dtype=np.int32)
-    csr_mat = csr_matrix((data, (edge_index[0].numpy(), edge_index[1].numpy())))
+    csr_mat = csr_matrix(
+        (data, (edge_index[0].numpy(), edge_index[1].numpy())))
     return csr_mat
+
 
 def test_neighbor_sampler_with_fake_graph():
     print(f"{'*' * 10} TEST WITH FAKE GRAPH {'*' * 10}")
     graph_size = 10000
-    seed_size = 2048   
+    seed_size = 2048
     neighbor_size = 20
 
-    graph_adj = np.random.randint(0,2,(graph_size,graph_size))
-    
+    graph_adj = np.random.randint(0, 2, (graph_size, graph_size))
+
     ###########################
     # Zero-Copy Sampling
     ############################
@@ -35,14 +37,15 @@ def test_neighbor_sampler_with_fake_graph():
     rowptr = torch.from_numpy(csr_mat.indptr).type(torch.long)
     colptr = torch.from_numpy(csr_mat.indices).type(torch.long)
     edge_ids = torch.LongTensor([1])
-    quiver = qv.new_quiver_from_csr_array(rowptr, colptr, edge_ids, 0, True, False)
+    quiver = qv.new_quiver_from_csr_array(rowptr, colptr, edge_ids, 0, True,
+                                          False)
     seeds = np.random.randint(graph_size, size=seed_size)
     seeds = torch.from_numpy(seeds).type(torch.long)
     cuda_seeds = seeds.cuda()
     start = time.time()
     n_id, count = quiver.sample_neighbor(0, cuda_seeds, neighbor_size)
     print(f"Zero-Copy sampling method consumed {time.time() - start}")
-    
+
     ##########################
     # DMA Sampling
     ##########################
@@ -57,7 +60,7 @@ def test_neighbor_sampler_with_fake_graph():
     start = time.time()
     n_id2, count2 = quiver.sample_neighbor(0, cuda_seeds, neighbor_size)
     print(f"DMA sampling method consumed {time.time() - start}")
-        
+
     ##############################
     # CPU Sampling
     ##############################
@@ -65,8 +68,8 @@ def test_neighbor_sampler_with_fake_graph():
     start = time.time()
     n_id3, count3 = quiver.sample_neighbor(seeds, neighbor_size)
     print(f"CPU sampling method consumed {time.time() - start}")
-    
-    
+
+
 def test_neighbor_sampler_with_real_graph():
     print(f"{'*' * 10} TEST WITH REAL GRAPH {'*' * 10}")
     home = os.getenv('HOME')
@@ -77,28 +80,32 @@ def test_neighbor_sampler_with_real_graph():
     edge_index = data.edge_index
     seeds_size = 128 * 15 * 10
     neighbor_size = 5
-    
+
     csr_mat = get_csr_from_coo(edge_index)
-    print(f"mean degree of graph = {np.mean(csr_mat.indptr[1:] - csr_mat.indptr[:-1])}")
+    print(
+        f"mean degree of graph = {np.mean(csr_mat.indptr[1:] - csr_mat.indptr[:-1])}"
+    )
     graph_size = csr_mat.indptr.shape[0] - 1
     seeds = np.arange(graph_size)
     np.random.shuffle(seeds)
-    seeds =seeds[:seeds_size]
-    
+    seeds = seeds[:seeds_size]
+
     ###########################
     # Zero-Copy Sampling
     ############################
     rowptr = torch.from_numpy(csr_mat.indptr).type(torch.long)
     colptr = torch.from_numpy(csr_mat.indices).type(torch.long)
     edge_ids = torch.LongTensor([1])
-    quiver = qv.new_quiver_from_csr_array(rowptr, colptr, edge_ids, 0, True, False)
+    quiver = qv.new_quiver_from_csr_array(rowptr, colptr, edge_ids, 0, True,
+                                          False)
     seeds = torch.from_numpy(seeds).type(torch.long)
     cuda_seeds = seeds.cuda()
     start = time.time()
     n_id, count = quiver.sample_neighbor(0, cuda_seeds, neighbor_size)
-    print(f"Zero-Copy sampling method consumed {time.time() - start}, sampled res length = {n_id.shape}")
-    
-    
+    print(
+        f"Zero-Copy sampling method consumed {time.time() - start}, sampled res length = {n_id.shape}"
+    )
+
     ##########################
     # DMA Sampling
     ##########################
@@ -108,20 +115,24 @@ def test_neighbor_sampler_with_real_graph():
     row = torch.from_numpy(row).type(torch.long)
     col = torch.from_numpy(col).type(torch.long)
     edge_ids = torch.LongTensor([1])
-    quiver = qv.new_quiver_from_edge_index(graph_size, data.edge_index, edge_ids, 0)
+    quiver = qv.new_quiver_from_edge_index(graph_size, data.edge_index,
+                                           edge_ids, 0)
     start = time.time()
     n_id2, count2 = quiver.sample_neighbor(0, cuda_seeds, neighbor_size)
-    print(f"DMA sampling method consumed {time.time() - start}, sampled res length = {n_id2.shape}")
-    
-    
+    print(
+        f"DMA sampling method consumed {time.time() - start}, sampled res length = {n_id2.shape}"
+    )
+
     ##############################
     # CPU Sampling
     ##############################
     quiver = qv.cpu_quiver_from_edge_index(graph_size, data.edge_index)
     start = time.time()
     n_id3, count3 = quiver.sample_neighbor(seeds, neighbor_size)
-    print(f"CPU sampling method consumed {time.time() - start}, sampled res length = {n_id3.shape}")
-    
+    print(
+        f"CPU sampling method consumed {time.time() - start}, sampled res length = {n_id3.shape}"
+    )
+
 
 def test_zero_copy_sampling_gpu_utilization():
     print(f"{'*' * 10} TEST WITH REAL GRAPH {'*' * 10}")
@@ -133,33 +144,32 @@ def test_zero_copy_sampling_gpu_utilization():
     edge_index = data.edge_index
     seeds_size = 128 * 15 * 10
     neighbor_size = 5
-    
+
     csr_mat = get_csr_from_coo(edge_index)
-    print(f"mean degree of graph = {np.mean(csr_mat.indptr[1:] - csr_mat.indptr[:-1])}")
+    print(
+        f"mean degree of graph = {np.mean(csr_mat.indptr[1:] - csr_mat.indptr[:-1])}"
+    )
     graph_size = csr_mat.indptr.shape[0] - 1
     seeds = np.arange(graph_size)
     np.random.shuffle(seeds)
-    seeds =seeds[:seeds_size]
-    
+    seeds = seeds[:seeds_size]
+
     ###########################
     # Zero-Copy Sampling
     ############################
     rowptr = torch.from_numpy(csr_mat.indptr).type(torch.long)
     colptr = torch.from_numpy(csr_mat.indices).type(torch.long)
     edge_ids = torch.LongTensor([1])
-    quiver = qv.new_quiver_from_csr_array(rowptr, colptr, edge_ids, 0, True, False)
+    quiver = qv.new_quiver_from_csr_array(rowptr, colptr, edge_ids, 0, True,
+                                          False)
     seeds = torch.from_numpy(seeds).type(torch.long)
     cuda_seeds = seeds.cuda()
     start = time.time()
     while True:
         n_id, count = quiver.sample_neighbor(0, cuda_seeds, neighbor_size)
     #print(f"Zero-Copy sampling method consumed {time.time() - start}, sampled res length = {n_id.shape}")
-    
-    
-    
-    
+
+
 #test_neighbor_sampler_with_fake_graph()
 test_neighbor_sampler_with_real_graph()
 #test_zero_copy_sampling_gpu_utilization()
-    
-    

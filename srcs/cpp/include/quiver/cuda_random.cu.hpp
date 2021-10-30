@@ -4,24 +4,6 @@
 
 constexpr int WARP_SIZE = 32;
 
-/**
- * @brief Perform row-wise sampling on a CSR matrix, and generate a COO matrix,
- * without replacement.
- *
- * @tparam T The ID type used for matrices.
- * @tparam BLOCK_ROWS The number of rows covered by each threadblock.
- * @param rand_seed The random seed to use.
- * @param num_picks The number of non-zeros to pick per row.
- * @param num_rows The number of rows to pick.
- * @param in_rows The set of rows to pick.
- * @param in_ptr The indptr array of the input CSR.
- * @param in_index The indices array of the input CSR.
- * @param data The data array of the input CSR.
- * @param out_ptr The offset to write each row to in the output COO.
- * @param out_rows The rows of the output COO (output).
- * @param out_cols The columns of the output COO (output).
- * @param out_idxs The data array of the output COO (output).
- */
 template <typename T, int BLOCK_WARPS, int TILE_SIZE>
 __global__ void CSRRowWiseSampleKernel(
     const uint64_t rand_seed, int num_picks, const int64_t num_rows,

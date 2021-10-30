@@ -83,13 +83,6 @@ $ sh ./install.sh
 
 [Guideline](docker/README.md) for using Quiver with Docker
 
-## Examples
-
-Quiver has examples that demonsrate how to enable Quiver in real-world PyG scripts:
-
-- Enabling Quiver in PyG's single-GPU examples: [ogbn-product](examples/pyg/) and [reddit](examples/pyg/).
-- Enabling Quiver in PyG's multi-GPU examples: [ogbn-product](examples/multi_gpu/pyg/ogb_products/) and [reddit](examples/multi_gpu/pyg/reddit/).
-
 
 ## Quick Start
 
@@ -148,7 +141,7 @@ mp.spawn(
 ```
 
 
-A full multi-gpu example is available [here](examples/multi_gpu/pyg/ogb-products/dist_sampling_ogb_products_quiver.py).
+A full multi-gpu example is [here](examples/multi_gpu/pyg/ogb-products/dist_sampling_ogb_products_quiver.py).
 
 ### Running Quiver
 
@@ -162,6 +155,13 @@ We will provide multi-node examples soon.
 <!-- We are developing an adaptive end-to-end parallelism system in a distributed cluster.  -->
 
 <!-- You can check [our reddit example](examples/pyg/reddit_quiver.py) for details. -->
+
+## Examples
+
+Quiver has examples that demonsrate how to enable Quiver in real-world PyG scripts:
+
+- Enabling Quiver in PyG's single-GPU examples: [ogbn-product](examples/pyg/) and [reddit](examples/pyg/).
+- Enabling Quiver in PyG's multi-GPU examples: [ogbn-product](examples/multi_gpu/pyg/ogb_products/) and [reddit](examples/multi_gpu/pyg/reddit/).
 
 ## Documentation
 

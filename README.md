@@ -31,7 +31,7 @@ If you are a GNN researcher or you are a `PyG`'s or `DGL`'s user and you are suf
 <!-- * **Easy-to-use and unified API**:
 Integrate Quiver into your training pipeline in `PyG` or `DGL` is just a matter of several lines of code change. We've also implemented IPC mechanism which makes it also a piece of cake to use Quiver to speedup your multi-gpu GNN model training (see the next section for a [quick tour](#quick-tour-for-new-users)).  -->
 
-Below is a chart that describes a benchmark that evaluates the performance of Quiver, PyG and [DGL](https://github.com/dmlc/dgl) on a 4-GPU server. We will add the result of a multi-node benchmark soon. Stay tuned!
+Below is a chart that describes a benchmark that evaluates the performance of Quiver, PyG (2.0.1) and [DGL](https://github.com/dmlc/dgl) (0.7.0) on a 4-GPU server that runs the [Open Graph Benchmark](https://ogb.stanford.edu/). We will add multi-node result soon.
 
 ![e2e_benchmark](docs/multi_medias/imgs/benchmark_e2e_performance.png)
 

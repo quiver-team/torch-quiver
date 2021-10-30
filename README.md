@@ -2,7 +2,7 @@
 [pypi-url]: https://pypi.org/project/torch-quiver/
 
 <p align="center">
-  <img height="200" src="docs/multi_medias/imgs/quiver-logo.png" />
+  <img height="150" src="docs/multi_medias/imgs/quiver-logo.png" />
 </p>
 
 --------------------------------------------------------------------------------
@@ -150,7 +150,7 @@ A full multi-gpu example is [here](examples/multi_gpu/pyg/ogb-products/dist_samp
 
 ### Run Quiver
 
-The commmands to run Quiver on single-GPU or multi-GPU servers are the same. Below is an example command that runs a Quiver's script `examples/pyg/reddit_quiver.py`:
+Quiver has the same commmand to run on single-GPU and multi-GPU servers. Below is an example command that runs a Quiver's script `examples/pyg/reddit_quiver.py`:
 
 ```cmd
 $ python3 examples/pyg/reddit_quiver.py

@@ -175,9 +175,9 @@ Quiver provides a large number of parameters to optimise the performance of its 
 
 Quiver is released under the Apache 2.0 license.  -->
 
-## Acknowledgement
+## Community
 
-The development of Quiver has received the support from [Alibaba](https://damo.alibaba.com/) and [Lambda Labs](https://lambdalabs.com/). 
+We welcome new contributors to join the development of Quiver. Quiver is currently maintained by researchers from the [University of Edinburgh](https://www.ed.ac.uk/), [Imperial College London](https://www.imperial.ac.uk/) and [Tsinghua University](https://www.tsinghua.edu.cn/en/index.htm). The development of Quiver has received the support from [Alibaba](https://damo.alibaba.com/) and [Lambda Labs](https://lambdalabs.com/). 
 
 <!-- ## Architecture Overview
 Key reasons behind Quiver's high performance are that it provides two key components: `quiver.Feature` and `quiver.Sampler`.

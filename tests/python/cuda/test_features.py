@@ -373,7 +373,7 @@ def child_proc_real_data(rank, feature, host_tensor):
 
 def test_ipc_with_real_data():
     from ogb.nodeproppred import PygNodePropPredDataset
-    root = "/home/dalong/data/products"
+    root = "/data/data/products"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     data = dataset[0]
 

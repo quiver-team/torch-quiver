@@ -11,6 +11,7 @@ def find_cuda():
 
 
 def have_cuda():
+    if os.getenv('QUIVER_ENABLE_CUDA') == 1: return True
     import torch
     return torch.cuda.is_available()
 
@@ -53,11 +54,7 @@ def create_extension(with_cuda=False):
         with_cuda=with_cuda,
         extra_compile_args={
             'cxx': extra_cxx_flags,
-            'nvcc': [
-                '-O3',
-                '--expt-extended-lambda',
-                '-lnuma'
-            ],
+            'nvcc': ['-O3', '--expt-extended-lambda', '-lnuma'],
         },
     )
 
@@ -66,7 +63,7 @@ package_dir = './srcs/python'
 
 setup(
     name='torch_quiver',
-    version='0.0.1',
+    version='0.0.23',
     author='Zeyuan Tan',
     author_email='zeyuan.tan@ed.ac.uk',
     url='https://github.com/xpex-ai/gpex',

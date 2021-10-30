@@ -52,7 +52,7 @@ print(torch.max(sorted_deg))
 print(torch.mean(sorted_deg.float()))
 
 feature = torch.rand(num_node, num_feat)
-label = torch.randint(0, high=100, size=(num_node,1))
+label = torch.randint(0, high=100, size=(num_node, 1))
 train_idx = torch.randperm(num_node)
 torch.save(feature, osp.join(feat_root, 'feat.pt'))
 torch.save(label, osp.join(label_root, 'label.pt'))

@@ -15,6 +15,7 @@ Quiver is a distributed graph learning library for PyTorch. The goal of Quiver i
 
 ## Why Quiver?
 
+----
 The primary motivation for this project to make it easy to take a single-GPU `PyG` script, and efficiently scale it across many GPUs and CPUs in parallel. To achieve this, Quiver provides several features:
 <!-- 
 If you are a GNN researcher or you are a `PyG`'s or `DGL`'s user and you are suffering from consuming too much time on graph sampling and feature collection when training your GNN models, then here are some reasons to try out Quiver for your GNN model trainning. -->
@@ -30,16 +31,21 @@ If you are a GNN researcher or you are a `PyG`'s or `DGL`'s user and you are suf
 <!-- * **Easy-to-use and unified API**:
 Integrate Quiver into your training pipeline in `PyG` or `DGL` is just a matter of several lines of code change. We've also implemented IPC mechanism which makes it also a piece of cake to use Quiver to speedup your multi-gpu GNN model training (see the next section for a [quick tour](#quick-tour-for-new-users)).  -->
 
-Below is a chart represeting the benchmark that evaluates the performance of Quiver, PyG and DGL on X servers with X GPUs each. 
+Below is a chart representing the benchmark that evaluates the performance of Quiver and PyG with multiple GPUs.
 
 ![e2e_benchmark](docs/multi_medias/imgs/benchmark_e2e_performance.png)
 
 For system design details, see Quiver's [design overview](docs/Introduction_en.md) (Chinese version: [设计简介](docs/Introduction_cn.md)).
 
-## Install
+## Install 
 
-Assuming `PyG` has been installed locally, you can install Quiver as follow:
+----
+### Install from pip
 
+To install Quiver:
+  1. Install [Pytorch](https://pytorch.org/get-started/locally/)
+  2. Install [PyG](https://github.com/pyg-team/pytorch_geometric)
+  3. Install the `Quiver` pip package
 ```
 pip install torch-quiver
 ```
@@ -51,16 +57,37 @@ Quiver has been tested with Cuda 10.2 and 11.1 on Linux:
 | **Linux**   | ✅      | ✅      |
 
 
-Quiver can be also built from source:
+### Install from source
+You can also install from source code for development 
 
 ```cmd
 $ git clone git@github.com:quiver-team/torch-quiver.git
+$ cd torch-quiver
 $ sh ./install.sh
 ```
 
+### Install from docker
+
+Please refer [this](docker/README.md) to use Quiver in docker 
+
+### Test your installation
+
+If your installation is successful, when you run:
+
+```cmd
+$ python3 examples/pyg/reddit_quiver.py
+```
+
+Then you will get output as below after each epoch is finished:
+
+`Epoch xx, Loss: xx.yy, Approx. Train: xx.yy`
+
 ## Quick Start
 
-Quiver comes into the play by replacing PyG's slow graph sampler and feature collector with `quiver.Sampler` and `quiver.Feature`, respectively. This replacement can be done by changing a few lines of code in existing PyG programs. In the below example, the `PyG` user wants to modify a single-GPU program to leverage a 4-GPU server:
+Quiver comes into the play by replacing PyG's slow graph sampler and feature collector with `quiver.Sampler` and `quiver.Feature`, respectively. This replacement can be done by changing a few lines of code in existing PyG programs. 
+
+### Use Quiver In Single-GPU Training
+In the below example, the `PyG` user wants to modify an original single-GPU program to use Quiver to speedup training :
 
 ```python
 import quiver
@@ -68,36 +95,60 @@ import quiver
 ...
 
 ## Step 1: Parallel graph sampling
-# train_loader = NeighborSampler(train_idx, ...) # Comment out PyG sampler
+# train_loader = NeighborSampler(data.edge_index, ...) # Comment out PyG sampler
 train_loader = torch.utils.data.DataLoader(train_idx) # Quiver: PyTorch Dataloader
 quiver_sampler = quiver.pyg.GraphSageSampler(quiver.CSRTopo(data.edge_index), sizes=[25, 10]) # Quiver: Graph sampler
 
 ...
 
 ## Step 2: Parallel feature collection
-# x = data.x.to(device) # Comment out PyG feature collector
-x = quiver.Feature(rank=0, device_list=[0,1,2,3]).from_cpu_tensor(data.x) # Quiver: Feature collector
+# feature = data.x.to(device) # Comment out PyG feature collector
+quiver_feature = quiver.Feature(rank=0, device_list=[0]).from_cpu_tensor(data.x) # Quiver: Feature collector
 
-## Step 3: Data parallel training
-# TODO
-
+  
+## Step 3: Sample Based Training
+# for batch_size, n_id, adjs in train_loader: # Comment out PyG train_loader
+for seeds in train_loader:
+  n_id, batch_size, adjs = quiver_sampler.sample(seeds)  # Quiver: Use Quiver's Sampler
+  batch_feature = quiver_feature[n_id]
+  ...
 ...
 
 ```
+### Use Quiver In Multi-GPU Training
 
-Run this Quiver program on a 4-GPU server:
+We have implemented IPC mechanism for `quiver.Feature` and `quiver.Sampler` so they can be passed as parameter when launch child processes in DDP training.
 
-```cmd
-$ python3 ..........
+```python
+
+def ddp_train(rank, feature, sampler):
+  # model train
+  ...
+## Step 1: Build Quiver Sampler
+quiver_sampler = ....
+
+## Step 2: Build Quiver Feature, Just Like 
+quiver_feature = ...
+
+## Step 3: Start DDP Training 
+mp.spawn(
+      ddp_train, 
+      args=(quiver_feature, quiver_sampler),
+      nprocs=world_size,
+      join=True
+  )
 ```
 
-A full example is available [here](https://github.com/pyg-team/pytorch_geometric/blob/master/examples/reddit.py) where Quiver can achieve 2x performance improvement with the Reddit dataset on a 4-GPU server.
 
-For multi-node deployment, run this Quiver program on **each** node:
+A full multi-gpu example is available [here](examples/multi_gpu/pyg/ogb-products/dist_sampling_ogb_products_quiver.py).
+
+To launch either single-GPU or multi-GPU jobs, only a single python script needs to be lanched. For example:
 
 ```cmd
-$ python3 ..........
+$ python3 examples/pyg/reddit_quiver.py
 ```
+
+We will also provide multi-host examples in the near future. We are developing an adaptive end-to-end parallelism system in a distributed cluster. 
 
 <!-- You can check [our reddit example](examples/pyg/reddit_quiver.py) for details. -->
 
@@ -106,7 +157,7 @@ $ python3 ..........
 We provide a large collection of examples to demonsrate how to use Quiver in practice:
 
 - Quiver can be eaisly enabled in the PyG examples for [ogbn-product](examples/pyg/) and [reddit](examples/pyg/).
-- Multi-GPU Quiver is also easy to be enabled in PyG's examples for [ogbn-product](examples/multi-gpu/pyg/ogb-products/) and [reddit](examples/multi-gpu/pyg/reddit/).
+- Multi-GPU Quiver is also easy to be enabled in PyG's examples for [ogbn-product](examples/multi_gpu/pyg/ogb_products/) and [reddit](examples/multi_gpu/pyg/reddit/).
 
 ## Documentation
 

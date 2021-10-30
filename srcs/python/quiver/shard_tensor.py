@@ -3,6 +3,7 @@ import torch
 
 from .utils import Topo
 
+
 class Offset:
     def __init__(self, start, end):
         self.start_ = start
@@ -71,7 +72,7 @@ class ShardTensorConfig:
 
     @property
     def device_list(self):
-       
+
         return list(self.device_memory_budget.keys())
 
 
@@ -155,7 +156,7 @@ class ShardTensor:
 
         if cur_pos < tensor.shape[0]:
             # allocate the rest of data on CPU
-            self.cpu_tensor = tensor[cur_pos: ]
+            self.cpu_tensor = tensor[cur_pos:]
             self.shard_tensor.append(self.cpu_tensor, -1)
             print(
                 f"LOG >>> Assign {100 - int(100 * cur_pos * 1.0 / tensor.shape[0])}% data to CPU"
@@ -164,8 +165,11 @@ class ShardTensor:
 
     def collect_device(self, input_orders, nodes, inter_device, wait_results):
 
-        request_nodes_mask = (nodes >= self.shard_tensor_config.tensor_offset_device[inter_device].start) & (
-                                    nodes < self.shard_tensor_config.tensor_offset_device[inter_device].end)
+        request_nodes_mask = (
+            nodes >=
+            self.shard_tensor_config.tensor_offset_device[inter_device].start
+        ) & (nodes <
+             self.shard_tensor_config.tensor_offset_device[inter_device].end)
         request_nodes = torch.masked_select(nodes, request_nodes_mask)
         part_orders = torch.masked_select(input_orders, request_nodes_mask)
         request_nodes = request_nodes.to(inter_device)
@@ -182,17 +186,22 @@ class ShardTensor:
 
         feature = self.shard_tensor[nodes]
 
-        input_orders = torch.arange(nodes.size(0), dtype=torch.long, device=self.current_device)
+        input_orders = torch.arange(nodes.size(0),
+                                    dtype=torch.long,
+                                    device=self.current_device)
 
         # call inter request, we unfold for loop
-        inter_clique_devices = self.topo.p2pClique2Device.get(1 - self.current_clique, [])
+        inter_clique_devices = self.topo.p2pClique2Device.get(
+            1 - self.current_clique, [])
 
         wait_results = []
 
         for inter_device in inter_clique_devices:
-            if self.shard_tensor_config.tensor_offset_device.get(inter_device, None) is not None:
-                self.collect_device(input_orders, nodes, inter_device, wait_results)
-                
+            if self.shard_tensor_config.tensor_offset_device.get(
+                    inter_device, None) is not None:
+                self.collect_device(input_orders, nodes, inter_device,
+                                    wait_results)
+
         for result in wait_results:
             feature[result[0]] = result[1]
 
@@ -227,7 +236,6 @@ class ShardTensor:
         shard_tensor = cls(current_device, shard_tensor_config)
         shard_tensor.from_ipc_handle(gpu_part_ipc_list, cpu_tensor)
         return shard_tensor
-    
+
     def size(self, dim):
         return self.shard_tensor.size(dim)
-

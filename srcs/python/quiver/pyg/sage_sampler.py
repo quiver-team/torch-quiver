@@ -6,7 +6,6 @@ from typing import List, Tuple, NamedTuple
 
 from .. import utils as quiver_utils
 
-
 __all__ = ["GraphSageSampler"]
 
 
@@ -18,7 +17,8 @@ class Adj(NamedTuple):
     def to(self, *args, **kwargs):
         return Adj(self.edge_index.to(*args, **kwargs),
                    self.e_id.to(*args, **kwargs), self.size)
-                   
+
+
 class GraphSageSampler:
     r"""
     Quiver's GraphSageSampler behaves just like Pyg's `NeighborSampler` but with much higher performance.
@@ -34,23 +34,29 @@ class GraphSageSampler:
         device (int): Device which sample kernel will be launched
         mode (str): Sample mode, choices are [`UVA`, `GPU`], default is `UVA`.
     """
+    def __init__(self,
+                 csr_topo: quiver_utils.CSRTopo,
+                 sizes: List[int],
+                 device,
+                 mode="UVA"):
 
-    def __init__(self, csr_topo: quiver_utils.CSRTopo, sizes: List[int], device, mode="UVA"):
-
-        assert mode in ["UVA", "GPU"], f"sampler mode should be one of [UVA, GPU]"
+        assert mode in ["UVA",
+                        "GPU"], f"sampler mode should be one of [UVA, GPU]"
         self.sizes = sizes
         self.quiver = None
         self.csr_topo = csr_topo
         self.mode = mode
         if device >= 0:
             edge_id = torch.zeros(1, dtype=torch.long)
-            self.quiver = qv.new_quiver_from_csr_array(self.csr_topo.indptr, self.csr_topo.indices, edge_id, device, self.mode != "UVA")
-    
+            self.quiver = qv.new_quiver_from_csr_array(self.csr_topo.indptr,
+                                                       self.csr_topo.indices,
+                                                       edge_id, device,
+                                                       self.mode != "UVA")
+
         self.device = device
 
         self.ipc_handle_ = None
 
-    
     def sample_layer(self, batch, size):
         self.lazy_init_quiver()
         if not isinstance(batch, torch.Tensor):
@@ -64,10 +70,13 @@ class GraphSageSampler:
 
     def lazy_init_quiver(self):
         if self.quiver is not None:
-            return 
+            return
         self.device = torch.cuda.current_device()
         edge_id = torch.zeros(1, dtype=torch.long)
-        self.quiver = qv.new_quiver_from_csr_array(self.csr_topo.indptr, self.csr_topo.indices, edge_id, self.device, self.mode != "UVA")
+        self.quiver = qv.new_quiver_from_csr_array(self.csr_topo.indptr,
+                                                   self.csr_topo.indices,
+                                                   edge_id, self.device,
+                                                   self.mode != "UVA")
 
     def reindex(self, inputs, outputs, counts):
         return qv.reindex_single(inputs, outputs, counts)
@@ -109,7 +118,7 @@ class GraphSageSampler:
             tuple: ipc handle tuple
         """
         return self.csr_topo, self.sizes, self.mode
-    
+
     @classmethod
     def lazy_from_ipc_handle(cls, ipc_handle):
         """Create from ipc handle

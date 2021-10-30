@@ -136,7 +136,6 @@ quiver_feature.from_cpu_tensor(dataset[0].x)
 ## 4 End-to-end Performance
 
 Quiver provides high-performance components for GNN training. Users will have the freedom to make choices of sampling and feature collection combined strategy. 
-Quiver为用户提供了高性能的GNN训练核心组件，用户可以自由和CPU采样/CPU特征聚合方式进行组合使用。接下来我们介绍使用Quiver可以达到的优异的单卡性能以及多卡扩展性。
 
 ### 4.1 cache_policy = device_replicate
 

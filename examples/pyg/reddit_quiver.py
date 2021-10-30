@@ -31,7 +31,7 @@ train_loader = torch.utils.data.DataLoader(train_idx,
                                            drop_last=True)
 
 csr_topo = quiver.CSRTopo(data.edge_index)
-quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, sizes=[15, 10, 5], device=0)
+quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, sizes=[25, 10], device=0)
 
 
 subgraph_loader = NeighborSampler(data.edge_index, node_idx=None, sizes=[-1],

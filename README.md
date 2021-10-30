@@ -32,9 +32,11 @@ If you are a GNN researcher or you are a `PyG`'s or `DGL`'s user and you are suf
 <!-- * **Easy-to-use and unified API**:
 Integrate Quiver into your training pipeline in `PyG` or `DGL` is just a matter of several lines of code change. We've also implemented IPC mechanism which makes it also a piece of cake to use Quiver to speedup your multi-gpu GNN model training (see the next section for a [quick tour](#quick-tour-for-new-users)).  -->
 
-Below is a chart that describes a benchmark that evaluates the performance of Quiver, PyG (2.0.1) and [DGL](https://github.com/dmlc/dgl) (0.7.0) on a 4-GPU server that runs the [Open Graph Benchmark](https://ogb.stanford.edu/). We will add multi-node result soon.
+Below is a chart that describes a benchmark that evaluates the performance of Quiver, PyG (2.0.1) and [DGL](https://github.com/dmlc/dgl) (0.7.0) on a 4-GPU server that runs the [Open Graph Benchmark](https://ogb.stanford.edu/). 
 
 ![e2e_benchmark](docs/multi_medias/imgs/benchmark_e2e_performance.png)
+
+We will add multi-node result soon.
 
 For system design details, see Quiver's [design overview](docs/Introduction_en.md) (Chinese version: [设计简介](docs/Introduction_cn.md)).
 
@@ -92,7 +94,7 @@ $ sh ./install.sh
 
 ## Quick Start
 
-To use Quiver, we need to replace PyG's graph sampler and feature collector with  `quiver.Sampler` and `quiver.Feature`, which requires only a few lines of code change. 
+To use Quiver, you need to replace PyG's graph sampler and feature collector with `quiver.Sampler` and `quiver.Feature`. The replacement usually requires only a few changes in existing PyG programs. 
 
 ### Use Quiver in Single-GPU PyG Scripts
 
@@ -127,7 +129,7 @@ for seeds in train_loader:
 ```
 ### Use Quiver in Multi-GPU PyG Scripts
 
-To use Quiver in multi-GPU PyG scripts, we can simply pass `quiver.Feature` and `quiver.Sampler` as arguments for the child processes launched in PyTorch's DDP training, as shown below:
+To use Quiver in multi-GPU PyG scripts, we can simply pass `quiver.Feature` and `quiver.Sampler` as arguments to the child processes launched in PyTorch's DDP training, as shown below:
 
 ```python
 
@@ -152,7 +154,7 @@ A full multi-gpu example is [here](examples/multi_gpu/pyg/ogb-products/dist_samp
 
 ### Run Quiver
 
-Quiver has the same commmand to run on single-GPU and multi-GPU servers. Below is an example command that runs a Quiver's script `examples/pyg/reddit_quiver.py`:
+Quiver has the same running commmand on single-GPU and multi-GPU servers. Below is an example command that runs a Quiver's script `examples/pyg/reddit_quiver.py`:
 
 ```cmd
 $ python3 examples/pyg/reddit_quiver.py
@@ -165,14 +167,14 @@ We will provide multi-node examples soon.
 
 ## Examples
 
-Quiver has examples that demonsrate how to enable Quiver in real-world PyG scripts:
+We provide many examples that demonsrate how to enable Quiver in real-world PyG scripts:
 
 - Enabling Quiver in PyG's single-GPU examples: [ogbn-product](examples/pyg/) and [reddit](examples/pyg/).
 - Enabling Quiver in PyG's multi-GPU examples: [ogbn-product](examples/multi_gpu/pyg/ogb_products/) and [reddit](examples/multi_gpu/pyg/reddit/).
 
 ## Documentation
 
-Quiver provides a large number of parameters to optimise the performance of its graph samplers (e.g., GPU-local or CPU-GPU hybrid) and feature collectors (e.g., feature partition or replication). Please check [API Document](docs/) for details.
+There are many parameters available to optimise the performance of Quiver's graph samplers (e.g., GPU-local or CPU-GPU hybrid) and feature collectors (e.g., feature replication/sharding strategies). Please check [documentation](docs/) for details.
 
 <!-- ## License
 

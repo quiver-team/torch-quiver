@@ -40,7 +40,7 @@ For system design details, see Quiver's [design overview](docs/Introduction_en.m
 ## Install 
 
 ----
-### Install from pip
+### Pip Install
 
 To install Quiver:
   1. Install [Pytorch](https://pytorch.org/get-started/locally/)
@@ -50,27 +50,31 @@ To install Quiver:
 pip install torch-quiver
 ```
 
-Quiver has been tested with Cuda 10.2 and 11.1 on Ubuntu:
+Quiver has been tested with the following setup:
 
-|     OS        | `cu102` | `cu111` |
+* OS: Ubuntu 18.04, Ubuntu 20.04
+* CUDA: 10.2, 11.1
+* GPU: P100, V100, Titan X, A6000
+
+<!-- |     OS        | `cu102` | `cu111` |
 |-------------|---------|---------|
-| **Ubuntu**   | ✅      | ✅      |
+| **Ubuntu**   | ✅      | ✅      | -->
 
-### Test your installation
+### Test Install
 
-You can download examples to test your Quiver installation:
+You can download Quiver's examples to test installation:
 
 ```cmd
 $ git clone git@github.com:quiver-team/torch-quiver.git && cd torch-quiver
 $ python3 examples/pyg/reddit_quiver.py
 ```
 
-This script should print:
+A successful run should contain the following line:
 
 `Epoch xx, Loss: xx.yy, Approx. Train: xx.yy`
 
 
-### Install from source
+### Build from source
 
 To build Quiver from source:
 

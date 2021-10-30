@@ -46,8 +46,9 @@ To install Quiver:
   1. Install [Pytorch](https://pytorch.org/get-started/locally/)
   2. Install [PyG](https://github.com/pyg-team/pytorch_geometric)
   3. Install the `Quiver` pip package
-```
-pip install torch-quiver
+
+```cmd
+$ pip install torch-quiver
 ```
 
 We have tested Quiver with the following setup:
@@ -147,9 +148,9 @@ mp.spawn(
 
 A full multi-gpu example is [here](examples/multi_gpu/pyg/ogb-products/dist_sampling_ogb_products_quiver.py).
 
-### Running Quiver
+### Run Quiver
 
-Running Quiver on single-GPU or multi-GPU servers are the same. The command is (assuming the Quiver's script is `examples/pyg/reddit_quiver.py`):
+The commmands to run Quiver on single-GPU or multi-GPU servers are the same. Below is an example command that runs a Quiver's script `examples/pyg/reddit_quiver.py`:
 
 ```cmd
 $ python3 examples/pyg/reddit_quiver.py

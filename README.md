@@ -17,7 +17,7 @@ Quiver is a distributed graph learning library for [PyTorch Geometric](https://g
 ## Why Quiver?
 
 ----
-The primary motivation for this project is to make it easy to take a PyG script and scale it across many GPUs and CPUs. A typical scenario is: Quiver users can leverage the high-level APIs and rich examples of PyG to design graph learning algorithms, and then use Quiver to scale PyG algorithms to run at large scale (e.g., coping with production-scale datasets or training large models). To make scaling efficient, Quiver realises several features:
+The primary motivation for this project is to make it easy to take a PyG script and scale it across many GPUs and CPUs. A typical scenario is: Quiver users can leverage the high-level APIs and rich examples of PyG to design graph learning algorithms, and then use Quiver to scale PyG algorithms to run at large scale. To make scaling efficient, Quiver has several features:
 <!-- 
 If you are a GNN researcher or you are a `PyG`'s or `DGL`'s user and you are suffering from consuming too much time on graph sampling and feature collection when training your GNN models, then here are some reasons to try out Quiver for your GNN model trainning. -->
 

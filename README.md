@@ -8,7 +8,7 @@
 --------------------------------------------------------------------------------
 
 Quiver is a distributed graph learning library for [PyTorch Geometric](https://github.com/pyg-team/pytorch_geometric) (PyG). The goal of Quiver is to make large-scale distributed graph learning fast and easy to use.
-A typical scenario to use Quiver is: developers leverage the simple APIs and example code of PyG to design graph learning algorithms, and then rely on Quiver to scale their PyG algorithms to many nodes, thus can cope with large-scale datasets and GNN models. 
+
 
 <!-- **Quiver** is a high-performance GNN training add-on which can fully utilize the hardware to achive the best GNN trainning performance. By integrating Quiver into your GNN training pipeline with **just serveral lines of code change**, you can enjoy **much better end-to-end performance** and **much better scalability with multi-gpus**, you can even achieve **super linear scalability** if your GPUs are connected with NVLink, Quiver will help you make full use of NVLink. -->
 
@@ -17,7 +17,7 @@ A typical scenario to use Quiver is: developers leverage the simple APIs and exa
 ## Why Quiver?
 
 ----
-The primary motivation for this project is to make it easy to take a PyG script and efficiently scale it across many GPUs and CPUs. To achieve this, Quiver provides several features:
+The primary motivation for this project is to make it easy to take a PyG script and scale it across many GPUs and CPUs. A typical scenario is: Quiver users can leverage the high-level APIs and rich examples of PyG to design graph learning algorithms, and then use Quiver to scale PyG algorithms to run at large scale (e.g., coping with production-scale datasets or training large models). To make scaling efficient, Quiver realises several features:
 <!-- 
 If you are a GNN researcher or you are a `PyG`'s or `DGL`'s user and you are suffering from consuming too much time on graph sampling and feature collection when training your GNN models, then here are some reasons to try out Quiver for your GNN model trainning. -->
 

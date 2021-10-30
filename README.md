@@ -172,7 +172,7 @@ Quiver has examples that demonsrate how to enable Quiver in real-world PyG scrip
 
 ## Documentation
 
-Quiver provides a large number of parameters to optimise the performance of its graph samplers (e.g., TODO) and feature collectors (e.g., TODO). Please check [API Document](docs/) for details.
+Quiver provides a large number of parameters to optimise the performance of its graph samplers (e.g., GPU-local or CPU-GPU hybrid) and feature collectors (e.g., feature partition or replication). Please check [API Document](docs/) for details.
 
 <!-- ## License
 

@@ -113,12 +113,13 @@ quiver_sampler = quiver.pyg.GraphSageSampler(quiver.CSRTopo(data.edge_index), si
 # feature = data.x.to(device) # Comment out PyG feature collector
 quiver_feature = quiver.Feature(rank=0, device_list=[0]).from_cpu_tensor(data.x) # Quiver: Feature collector
 
+...
   
-## Step 3: Enable Quiver
-# for batch_size, n_id, adjs in train_loader: # Comment out PyG train_loader
+## Step 3: Train PyG models with Quiver
+# for batch_size, n_id, adjs in train_loader: # Comment out PyG training loop
 for seeds in train_loader:
-  n_id, batch_size, adjs = quiver_sampler.sample(seeds)  # Quiver: Use Quiver's Sampler
-  batch_feature = quiver_feature[n_id]
+  n_id, batch_size, adjs = quiver_sampler.sample(seeds)  # Use Quiver graph sampler
+  batch_feature = quiver_feature[n_id]  # Use Quiver feature collector
   ...
 ...
 

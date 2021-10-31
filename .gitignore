@@ -12,6 +12,9 @@ Testing/
 _deps
 generated
 
+# Mac
+.DS_Store
+
 # Pycharm Project Directory
 venvgi/
 .idea/

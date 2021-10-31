@@ -364,7 +364,6 @@ TorchQuiver new_quiver_from_csr_array(torch::Tensor &input_indptr,
 
     bool use_eid = input_edge_idx.size(0) == edge_count;
 
-
     /*
     In Zero-Copy Mode, We Do These Steps:
     0. Copy The Data If Needed
@@ -376,74 +375,76 @@ TorchQuiver new_quiver_from_csr_array(torch::Tensor &input_indptr,
     T *indptr_device_pointer = nullptr;
     T *indices_device_pointer = nullptr;
     T *edge_id_device_pointer = nullptr;
-    {
-        /*if (!cuda) {
-            const T *indptr_original = reinterpret_cast<const T *>(input_indptr.data_ptr<T>());
-            // Register Buffer As Mapped Pinned Memory
-            quiverRegister((void *)indptr_original, sizeof(T) * node_count,
-                             cudaHostRegisterMapped);
-            // Get Device Pointer In GPU Memory Space
-            cudaHostGetDevicePointer((void **)&indptr_device_pointer,
-                                     (void *)indptr_original, 0);
-        } else */{
-            const T *indptr_original = reinterpret_cast<const T *>(input_indptr.data_ptr<T>());
-            T *indptr_copy;
-            cudaMalloc((void **)&indptr_copy, sizeof(T) * node_count);
-            cudaMemcpy((void *)indptr_copy, (void *)indptr_original,
-                   sizeof(T) * node_count, cudaMemcpyDefault);
-            indptr_device_pointer = indptr_copy;
-        }
+    {/*if (!cuda) {
+         const T *indptr_original = reinterpret_cast<const T
+     *>(input_indptr.data_ptr<T>());
+         // Register Buffer As Mapped Pinned Memory
+         quiverRegister((void *)indptr_original, sizeof(T) * node_count,
+                          cudaHostRegisterMapped);
+         // Get Device Pointer In GPU Memory Space
+         cudaHostGetDevicePointer((void **)&indptr_device_pointer,
+                                  (void *)indptr_original, 0);
+     } else */
+     {const T *indptr_original =
+          reinterpret_cast<const T *>(input_indptr.data_ptr<T>());
+    T *indptr_copy;
+    cudaMalloc((void **)&indptr_copy, sizeof(T) * node_count);
+    cudaMemcpy((void *)indptr_copy, (void *)indptr_original,
+               sizeof(T) * node_count, cudaMemcpyDefault);
+    indptr_device_pointer = indptr_copy;
+}
 
-    }
-    // std::cout<<"mapped indptr"<<std::endl;
-    {
-        if (!cuda) {
-            const T *indices_original =
-                reinterpret_cast<const T *>(input_indices.data_ptr<T>());
-            // Register Buffer As Mapped Pinned Memory
-            quiverRegister((void *)indices_original, sizeof(T) * edge_count,
-                             cudaHostRegisterMapped);
-            // Get Device Pointer In GPU Memory Space
-            cudaHostGetDevicePointer((void **)&indices_device_pointer,
-                                     (void *)indices_original, 0);
-        } else {
-            const T *indices_original =
-                reinterpret_cast<const T *>(input_indices.data_ptr<T>());
-            T *indices_copy;
-            cudaMalloc((void **)&indices_copy, sizeof(T) * edge_count);
-            cudaMemcpy((void *)indices_copy, (void *)indices_original,
+}  // namespace quiver
+// std::cout<<"mapped indptr"<<std::endl;
+{
+    if (!cuda) {
+        const T *indices_original =
+            reinterpret_cast<const T *>(input_indices.data_ptr<T>());
+        // Register Buffer As Mapped Pinned Memory
+        quiverRegister((void *)indices_original, sizeof(T) * edge_count,
+                       cudaHostRegisterMapped);
+        // Get Device Pointer In GPU Memory Space
+        cudaHostGetDevicePointer((void **)&indices_device_pointer,
+                                 (void *)indices_original, 0);
+    } else {
+        const T *indices_original =
+            reinterpret_cast<const T *>(input_indices.data_ptr<T>());
+        T *indices_copy;
+        cudaMalloc((void **)&indices_copy, sizeof(T) * edge_count);
+        cudaMemcpy((void *)indices_copy, (void *)indices_original,
                    sizeof(T) * edge_count, cudaMemcpyDefault);
-            indices_device_pointer = indices_copy;
-        }
-
+        indices_device_pointer = indices_copy;
     }
+}
 
-    // std::cout<<"mapped indices"<<std::endl;
-    if (use_eid) {
-        if (!cuda) {
-            const T *id_original = reinterpret_cast<const T *>(input_edge_idx.data_ptr<T>());
-            // Register Buffer As Mapped Pinned Memory
-            quiverRegister((void *)id_original, sizeof(T) * edge_count,
-                             cudaHostRegisterMapped);
-            // Get Device Pointer In GPU Memory Space
-            cudaHostGetDevicePointer((void **)&edge_id_device_pointer,
-                                     (void *)id_original, 0);
-        } else {
-            const T *id_original = reinterpret_cast<const T *>(input_edge_idx.data_ptr<T>());
-            T *id_copy;
-            cudaMalloc((void **)&id_copy, sizeof(T) * edge_count);
-            cudaMemcpy((void *)id_copy, (void *)id_original,
-                   sizeof(T) * edge_count, cudaMemcpyDefault);
-            edge_id_device_pointer = id_copy;
-        }
+// std::cout<<"mapped indices"<<std::endl;
+if (use_eid) {
+    if (!cuda) {
+        const T *id_original =
+            reinterpret_cast<const T *>(input_edge_idx.data_ptr<T>());
+        // Register Buffer As Mapped Pinned Memory
+        quiverRegister((void *)id_original, sizeof(T) * edge_count,
+                       cudaHostRegisterMapped);
+        // Get Device Pointer In GPU Memory Space
+        cudaHostGetDevicePointer((void **)&edge_id_device_pointer,
+                                 (void *)id_original, 0);
+    } else {
+        const T *id_original =
+            reinterpret_cast<const T *>(input_edge_idx.data_ptr<T>());
+        T *id_copy;
+        cudaMalloc((void **)&id_copy, sizeof(T) * edge_count);
+        cudaMemcpy((void *)id_copy, (void *)id_original, sizeof(T) * edge_count,
+                   cudaMemcpyDefault);
+        edge_id_device_pointer = id_copy;
     }
+}
 
-    // std::cout<<"mapped edge id "<<std::endl;
-    // initialize Quiver instance
-    using Q = quiver<int64_t, CUDA>;
-    Q quiver = Q::New(indptr_device_pointer, indices_device_pointer,
-                      edge_id_device_pointer, node_count-1, edge_count);
-    return TorchQuiver(std::move(quiver), device);
+// std::cout<<"mapped edge id "<<std::endl;
+// initialize Quiver instance
+using Q = quiver<int64_t, CUDA>;
+Q quiver = Q::New(indptr_device_pointer, indices_device_pointer,
+                  edge_id_device_pointer, node_count - 1, edge_count);
+return TorchQuiver(std::move(quiver), device);
 }
 
 TorchQuiver new_quiver_from_edge_index(size_t n,

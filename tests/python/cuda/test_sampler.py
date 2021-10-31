@@ -1,5 +1,5 @@
 import torch
-import numpy as np 
+import numpy as np
 import scipy.sparse as sp
 import torch_quiver as qv
 
@@ -20,14 +20,11 @@ from typing import List, Optional, Tuple, NamedTuple, Union, Callable
 
 import quiver.utils as quiver_utils
 
-
 import torch
 from torch import Tensor
 from torch_sparse import SparseTensor
 import torch_quiver as qv
 from typing import List, Optional, Tuple, NamedTuple, Union, Callable
-
-
 
 __all__ = ["GraphSageSampler", "GraphStructure"]
 
@@ -40,7 +37,8 @@ class Adj(NamedTuple):
     def to(self, *args, **kwargs):
         return Adj(self.edge_index.to(*args, **kwargs),
                    self.e_id.to(*args, **kwargs), self.size)
-                   
+
+
 class GraphSageSampler:
     r"""
     The graphsage sampler from the `"Inductive Representation Learning on
@@ -59,25 +57,29 @@ class GraphSageSampler:
         mode (str): Sample mode, choices are [UVA, GPU].
             (default: :obj: `UVA`)
     """
+    def __init__(self,
+                 csr_topo: quiver_utils.CSRTopo,
+                 sizes: List[int],
+                 device,
+                 mode="UVA"):
 
-    def __init__(self, csr_topo: quiver_utils.CSRTopo, sizes: List[int], device, mode="UVA"):
-
-        
         self.sizes = sizes
-        
+
         self.quiver = None
         self.csr_topo = csr_topo
 
         self.mode = mode
         if device >= 0:
             edge_id = torch.zeros(1, dtype=torch.long)
-            self.quiver = qv.new_quiver_from_csr_array(self.csr_topo.indptr, self.csr_topo.indices, edge_id, device, self.mode != "UVA")
-    
+            self.quiver = qv.new_quiver_from_csr_array(self.csr_topo.indptr,
+                                                       self.csr_topo.indices,
+                                                       edge_id, device,
+                                                       self.mode != "UVA")
+
         self.device = device
 
         self.ipc_handle_ = None
 
-    
     def sample_layer(self, batch, size):
         self.lazy_init_quiver()
         if not isinstance(batch, torch.Tensor):
@@ -90,10 +92,13 @@ class GraphSageSampler:
 
     def lazy_init_quiver(self):
         if self.quiver is not None:
-            return 
+            return
         self.device = torch.cuda.current_device()
         edge_id = torch.zeros(1, dtype=torch.long)
-        self.quiver = qv.new_quiver_from_csr_array(self.csr_topo.indptr, self.csr_topo.indices, edge_id, self.device, self.mode != "UVA")
+        self.quiver = qv.new_quiver_from_csr_array(self.csr_topo.indptr,
+                                                   self.csr_topo.indices,
+                                                   edge_id, self.device,
+                                                   self.mode != "UVA")
 
     def reindex(self, inputs, outputs, counts):
         return qv.reindex_single(inputs, outputs, counts)
@@ -122,7 +127,7 @@ class GraphSageSampler:
 
     def share_ipc(self):
         return self.csr_topo, self.sizes, self.mode
-    
+
     @classmethod
     def lazy_from_ipc_handle(cls, ipc_handle):
         csr_topo, sizes, mode = ipc_handle
@@ -139,17 +144,17 @@ def test_GraphSageSampler():
     #home = os.getenv('HOME')
     #ata_dir = osp.join(home, '.pyg')
     #root = osp.join(data_dir, 'data', 'products')
-    root = "/home/dalong/data/products/"
+    root = "/data/data/products/"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     torch.cuda.set_device(0)
     data = dataset[0]
 
     seeds_size = 128 * 15 * 10
     neighbor_size = 5
-    
+
     seeds = np.arange(2000000)
     np.random.shuffle(seeds)
-    seeds =seeds[:seeds_size]
+    seeds = seeds[:seeds_size]
     seeds = torch.from_numpy(seeds).type(torch.long)
     cuda_seeds = seeds.to(0)
 
@@ -158,7 +163,7 @@ def test_GraphSageSampler():
     sage_sampler = GraphSageSampler(csr_topo, sizes=[5], device=0, mode="GPU")
     res = sage_sampler.sample(cuda_seeds)
     print(res)
-    
+
 
 def child_process(rank, sage_sampler):
 
@@ -166,10 +171,10 @@ def child_process(rank, sage_sampler):
     seeds_size = 1024
     neighbor_size = 5
     node_count = sage_sampler.csr_topo.indptr.shape[0] - 1
-    
+
     seeds = np.arange(node_count)
     np.random.shuffle(seeds)
-    seeds =seeds[:seeds_size]
+    seeds = seeds[:seeds_size]
     seeds = torch.from_numpy(seeds).type(torch.long)
     cuda_seeds = seeds.to(rank)
 
@@ -180,34 +185,42 @@ def child_process(rank, sage_sampler):
         start = time.time()
         res = sage_sampler.sample(cuda_seeds)
         sample_times.append(time.time() - start)
-    
+
     print(f"consumed {time.time() - start}")
 
 
 def test_ipc():
-    root = "/home/dalong/products/"
+    root = "/data/products/"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     torch.cuda.set_device(0)
     data = dataset[0]
     csr_topo = quiver.CSRTopo(data.edge_index)
-    sage_sampler = quiver.pyg.GraphSageSampler(csr_topo, sizes=[15, 10, 5], device=0, mode="GPU")
+    sage_sampler = quiver.pyg.GraphSageSampler(csr_topo,
+                                               sizes=[15, 10, 5],
+                                               device=0,
+                                               mode="GPU")
 
     mp.spawn(child_process, args=(sage_sampler), nprocs=1, join=True)
-    
+
+
 def rebuild_pyg_sampler(cls, ipc_handle):
     print("rebuild sampler")
     sampler = cls.lazy_from_ipc_handle(ipc_handle)
     return sampler
-    
+
 
 def reduce_pyg_sampler(sampler):
     print("reduce sampler")
     ipc_handle = sampler.share_ipc()
-    return (rebuild_pyg_sampler, (type(sampler), ipc_handle, ))
-  
+    return (rebuild_pyg_sampler, (
+        type(sampler),
+        ipc_handle,
+    ))
+
 
 def init_reductions():
     ForkingPickler.register(GraphSageSampler, reduce_pyg_sampler)
+
 
 if __name__ == "__main__":
     mp.set_start_method("spawn")

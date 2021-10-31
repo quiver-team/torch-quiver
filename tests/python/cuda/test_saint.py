@@ -3,14 +3,16 @@ import torch
 import time
 import torch_quiver as qv
 
-i = torch.tensor([[0,0,1,1,2,2,3,3,4,4], [2,3,2,4,0,1,0,4,1,3]])
-v = torch.tensor([1,2,3,4,5,6,7,8,9,10])
+i = torch.tensor([[0, 0, 1, 1, 2, 2, 3, 3, 4, 4],
+                  [2, 3, 2, 4, 0, 1, 0, 4, 1, 3]])
+v = torch.tensor([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
 s = SparseTensor(row=i[0], col=i[1], value=v)
 print(s.to_dense())
 print(s.row)
 
-i = torch.tensor([[0,0,1,2,2,3,3,4,4,1,1], [2,3,4,0,1,0,4,1,3,2,2]])
-v = torch.tensor([1,2,4,5,6,7,8,9,10,3,3])
+i = torch.tensor([[0, 0, 1, 2, 2, 3, 3, 4, 4, 1, 1],
+                  [2, 3, 4, 0, 1, 0, 4, 1, 3, 2, 2]])
+v = torch.tensor([1, 2, 4, 5, 6, 7, 8, 9, 10, 3, 3])
 s = SparseTensor(row=i[0], col=i[1], value=v)
 print(s.to_dense())
 print(s.E)

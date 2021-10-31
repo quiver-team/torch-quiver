@@ -134,7 +134,7 @@ def run(rank, world_size, x, y, edge_index, split_idx, num_features, num_classes
 
 
 if __name__ == '__main__':
-    root = "/home/dalong/data/products"
+    root = "/data/products"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     data = dataset[0]
     split_idx = dataset.get_idx_split()

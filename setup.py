@@ -63,10 +63,10 @@ package_dir = './srcs/python'
 
 setup(
     name='torch_quiver',
-    version='0.0.23',
+    version='0.1.0',
     author='Zeyuan Tan',
     author_email='zeyuan.tan@ed.ac.uk',
-    url='https://github.com/xpex-ai/gpex',
+    url='https://github.com/quiver-team/torch-quiver',
     description=('Distributed Graph Learning Library for Pytorch Geometric'),
     keywords=['pytorch', 'distributed', 'graph'],
     license='Apache',

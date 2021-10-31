@@ -160,7 +160,7 @@ Below is an example command that runs a Quiver's script `examples/pyg/reddit_qui
 $ python3 examples/pyg/reddit_quiver.py
 ```
 
-The commmands to run Quiver on single-GPU servers and multi-GPU servers are the same. We will provide multi-node examples soon. 
+The commands to run Quiver on single-GPU servers and multi-GPU servers are the same. We will provide multi-node examples soon. 
 <!-- We are developing an adaptive end-to-end parallelism system in a distributed cluster.  -->
 
 <!-- You can check [our reddit example](examples/pyg/reddit_quiver.py) for details. -->

@@ -170,7 +170,7 @@ The commands to run Quiver on single-GPU servers and multi-GPU servers are the s
 We provide rich examples to show how to enable Quiver in real-world PyG scripts:
 
 - Enabling Quiver in PyG's single-GPU examples: [ogbn-product](examples/pyg/) and [reddit](examples/pyg/).
-- Enabling Quiver in PyG's multi-GPU examples: [ogbn-product](examples/multi_gpu/pyg/ogb_products/) and [reddit](examples/multi_gpu/pyg/reddit/).
+- Enabling Quiver in PyG's multi-GPU examples: [ogbn-product](examples/multi_gpu/pyg/ogb-products/) and [reddit](examples/multi_gpu/pyg/reddit/).
 
 ## Documentation
 

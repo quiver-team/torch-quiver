@@ -117,7 +117,8 @@ def train(epoch):
     pbar.set_description(f'Epoch {epoch:02d}')
 
     total_loss = total_correct = 0
-    for batch_size, n_id, adjs in train_loader:
+    for seeds in train_loader:
+        n_id, batch_size, adjs = quiver_sampler.sample(seeds)
         # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
         adjs = [adj.to(device) for adj in adjs]
 

@@ -358,8 +358,8 @@ def test_feat_partition():
 
 def test_feat_partition_pair(rank):
     local_size = 2
-    ws = 4
-    store = dist.TCPStore(MASTER_ADDR, MASTER_PORT, 2,
+    ws = 6
+    store = dist.TCPStore(MASTER_ADDR, MASTER_PORT, 3,
                           MASTER_ADDR == LOCAL_ADDR)
     if rank == 0:
         id = quiver.comm.getNcclId()
@@ -368,11 +368,11 @@ def test_feat_partition_pair(rank):
         id = store.get("id")
     print(f"{rank} init store {id}")
     size = 10000000
-    global2host = torch.randint(high=2, size=(size, ), dtype=torch.int64)
+    global2host = torch.randint(high=3, size=(size, ), dtype=torch.int64)
     procs = []
     for i in range(local_size):
         proc = mp.Process(target=child_feat_partition_pair,
-                          args=(i + rank * local_size, ws, id, i, rank, 2, global2host))
+                          args=(i + rank * local_size, ws, id, i, rank, 3, global2host))
         proc.start()
         procs.append(proc)
     for proc in procs:

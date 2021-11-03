@@ -3,7 +3,7 @@ from quiver.shard_tensor import ShardTensor, ShardTensorConfig, Topo
 from quiver.utils import reindex_feature, CSRTopo
 from typing import List
 
-__all__ = ["Feature"]
+__all__ = ["Feature", "DistFeature", "PartitionInfo"]
 
 
 class Feature(object):
@@ -306,3 +306,52 @@ class Feature(object):
             self.feature_order = csr_topo.feature_order.to(self.rank)
 
         self.ipc_handle = None
+
+
+class PartitionInfo:
+    def __init__(self, device, host, hosts, global2host):
+        self.global2host = global2host.to(device)
+        self.host = host
+        self.hosts = hosts
+        self.device = device
+        self.size = self.global2host.size(0)
+        self.init_global2local()
+
+    def init_global2local(self):
+        # TODO: overlap partition
+        total_range = torch.arange(end=self.size,
+                                   device=self.device,
+                                   dtype=torch.int64)
+        self.global2local = torch.arange(end=self.size,
+                                         device=self.device,
+                                         dtype=torch.int64)
+        for host in range(self.hosts):
+            mask = self.global2host == host
+            host_nodes = torch.masked_select(total_range, mask)
+            host_size = host_nodes.size(0)
+            host_range = torch.arange(end=host_size,
+                                      device=self.device,
+                                      dtype=torch.int64)
+            self.global2local[host_nodes] = host_range
+
+    def dispatch(self, ids):
+        host_ids = []
+        host_index = self.global2host[ids]
+        for host in range(self.hosts):
+            mask = host_index == host
+            host_nodes = torch.masked_select(ids, mask)
+            host_nodes = self.global2local[host_nodes]
+            host_ids.append(host_nodes)
+
+        return host_ids
+
+
+class DistFeature:
+    def __init__(self, feature, info, comm):
+        self.feature = feature
+        self.info = info
+        self.comm = comm
+
+    def __getitem__(self, ids):
+        ids = ids.to(self.comm.device)
+        # TODO

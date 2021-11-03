@@ -278,8 +278,47 @@ def test_nccl_allreduce_pair(rank):
         proc.join()
 
 
+def child_feat_partition(rank, ws, id, device, host, hosts, global2host):
+    torch.cuda.set_device(device)
+    dim = 5
+    info = quiver.feature.PartitionInfo(device, host, hosts, global2host)
+    print(f"{rank} map {info.global2local}")
+    size = 10
+    comm = quiver.comm.NcclComm(rank, ws, id, hosts, 1)
+    feat = torch.ones(
+        (size, dim), device=device, dtype=torch.float) * (1 + rank)
+    print(f"{rank} hold {feat}")
+    dist_feat = quiver.feature.DistFeature(feat, info, comm)
+    ids = torch.randint(high=size,
+                        size=(10, ),
+                        dtype=torch.int64,
+                        device=device)
+    print(f"{rank} request global {ids}")
+    host2ids = dist_feat.info.dispatch(ids)
+    print(f"{rank} request local {host2ids}")
+    host2feats = dist_feat.comm.exchange(host2ids, feat)
+    print(f"{rank} receive {host2feats}")
+
+
+def test_feat_partition():
+    id = quiver.comm.getNcclId()
+    ws = 2
+    size = 10
+    global2host = torch.randint(high=ws, size=(size, ), dtype=torch.int64)
+    print(f"g2h {global2host}")
+    procs = []
+    for i in range(ws):
+        proc = mp.Process(target=child_feat_partition,
+                          args=(i, ws, id, i, i, ws, global2host))
+        proc.start()
+        procs.append(proc)
+    for proc in procs:
+        proc.join()
+
+
 if __name__ == "__main__":
     mp.set_start_method('spawn')
     # test_local()
-    test_dist_pair_bidirect(0)
+    # test_dist_pair_bidirect(0)
     # test_nccl_allreduce_pair(0)
+    test_feat_partition()

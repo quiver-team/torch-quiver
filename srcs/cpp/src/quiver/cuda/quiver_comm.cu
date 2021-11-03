@@ -38,30 +38,29 @@ class NcclComm
     void send(torch::Tensor tensor, int dst)
     {
         auto stream = c10::cuda::getCurrentCUDAStream();
-        ncclDataType_t type = ncclFloat32;
-        // if (tensor.options().dtype() == torch::kFloat16) { type =
-        // ncclFloat16; }
-        ncclSend((void *)tensor.data_ptr<float>(), tensor.size(0), type, dst,
-                 nccl_comm, stream);
+        ncclDataType_t type;
+        void *ptr;
+        ptr_type(tensor, &ptr, &type);
+        ncclSend(ptr, tensor.numel(), type, dst, nccl_comm, stream);
     }
 
     void recv(torch::Tensor tensor, int src)
     {
         auto stream = c10::cuda::getCurrentCUDAStream();
-        ncclDataType_t type = ncclFloat32;
-        // if (tensor.options().dtype() == torch::kFloat16) { type =
-        // ncclFloat16; }
-        ncclRecv((void *)tensor.data_ptr<float>(), tensor.size(0), type, src,
-                 nccl_comm, stream);
+        ncclDataType_t type;
+        void *ptr;
+        ptr_type(tensor, &ptr, &type);
+        ncclRecv(ptr, tensor.numel(), type, src, nccl_comm, stream);
     }
 
     void allreduce(torch::Tensor tensor)
     {
         auto stream = c10::cuda::getCurrentCUDAStream();
-        ncclDataType_t type = ncclFloat32;
-        ncclAllReduce((void *)tensor.data_ptr<float>(),
-                      (void *)tensor.data_ptr<float>(), tensor.size(0), type,
-                      ncclSum, nccl_comm, stream);
+        ncclDataType_t type;
+        void *ptr;
+        ptr_type(tensor, &ptr, &type);
+        ncclAllReduce(ptr, ptr, tensor.numel(), type, ncclSum, nccl_comm,
+                      stream);
     }
 
   private:
@@ -69,6 +68,21 @@ class NcclComm
     int size;
     ncclComm_t nccl_comm;
     ncclUniqueId nccl_id;
+    void ptr_type(torch::Tensor tensor, void **ptr, ncclDataType_t *type)
+    {
+        if (tensor.options().dtype() == torch::kFloat16) {
+            *type = ncclFloat16;
+            *ptr = (void *)tensor.data_ptr<at::Half>();
+        }
+        if (tensor.options().dtype() == torch::kFloat32) {
+            *type = ncclFloat32;
+            *ptr = (void *)tensor.data_ptr<float>();
+        }
+        if (tensor.options().dtype() == torch::kInt64) {
+            *type = ncclInt64;
+            *ptr = (void *)tensor.data_ptr<int64_t>();
+        }
+    }
 };
 }  // namespace quiver
 

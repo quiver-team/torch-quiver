@@ -6,7 +6,7 @@ import torch.distributed as dist
 import os
 import time
 
-LOCAL_ADDR = '192.168.0.78'
+LOCAL_ADDR = '192.168.0.79'
 MASTER_ADDR = '192.168.0.78'
 MASTER_PORT = 12355
 
@@ -282,7 +282,6 @@ def child_feat_partition(rank, ws, id, device, host, hosts, global2host):
     torch.cuda.set_device(device)
     dim = 5
     info = quiver.feature.PartitionInfo(device, host, hosts, global2host)
-    print(f"{rank} map {info.global2local}")
     size = 10
     comm = quiver.comm.NcclComm(rank, ws, id, hosts, 1)
     feat = torch.ones(
@@ -298,6 +297,45 @@ def child_feat_partition(rank, ws, id, device, host, hosts, global2host):
     print(f"{rank} request local {host2ids}")
     host2feats = dist_feat.comm.exchange(host2ids, feat)
     print(f"{rank} receive {host2feats}")
+
+
+def child_feat_partition_pair(rank, ws, id, device, host, hosts, global2host):
+    torch.cuda.set_device(device)
+    dim = 400
+    info = quiver.feature.PartitionInfo(device, host, hosts, global2host)
+    nodes = 10000000
+    comm = quiver.comm.NcclComm(rank, ws, id, hosts, 2)
+    feat = torch.ones(
+        (nodes, dim), device=device, dtype=torch.float) * (1 + rank)
+    dist_feat = quiver.feature.DistFeature(feat, info, comm)
+    size = 1000000
+    ids = torch.randint(high=nodes,
+                        size=(size, ),
+                        dtype=torch.int64,
+                        device=device)
+
+    print('ready')
+    host2ids = dist_feat.info.dispatch(ids)
+    host2feats = dist_feat.comm.exchange(host2ids, feat)
+    num = 100
+    print('test once')
+
+    t0 = time.time()
+    for i in range(num):
+        print(i)
+        beg = time.time()
+        host2ids = dist_feat.info.dispatch(ids)
+        mid = time.time()
+        host2feats = dist_feat.comm.exchange(host2ids, feat)
+        end = time.time()
+        print(f"dispatch {mid - beg}")
+        print(f"exchange {end - mid}")
+    t1 = time.time()
+    if rank == 0:
+        print(f"Latency {(t1 - t0) / num}")
+        print(
+            f"Throughput {num * size * dim * 4 / 1024 / 1024 / 1024 / (t1 - t0)}"
+        )
 
 
 def test_feat_partition():
@@ -316,9 +354,33 @@ def test_feat_partition():
         proc.join()
 
 
+def test_feat_partition_pair(rank):
+    local_size = 2
+    ws = 4
+    store = dist.TCPStore(MASTER_ADDR, MASTER_PORT, 2,
+                          MASTER_ADDR == LOCAL_ADDR)
+    if rank == 0:
+        id = quiver.comm.getNcclId()
+        store.set("id", id)
+    else:
+        id = store.get("id")
+    print(f"{rank} init store {id}")
+    size = 10000000
+    global2host = torch.randint(high=2, size=(size, ), dtype=torch.int64)
+    procs = []
+    for i in range(local_size):
+        proc = mp.Process(target=child_feat_partition_pair,
+                          args=(i + rank * local_size, ws, id, i, rank, 2, global2host))
+        proc.start()
+        procs.append(proc)
+    for proc in procs:
+        proc.join()
+
+
 if __name__ == "__main__":
     mp.set_start_method('spawn')
     # test_local()
     # test_dist_pair_bidirect(0)
     # test_nccl_allreduce_pair(0)
-    test_feat_partition()
+    # test_feat_partition()
+    test_feat_partition_pair(1)

@@ -1,5 +1,6 @@
 import torch
 import torch_quiver as torch_qv
+import time
 
 
 class HostRankTable:
@@ -30,7 +31,7 @@ class HostRankTable:
     def get_comm_mat(self, flat_allreduce):
         flat_allreduce = flat_allreduce.to('cpu')
         comm_mat = []
-        size = self.hosts
+        size = self.hosts * self.rank_per_host
         for i in range(size):
             row = []
             for j in range(size):
@@ -42,7 +43,7 @@ class HostRankTable:
 def schedule(comm_mat, table):
     steps = []
     cont = True
-    host = len(comm_mat)
+    host = table.hosts
     traversed_pair = set()
     while cont:
         step = []
@@ -104,6 +105,7 @@ class NcclComm:
         self.comm.allreduce(tensor)
 
     def exchange(self, host2ids, feature):
+        t0 = time.time()
         remote_sizes = torch.zeros(self.size * self.size, dtype=torch.int64)
         for host in range(self.table.hosts):
             ids = host2ids[host]
@@ -114,6 +116,8 @@ class NcclComm:
         self.allreduce(remote_sizes)
         comm_mat = self.table.get_comm_mat(remote_sizes)
         steps = schedule(comm_mat, self.table)
+        torch.cuda.current_stream().synchronize()
+        t1 = time.time()
         req_ids = [None] * self.size
         res_feats = [None] * self.size
         for step in steps:
@@ -127,6 +131,8 @@ class NcclComm:
                                       device=self.device)
                     self.recv(ids, src)
                     req_ids[src] = ids
+        torch.cuda.current_stream().synchronize()
+        t2 = time.time()
         for i in range(len(req_ids)):
             ids = req_ids[i]
             if ids is not None:
@@ -143,6 +149,11 @@ class NcclComm:
                                         device=self.device)
                     self.recv(feats, dst)
                     host2feats[self.table.host(dst)] = feats
+        torch.cuda.current_stream().synchronize()
+        t3 = time.time()
+        print(f"prepare {t1 - t0}")
+        print(f"id {t2 - t1}")
+        print(f"feat {t3 - t2}")
         return host2feats
 
 

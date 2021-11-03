@@ -342,6 +342,7 @@ class PartitionInfo:
             host_nodes = torch.masked_select(ids, mask)
             host_nodes = self.global2local[host_nodes]
             host_ids.append(host_nodes)
+        torch.cuda.current_stream().synchronize()
 
         return host_ids
 

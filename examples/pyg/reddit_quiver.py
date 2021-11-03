@@ -114,7 +114,7 @@ def train(epoch):
     ############################################
     # for batch_size, n_id, adjs in train_loader: # Original PyG Code
     for seeds in train_loader: # Quiver
-      n_id, batch_size, adjs = quiver_sampler.sample(seeds) # Quiver
+        n_id, batch_size, adjs = quiver_sampler.sample(seeds) # Quiver
         # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
         adjs = [adj.to(device) for adj in adjs]
 

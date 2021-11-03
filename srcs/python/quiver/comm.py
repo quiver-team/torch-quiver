@@ -137,6 +137,7 @@ class NcclComm:
             ids = req_ids[i]
             if ids is not None:
                 res_feats[i] = feature[ids]
+        t3 = time.time()
         host2feats = [None] * self.table.hosts
         for step in steps:
             for src, dst in step:
@@ -150,10 +151,11 @@ class NcclComm:
                     self.recv(feats, dst)
                     host2feats[self.table.host(dst)] = feats
         torch.cuda.current_stream().synchronize()
-        t3 = time.time()
+        t4 = time.time()
         print(f"prepare {t1 - t0}")
         print(f"id {t2 - t1}")
-        print(f"feat {t3 - t2}")
+        print(f"local {t3 - t2}")
+        print(f"res {t4 - t3}")
         return host2feats
 
 

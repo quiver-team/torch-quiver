@@ -6,7 +6,7 @@ import torch.distributed as dist
 import os
 import time
 
-LOCAL_ADDR = '192.168.0.79'
+LOCAL_ADDR = '192.168.0.78'
 MASTER_ADDR = '192.168.0.78'
 MASTER_PORT = 12355
 
@@ -316,6 +316,8 @@ def child_feat_partition_pair(rank, ws, id, device, host, hosts, global2host):
 
     print('ready')
     host2ids = dist_feat.info.dispatch(ids)
+    for h, ids in enumerate(host2ids):
+        print(f"{h} size {ids.size(0)}")
     host2feats = dist_feat.comm.exchange(host2ids, feat)
     num = 100
     print('test once')
@@ -383,4 +385,4 @@ if __name__ == "__main__":
     # test_dist_pair_bidirect(0)
     # test_nccl_allreduce_pair(0)
     # test_feat_partition()
-    test_feat_partition_pair(1)
+    test_feat_partition_pair(0)

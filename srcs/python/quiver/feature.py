@@ -309,16 +309,18 @@ class Feature(object):
 
 
 class PartitionInfo:
-    def __init__(self, device, host, hosts, global2host):
+    def __init__(self, device, host, hosts, global2host, replicate=None):
         self.global2host = global2host.to(device)
         self.host = host
         self.hosts = hosts
         self.device = device
         self.size = self.global2host.size(0)
+        self.replicate = None
+        if replicate is not None:
+            self.replicate = replicate.to(device)
         self.init_global2local()
 
     def init_global2local(self):
-        # TODO: overlap partition
         total_range = torch.arange(end=self.size,
                                    device=self.device,
                                    dtype=torch.int64)
@@ -329,10 +331,20 @@ class PartitionInfo:
             mask = self.global2host == host
             host_nodes = torch.masked_select(total_range, mask)
             host_size = host_nodes.size(0)
+            if host == self.host:
+                local_size = host_size
             host_range = torch.arange(end=host_size,
                                       device=self.device,
                                       dtype=torch.int64)
             self.global2local[host_nodes] = host_range
+        if self.replicate is not None:
+            self.global2host[self.replicate] = self.host
+            replicate_range = torch.arange(start=local_size,
+                                           end=local_size +
+                                           self.replicate.size(0),
+                                           device=self.device,
+                                           dtype=torch.int64)
+            self.global2local[self.replicate] = replicate_range
 
     def dispatch(self, ids):
         host_ids = []

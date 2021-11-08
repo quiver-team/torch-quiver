@@ -92,9 +92,8 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 # Original Pyg Code
 ####################
 x, edge_index = data.x.to(device), data.edge_index.to(device)
-quiver_feature = quiver.Feature(rank=0, device_list=[0], device_cache_size="10M", cache_policy="device_replicate", csr_topo=csr_topo)
+quiver_feature = quiver.Feature(rank=0, device_list=[0], device_cache_size="15M", cache_policy="device_replicate", csr_topo=csr_topo)
 quiver_feature.from_cpu_tensor(data.x)
-
 
 def train():
     model.train()

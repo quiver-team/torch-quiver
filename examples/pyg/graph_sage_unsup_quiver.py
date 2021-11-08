@@ -25,13 +25,14 @@ path = '/data/products/' + dataset
 dataset = Planetoid(path, dataset, transform=T.NormalizeFeatures())
 data = dataset[0]
 
-train_idx = data.train_mask.nonzero(as_tuple=False).view(-1)
-
+train_idx = torch.arange(data.num_nodes, dtype=torch.long)
+print(train_idx)
 #############################
 # Original Pyg Code
 #############################
 # train_loader = NeighborSampler(data.edge_index, sizes=[10, 10], batch_size=256,
 #                                shuffle=True, num_nodes=data.num_nodes)
+# print(train_idx)
 train_loader = torch.utils.data.DataLoader(train_idx,
                                            batch_size=256,
                                            shuffle=True,
@@ -42,15 +43,15 @@ csr_topo = quiver.CSRTopo(data.edge_index)
 quiver_sampler = GraphSageSampler(csr_topo, sizes =[10, 10], device=0)
 
 def sample(edge_index, batch):
-    batch = torch.tensor(batch)
+    # batch = torch.tensor(batch)
     row, col = edge_index[0], edge_index[1]
 
     # For each node in `batch`, we sample a direct neighbor (as positive
     # example) and a random node (as negative example):
     pos_batch = random_walk(row, col, batch, walk_length=1,
                             coalesced=False)[:, 1]
-
-    neg_batch = torch.randint(0, self.adj_t.size(1), (batch.numel(), ),
+    
+    neg_batch = torch.randint(0, csr_topo.indptr.shape[-1] - 1, (batch.numel(), ),
                                 dtype=torch.long)
 
     batch = torch.cat([batch, pos_batch, neg_batch], dim=0)
@@ -97,7 +98,6 @@ quiver_feature.from_cpu_tensor(data.x)
 
 def train():
     model.train()
-
     total_loss = 0
     ######################
     # Original Pyg Code
@@ -108,7 +108,6 @@ def train():
         # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
         adjs = [adj.to(device) for adj in adjs]
         optimizer.zero_grad()
-
         out = model(quiver_feature[n_id], adjs)
         out, pos_out, neg_out = out.split(out.size(0) // 3, dim=0)
 

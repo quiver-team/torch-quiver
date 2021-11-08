@@ -4,7 +4,7 @@
 所有研究图机器学习系统的团队都知道基于采样的图模型训练性能瓶颈在图采样和特征提取上，但两个瓶颈背后的本质到底是什么？Quiver核心观点是：
 
 - 图采样是一个**latency critical problem**，高性能的采样核心在于通过大量并行掩盖访问延迟。
-- 特征提取是一个**bandwidth critical problem**，高性能的特征提取在于优化提取带宽。
+- 特征提取是一个**bandwidth critical problem**，高性能的特征提取在于优化聚合带宽。
 
 
 ![GNN训练流程](multi_medias/imgs/overview.png)
@@ -67,7 +67,8 @@ Quiver中向用户提供**UVA-Based**（Unified Virtual Addressing Based）图�
 ### 3.1 当前已有方案
 由于GNN训练时一个batch的特征数据往往有数百MB甚至几个GB，这些特征数据任何一次在CPU内存中的搬运，以及CPU到GPU之间的数据搬运都有着较大的耗时。图特征提取优化的核心在于优化端到端的吞吐，即从特征获取到传输到GPU过程的吞吐。现有的方案一般分为两种:
 
-1. CPU进行特征提取，并将提取特征传输到GPU进行训练
+
+1. CPU进行特征提取，并将聚合特征传输到GPU进行训练
 2. 当特征数据较少时，将全部特征放到GPU显存中
 
 同样，基于CPU的方案1面临着吞吐性能的问题，同时CPU的Feature Collection本身为CPU密集型操作，同样面临着多卡训练时由于对CPU资源的竞争导致特征提取的多卡扩展性较差。而基于GPU存储的方案2也同样面临着处理的图特征受限于GPU显存大小。

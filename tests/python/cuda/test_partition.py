@@ -5,6 +5,7 @@ import time
 from scipy.sparse import coo, coo_matrix, csr_matrix
 import numpy as np
 import quiver
+from quiver.partition import partition_with_replication, partition_without_replication
 
 
 def test_metis():
@@ -107,27 +108,19 @@ def test_prob():
     total = torch.zeros((nodes, ), device=0)
     remote = torch.ones((nodes, ), device=0)
     csr_topo = quiver.CSRTopo(indptr=indptr, indices=indices)
-    quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5],
+    quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [25, 15],
                                                  0,
                                                  mode="UVA")
     t0 = time.time()
     prob0 = quiver_sampler.sample_prob(train_idx0, nodes)
     prob1 = quiver_sampler.sample_prob(train_idx1, nodes)
-    nz0 = torch.nonzero(prob0)
-    _, prev0 = torch.sort(prob0, descending=True)
-    _, prev1 = torch.sort(prob1, descending=True)
-    nz1 = torch.nonzero(prob1)
-    nz = torch.cat((nz0, nz1))
-    unique_nz = torch.unique(nz)
-    unique_size = unique_nz.size(0)
-    choice = unique_nz[torch.randperm(unique_size)[:unique_size // 2]]
-    extra = prev0[:int(1.25 * nodes) - unique_size]
+    t1 = time.time()
+    res = partition_with_replication(0, [prob0, prob1], None, 65000000)
+    choice = res[0]
 
     # _, prev_order = torch.sort(prob_diff[unique_nz], descending=True)
-    t1 = time.time()
-    print(f'preprocess {t1 - t0}')
+    print(f'prob {t1 - t0}')
     remote[choice] = 0
-    remote[extra] = 0
     # train_idx = train_idx[torch.randperm(idx_len)]
     train_loader = torch.utils.data.DataLoader(train_idx[:idx_len // 2],
                                                batch_size=1024,

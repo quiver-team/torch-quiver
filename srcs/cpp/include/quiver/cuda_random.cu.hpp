@@ -69,7 +69,8 @@ __global__ void CSRRowWiseSampleKernel(
 }
 
 template <typename T, typename S>
-__global__ void cal_next(const S *last_prob, S *cur_prob, int N, int k, const T *const in_ptr, const T *const in_index)
+__global__ void cal_next(const S *last_prob, S *cur_prob, int N, int k,
+                         const T *const in_ptr, const T *const in_index)
 {
     int64_t row = blockIdx.x * blockDim.x + threadIdx.x;
     int64_t step = gridDim.x * blockDim.x;
@@ -77,15 +78,23 @@ __global__ void cal_next(const S *last_prob, S *cur_prob, int N, int k, const T 
         const int64_t in_row_start = in_ptr[row];
         const int64_t deg = in_ptr[row + 1] - in_row_start;
         S acc = 1.0;
+        if (deg == 0) {
+            cur_prob[row] = 0;
+            row += step;
+            continue;
+        }
         for (int64_t i = in_row_start; i < in_row_start + deg; i++) {
             int64_t upper = in_index[i];
             const int64_t upper_start = in_ptr[upper];
             const int64_t upper_deg = in_ptr[upper + 1] - upper_start;
             S skip;
-            if (upper_deg <= k) {
+            if (upper_deg == 0) {
+                skip = 1;
+            } else if (upper_deg <= k) {
                 skip = 1 - last_prob[upper];
             } else {
-                skip = 1 - last_prob[upper] + last_prob[upper] * k / deg
+                skip = 1 - last_prob[upper] +
+                       last_prob[upper] * (upper_deg - k) / upper_deg;
             }
             acc *= skip;
         }

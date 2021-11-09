@@ -2,7 +2,7 @@
 [pypi-url]: https://pypi.org/project/torch-quiver/
 
 <p align="center">
-  <img height="150" src="../docs/multi_medias/imgs/quiver-logo-min.png" />
+  <img height="150" src="multi_medias/imgs/quiver-logo-min.png" />
 </p>
 
 ## Quiver

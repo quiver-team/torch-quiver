@@ -5,9 +5,12 @@
   <img height="150" src="docs/multi_medias/imgs/quiver-logo-min.png" />
 </p>
 
+## Quiver
 --------------------------------------------------------------------------------
 
 Quiver is a distributed graph learning library for [PyTorch Geometric](https://github.com/pyg-team/pytorch_geometric) (PyG). The goal of Quiver is to make large-scale distributed graph learning fast and easy to use.
+
+[![Documentation Status](https://readthedocs.org/projects/torch-quiver/badge/?version=latest)](https://torch-quiver.readthedocs.io/en/latest/?badge=latest)
 
 
 <!-- **Quiver** is a high-performance GNN training add-on which can fully utilize the hardware to achive the best GNN trainning performance. By integrating Quiver into your GNN training pipeline with **just serveral lines of code change**, you can enjoy **much better end-to-end performance** and **much better scalability with multi-gpus**, you can even achieve **super linear scalability** if your GPUs are connected with NVLink, Quiver will help you make full use of NVLink. -->

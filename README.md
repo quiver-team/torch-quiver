@@ -176,7 +176,7 @@ We provide rich examples to show how to enable Quiver in real-world PyG scripts:
 
 ## Documentation
 
-Quiver provides many parameters to optimise the performance of its graph samplers (e.g., GPU-local or CPU-GPU hybrid) and feature collectors (e.g., feature replication/sharding strategies). Check [documentation](docs/) for details.
+Quiver provides many parameters to optimise the performance of its graph samplers (e.g., GPU-local or CPU-GPU hybrid) and feature collectors (e.g., feature replication/sharding strategies). Check [Documentation](https://torch-quiver.readthedocs.io/en/latest/) for details.
 
 <!-- ## License
 

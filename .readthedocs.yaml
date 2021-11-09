@@ -1,0 +1,20 @@
+version: 2
+
+build:
+   image: latest
+
+build:
+  os: ubuntu-20.04
+  tools:
+    python: "3.8"
+
+mkdocs:
+  configuration: mkdocs.yml
+
+python:
+   install:
+   - requirements: docs/requirements.txt
+   - method: setuptools
+     path: .
+
+formats: []

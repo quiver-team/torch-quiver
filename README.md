@@ -5,7 +5,6 @@
   <img height="150" src="docs/multi_medias/imgs/quiver-logo-min.png" />
 </p>
 
-## Quiver
 --------------------------------------------------------------------------------
 
 Quiver is a distributed graph learning library for [PyTorch Geometric](https://github.com/pyg-team/pytorch_geometric) (PyG). The goal of Quiver is to make large-scale distributed graph learning fast and easy to use.

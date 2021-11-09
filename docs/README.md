@@ -37,11 +37,11 @@ Integrate Quiver into your training pipeline in `PyG` or `DGL` is just a matter 
 
 Below is a chart that describes a benchmark that evaluates the performance of Quiver, PyG (2.0.1) and [DGL](https://github.com/dmlc/dgl) (0.7.0) on a 4-GPU server that runs the [Open Graph Benchmark](https://ogb.stanford.edu/). 
 
-![e2e_benchmark](docs/multi_medias/imgs/benchmark_e2e_performance-min.png)
+![e2e_benchmark](multi_medias/imgs/benchmark_e2e_performance-min.png)
 
 We will add multi-node result soon.
 
-For system design details, see Quiver's [design overview](docs/Introduction_en.md) (Chinese version: [设计简介](docs/Introduction_cn.md)).
+For system design details, see Quiver's [design overview](Introduction_en.md) (Chinese version: [设计简介](Introduction_cn.md)).
 
 ## Install
 
@@ -177,7 +177,7 @@ We provide rich examples to show how to enable Quiver in real-world PyG scripts:
 
 ## Documentation
 
-Quiver provides many parameters to optimise the performance of its graph samplers (e.g., GPU-local or CPU-GPU hybrid) and feature collectors (e.g., feature replication/sharding strategies). Check [documentation](docs/) for details.
+Quiver provides many parameters to optimise the performance of its graph samplers (e.g., GPU-local or CPU-GPU hybrid) and feature collectors (e.g., feature replication/sharding strategies). Check [documentation](./) for details.
 
 <!-- ## License
 
@@ -192,16 +192,16 @@ Key reasons behind Quiver's high performance are that it provides two key compon
 
 Quiver provide users with **UVA-Based**（Unified Virtual Addressing Based）graph sampling operator, supporting storing graph topology data in CPU memory and sampling the graph with GPU. In this way, we not only get performance benefits beyond CPU sampling, but can also process graphs whose size are too large to host in GPU memory. With UVA, Quiver achieves nearly **20x** sample performance compared with CPU doing graph sample. Besides `UVA mode`, Quiver also support `GPU` sampling mode which will host graph topology data all into GPU memory and will give you 40% ~ 50% performance benifit w.r.t `UVA` sample.
 
-![uva_sample](docs/multi_medias/imgs/UVA-Sampler.png)
+![uva_sample](multi_medias/imgs/UVA-Sampler.png)
 
 
 A training batch in GNN also consumed hundreds of MBs memory and move memory of this size across CPU memory or between CPU memory and GPU memory consumes hundreds of milliseconds.Quiver utilizes high throughput between page locked memory and GPU memory, high throughput of p2p memory access between different GPUs' memory when they are connected with NVLinks and high throughput of local GPU global memory access to achieve 4-10x higher feature collection throughput compared to conventional method(i.e. use CPU to do sparse feature collection and transfer data to GPU). It partitons data to local GPU memory, other GPUs's memory(if they connected to current GPU with NVLink) and CPU page locked memory. 
 
 We also discovered that real graphs nodes' degree often obeys power-law distribution and nodes with high degree are more often to be accessed during training and sampling. `quiver.Feature` can also do some preprocess to ensure that hottest data are always in GPU's memory(local GPU's memory or other GPU's memory which can be p2p accessed) and this will furtherly improve feature collection performance during training.
 
-![feature_collection](docs/multi_medias/imgs/single_device.png)
+![feature_collection](multi_medias/imgs/single_device.png)
 
-For system design details, you can read our (introduction)[docs/Introduction_en.md], we also provide chinese version: [中文版本系统介绍](docs/Introduction_cn.md) -->
+For system design details, you can read our (introduction)[Introduction_en.md], we also provide chinese version: [中文版本系统介绍](Introduction_cn.md) -->
 
 
 <!-- ## Benchmarks
@@ -212,29 +212,29 @@ Here we show benchmark about graph sample, feature collection and end2end traini
 Quiver's sampling can be configured to use UVA sampling (`mode='UVA'`) or GPU sampling(`mode='GPU'`), hosting the whole graph structure in CPU memory and GPU memory respectively.
 We use **S**ampled **E**dges **P**er **S**econd (**SEPS**) as metrics to evaluate sample performance. **Without storing the graph on GPU, Quiver get 20x speedup on real datasets**.
 
-![sample benchmark](docs/multi_medias/imgs/benchmark_img_sample.png)
+![sample benchmark](multi_medias/imgs/benchmark_img_sample.png)
 
 ### Feature collection benchmark
 
 We constrain each GPU caching 20% of feature data. Quiver can achieve **10x throughput** on ogbn-product data compared to CPU feature collection.
 
-![single_device](docs/multi_medias/imgs/benchmark_img_feature_single_device.png)
+![single_device](multi_medias/imgs/benchmark_img_feature_single_device.png)
 
 If your GPUs are connected with NVLink, Quiver can make full use of it and achieve **super linear throughput increase**. Our test machine has 2 GPUs connected with NVLink and we still constrain each GPU caching 20% percent of feature data(which means 40% feature data are cached on GPU with 2 GPUs), we achieve 4~5x total throughput increase with the second GPU comes in.
 
-![p2p_access](docs/multi_medias/imgs/p2p_access.png)
+![p2p_access](multi_medias/imgs/p2p_access.png)
 
-![super_linear](docs/multi_medias/imgs/super_linear_feature_bench.png)
+![super_linear](multi_medias/imgs/super_linear_feature_bench.png)
 
 ### End2End training benchmark
 
 With high performance sampler and feature collection, Quiver not only achieve good performance with single GPU training, but also enjoys good scalability. We modify [PyGs official multi-gpu training example](https://github.com/pyg-team/pytorch_geometric/blob/master/examples/multi_gpu/distributed_sampling.py) to train `ogbn-product`([code file is here](example/multi_gpu/pyg/ogb-products)). By constraining each GPU to cache only 20% of feature data, we can achieve better scalability even compared with placing all of feature data in GPU in PyG. 
 
-![e2e_benchmark](docs/multi_medias/imgs/benchmark_e2e_performance.png)
+![e2e_benchmark](multi_medias/imgs/benchmark_e2e_performance.png)
 
-When training with multi-GPU and there are no NVLinks between these GPUs, Quiver will use `device_replicate` cache policy by default(you can refer to our [introduction](docs/Introductions_en.md) to learn more about this cache policy). If you have NVLinks, Quiver can make several GPUs share their GPU memory and cache more data to achieve higher feature collection throughput. Our test machine has 2 GPUs connected with NVLink and we still constrain each GPU caching 20% percent of feature data(which means 40% feature data are cached on GPU with 2 GPUs), we show our scalability results here:
+When training with multi-GPU and there are no NVLinks between these GPUs, Quiver will use `device_replicate` cache policy by default(you can refer to our [introduction](Introductions_en.md) to learn more about this cache policy). If you have NVLinks, Quiver can make several GPUs share their GPU memory and cache more data to achieve higher feature collection throughput. Our test machine has 2 GPUs connected with NVLink and we still constrain each GPU caching 20% percent of feature data(which means 40% feature data are cached on GPU with 2 GPUs), we show our scalability results here:
 
-![](docs/multi_medias/imgs/nvlink_e2e.png) -->
+![](multi_medias/imgs/nvlink_e2e.png) -->
 
 
 

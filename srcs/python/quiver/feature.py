@@ -2,8 +2,16 @@ import torch
 from quiver.shard_tensor import ShardTensor, ShardTensorConfig, Topo
 from quiver.utils import reindex_feature, CSRTopo
 from typing import List
+import numpy as np
+from torch._C import device
 
-__all__ = ["Feature", "DistFeature", "PartitionInfo"]
+__all__ = ["Feature", "DistFeature", "PartitionInfo", "DeviceConfig"]
+
+
+class DeviceConfig:
+    def __init__(self, gpu_parts, cpu_part):
+        self.gpu_parts = gpu_parts
+        self.cpu_part = cpu_part
 
 
 class Feature(object):
@@ -45,6 +53,8 @@ class Feature(object):
         self.csr_topo = csr_topo
         self.feature_order = None
         self.ipc_handle_ = None
+        self.mmap_handle_ = None
+        self.disk_map = None
         assert self.clique_device_symmetry_check(
         ), f"\n{self.topo.info()}\nDifferent p2p clique size NOT equal"
 
@@ -89,6 +99,91 @@ class Feature(object):
 
         cache_size = self.cal_size(cpu_tensor, cache_memory_budget)
         return [cpu_tensor[:cache_size], cpu_tensor[cache_size:]]
+
+    def set_mmap_file(self, path, disk_map):
+        self.mmap_handle_ = np.load(path, mmap_mode='r')
+        self.disk_map = disk_map.to(self.rank)
+
+    def read_mmap(self, ids):
+        ids = ids.cpu().numpy()
+        res = torch.from_numpy(self.mmap_handle_[ids])
+        res = res.to(device=self.rank, dtype=torch.float32)
+        return res
+
+    def from_mmap(self, np_array, device_config):
+        """Create quiver.Feature from a mmap numpy array and partition config
+
+        Args:
+            np_array (numpy.ndarray): mmap numpy array
+            device_config (quiver.feature.DeviceConfig): device partitionconfig
+        """
+        assert len(device_config.gpu_parts) == len(self.device_list)
+        if self.cache_policy == "device_replicate":
+            for device in self.device_list:
+                if isinstance(device_config.gpu_parts[device], torch.Tensor):
+                    cache_ids = device_config.gpu_parts[device].numpy()
+                    cache_part = torch.from_numpy(np_array[cache_ids]).to(dtype=torch.float32)
+                elif isinstance(device_config.gpu_parts[device], str):
+                    cache_part = torch.load(device_config.gpu_parts[device])
+                shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
+                shard_tensor.append(cache_part, device)
+                self.device_tensor_list[device] = shard_tensor
+                del cache_part
+
+        else:
+            clique0_device_list = self.topo.p2pClique2Device.get(0, [])
+            clique1_device_list = self.topo.p2pClique2Device.get(1, [])
+
+            if len(clique0_device_list) > 0:
+                print(
+                    f"LOG>>> GPU {clique0_device_list} belong to the same NUMA Domain"
+                )
+                shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
+                for idx, device in enumerate(clique0_device_list):
+                    cache_ids = device_config.gpu_parts[device].numpy()
+                    cache_part = torch.from_numpy(
+                        np_array[cache_ids]).to(dtype=torch.float32)
+                    shard_tensor.append(cache_part, device)
+                    self.device_tensor_list[device] = shard_tensor
+                    del cache_part
+
+                self.clique_tensor_list[0] = shard_tensor
+
+            if len(clique1_device_list) > 0:
+                print(
+                    f"LOG>>> GPU {clique1_device_list} belong to the same NUMA Domain"
+                )
+                shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
+                for idx, device in enumerate(clique1_device_list):
+                    cache_ids = device_config.gpu_parts[device].numpy()
+                    cache_part = torch.from_numpy(
+                        np_array[cache_ids]).to(dtype=torch.float32)
+                    shard_tensor.append(cache_part, device)
+                    self.device_tensor_list[device] = shard_tensor
+                    del cache_part
+
+                self.clique_tensor_list[1] = shard_tensor
+
+        # 构建CPU Tensor
+        if isinstance(device_config.cpu_part, torch.Tensor):
+            cache_ids = device_config.gpu_parts[device].numpy()
+            self.cpu_part = torch.from_numpy(np_array[cache_ids]).to(dtype=torch.float32)
+        elif isinstance(device_config.cpu_part, str):
+            self.cpu_part = torch.load(device_config.cpu_part)
+        if self.cpu_part.numel() > 0:
+            if self.cache_policy == "device_replicate":
+                shard_tensor = self.device_tensor_list.get(
+                    self.rank, None) or ShardTensor(self.rank,
+                                                    ShardTensorConfig({}))
+                shard_tensor.append(self.cpu_part, -1)
+                self.device_tensor_list[self.rank] = shard_tensor
+            else:
+                clique_id = self.topo.get_clique_id(self.rank)
+                shard_tensor = self.clique_tensor_list.get(
+                    clique_id, None) or ShardTensor(self.rank,
+                                                    ShardTensorConfig({}))
+                shard_tensor.append(self.cpu_part, -1)
+                self.clique_tensor_list[clique_id] = shard_tensor
 
     def from_cpu_tensor(self, cpu_tensor: torch.Tensor):
         """Create quiver.Feature from a pytorh cpu float tensor
@@ -184,15 +279,39 @@ class Feature(object):
     def __getitem__(self, node_idx: torch.Tensor):
         self.lazy_init_from_ipc_handle()
         node_idx = node_idx.to(self.rank)
-        if self.feature_order is not None:
-            node_idx = self.feature_order[node_idx]
-        if self.cache_policy == "device_replicate":
-            shard_tensor = self.device_tensor_list[self.rank]
-            return shard_tensor[node_idx]
+        if self.mmap_handle_ is None:
+            if self.feature_order is not None:
+                node_idx = self.feature_order[node_idx]
+            if self.cache_policy == "device_replicate":
+                shard_tensor = self.device_tensor_list[self.rank]
+                return shard_tensor[node_idx]
+            else:
+                clique_id = self.topo.get_clique_id(self.rank)
+                shard_tensor = self.clique_tensor_list[clique_id]
+                return shard_tensor[node_idx]
         else:
-            clique_id = self.topo.get_clique_id(self.rank)
-            shard_tensor = self.clique_tensor_list[clique_id]
-            return shard_tensor[node_idx]
+            num_nodes = node_idx.size(0)
+            disk_index = self.disk_map[node_idx]
+            node_range = torch.arange(end=num_nodes, device=self.rank, dtype=torch.int64)
+            disk_mask = disk_index < 0
+            mem_mask = disk_index >= 0
+            disk_ids = torch.masked_select(node_idx, disk_mask)
+            disk_pos = torch.masked_select(node_range, disk_mask)
+            mem_ids = torch.masked_select(node_idx, mem_mask)
+            mem_pos = torch.masked_select(node_range, mem_mask)
+            local_mem_ids = self.disk_map[mem_ids]
+            disk_res = self.read_mmap(disk_ids)
+            if self.cache_policy == "device_replicate":
+                shard_tensor = self.device_tensor_list[self.rank]
+                mem_res = shard_tensor[local_mem_ids]
+            else:
+                clique_id = self.topo.get_clique_id(self.rank)
+                shard_tensor = self.clique_tensor_list[clique_id]
+                mem_res = shard_tensor[local_mem_ids]
+            res = torch.zeros((num_nodes, self.size(1)), device=self.rank)
+            res[disk_pos] = disk_res
+            res[mem_pos] = mem_res
+            return res
 
     def size(self, dim: int):
         """ Get dim size for quiver.Feature

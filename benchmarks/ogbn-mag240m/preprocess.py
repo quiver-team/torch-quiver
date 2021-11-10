@@ -2,6 +2,10 @@ from ogb.lsc import MAG240MDataset
 from scipy.sparse import csr
 import torch
 import quiver
+import os
+import os.path as osp
+from torch_sparse import SparseTensor
+import time
 
 
 def get_nonzero():
@@ -24,15 +28,28 @@ def get_nonzero():
     print("nonzero")
     return nz
 
+
 def preprocess():
-    nz = get_nonzero()
     dataset = MAG240MDataset("/data/mag")
-    x = dataset.paper_feat
-    del dataset
-    b = torch.from_numpy(x[nz])
-    del x
-    print(b.size())
-    # time.sleep(30)
-    # b = b.to(dtype=torch.float32)
+    path = f'{dataset.dir}/paper_to_paper_symmetric.pt'
+    if not osp.exists(path):
+        t = time.perf_counter()
+        print('Converting adjacency matrix...', end=' ', flush=True)
+        edge_index = dataset.edge_index('paper', 'cites', 'paper')
+        edge_index = torch.from_numpy(edge_index)
+        adj_t = SparseTensor(row=edge_index[0],
+                             col=edge_index[1],
+                             sparse_sizes=(dataset.num_papers,
+                                           dataset.num_papers),
+                             is_sorted=True).csr
+        torch.save(adj_t.to_symmetric(), path)
+        print(f'Done! [{time.perf_counter() - t:.2f}s]')
+    if not osp.exists(f'{dataset.dir}/csr'):
+        os.mkdir(f'{dataset.dir}/csr')
+        adj_t = torch.load(f'{dataset.dir}/paper_to_paper_symmetric.pt')
+        indptr, indices, _ = adj_t.csr()
+        torch.save(indptr, f'{dataset.dir}/csr/indptr.pt')
+        torch.save(indices, f'{dataset.dir}/csr/indices.pt')
+
 
 preprocess()

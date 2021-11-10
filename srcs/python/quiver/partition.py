@@ -82,3 +82,30 @@ def partition_with_replication(device, probs, ids, per_rank_size):
                                                                              replication_size]
         total_res[rank] = torch.cat((partition_ids, replication_ids))
     return total_res
+
+
+def select_nodes(device, probs, ids):
+    nodes = probs[0].size(0)
+    prob_sum = torch.zeros(nodes, device=device)
+    for prob in probs:
+        if ids is None:
+            prob_sum += prob
+        else:
+            prob_sum[ids] += prob[ids]
+    node_ids = torch.nonzero(prob_sum)
+    return prob_sum, node_ids
+
+
+def partition_free(device, probs, ids, per_rank_size):
+    prob_sum, node_ids = select_nodes(device, probs, ids)
+    nodes = node_ids.size(0)
+    ranks = len(probs)
+    limit = ranks * per_rank_size
+    if nodes <= limit:
+        return partition_with_replication(device, probs, node_ids,
+                                          per_rank_size), None
+    else:
+        _, prev_order = torch.sort(prob_sum, descending=True)
+        limit_ids = prev_order[:limit]
+        return partition_without_replication(device, probs,
+                                             node_ids), limit_ids

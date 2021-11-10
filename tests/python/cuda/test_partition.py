@@ -6,6 +6,9 @@ from scipy.sparse import coo, coo_matrix, csr_matrix
 import numpy as np
 import quiver
 from quiver.partition import partition_with_replication, partition_without_replication
+from quiver.feature import DeviceConfig, Feature
+from ogb.lsc import MAG240MDataset
+import os.path as osp
 
 
 def test_metis():
@@ -96,9 +99,10 @@ def test_hot():
 
 
 def test_prob():
-    indptr = torch.load("/data/papers/ogbn_papers100M/csr/indptr_bi.pt")
-    indices = torch.load("/data/papers/ogbn_papers100M/csr/indices_bi.pt")
-    train_idx = torch.load("/data/papers/ogbn_papers100M/index/train_idx.pt")
+    indptr = torch.load("/data/mag/mag240m_kddcup2021/csr/indptr.pt")
+    indices = torch.load("/data/mag/mag240m_kddcup2021/csr/indices.pt")
+    dataset = MAG240MDataset("/data/mag")
+    train_idx = torch.from_numpy(dataset.get_idx_split('train'))
     idx_len = train_idx.size(0)
     nodes = indptr.size(0) - 1
     train_idx0, train_idx1 = train_idx[:idx_len // 2], train_idx[idx_len // 2:]
@@ -112,26 +116,48 @@ def test_prob():
                                                  0,
                                                  mode="UVA")
     t0 = time.time()
+    prob = quiver_sampler.sample_prob(train_idx, nodes)
     prob0 = quiver_sampler.sample_prob(train_idx0, nodes)
     prob1 = quiver_sampler.sample_prob(train_idx1, nodes)
+    _, prev_order = torch.sort(prob, descending=True)
+    gpu_size = 20 * 1024 * 1024 * 1024 // (768 * 4)
+    cpu_size = 40 * 1024 * 1024 * 1024 // (768 * 4)
+    choice = prev_order[:gpu_size + cpu_size]
+    # gpu_part = prev_order[:gpu_size].cpu()
+    # cpu_part = prev_order[gpu_size:gpu_size + cpu_size].cpu()
+    cpu_part = osp.join('/data1', 'cpu_feat.npy')
+    gpu_part = osp.join('/data1', 'gpu_feat.npy')
     t1 = time.time()
-    res = partition_with_replication(0, [prob0, prob1], None, 65000000)
-    choice = res[0]
-
-    # _, prev_order = torch.sort(prob_diff[unique_nz], descending=True)
     print(f'prob {t1 - t0}')
+    # _, prev_order = torch.sort(prob_diff[unique_nz], descending=True)
     remote[choice] = 0
     # train_idx = train_idx[torch.randperm(idx_len)]
-    train_loader = torch.utils.data.DataLoader(train_idx[:idx_len // 2],
+    train_loader = torch.utils.data.DataLoader(train_idx,
                                                batch_size=1024,
                                                pin_memory=True,
                                                shuffle=True)
+    feat = Feature(0, [0], 0, 'device_replicate')
+    device_config = DeviceConfig([gpu_part], cpu_part)
+    feat.from_mmap(dataset.paper_feat, device_config)
+    print(f'from')
+    disk_map = torch.zeros(nodes, device=0, dtype=torch.int64) - 1
+    mem_range = torch.arange(end=cpu_size + gpu_size,
+                             device=0,
+                             dtype=torch.int64)
+    disk_map[prev_order[:gpu_size + cpu_size]] = mem_range
+    feat.set_mmap_file(osp.join('/data1', 'node_feat.npy'), disk_map)
     cnt = 0
-    for i in range(3):
+    t2 = time.time()
+    print(f'feat {t2 - t1}')
+    for i in range(2):
         for seeds in train_loader:
             n_id, _, _ = quiver_sampler.sample(seeds)
+            t0 = time.time()
+            x = feat[n_id]
+            t1 = time.time()
             total[n_id] += remote[n_id]
             cnt += n_id.size(0)
+            print(t1 - t0)
         print(i)
         print(torch.sum(total) / cnt)
 

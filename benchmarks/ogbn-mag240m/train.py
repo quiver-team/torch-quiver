@@ -41,7 +41,10 @@ class Batch(NamedTuple):
 
 
 class MAG240M(LightningDataModule):
-    def __init__(self, data_dir: str, batch_size: int, sizes: List[int],
+    def __init__(self,
+                 data_dir: str,
+                 batch_size: int,
+                 sizes: List[int],
                  in_memory: bool = False):
         super().__init__()
         self.data_dir = data_dir
@@ -65,10 +68,11 @@ class MAG240M(LightningDataModule):
             print('Converting adjacency matrix...', end=' ', flush=True)
             edge_index = dataset.edge_index('paper', 'cites', 'paper')
             edge_index = torch.from_numpy(edge_index)
-            adj_t = SparseTensor(
-                row=edge_index[0], col=edge_index[1],
-                sparse_sizes=(dataset.num_papers, dataset.num_papers),
-                is_sorted=True)
+            adj_t = SparseTensor(row=edge_index[0],
+                                 col=edge_index[1],
+                                 sparse_sizes=(dataset.num_papers,
+                                               dataset.num_papers),
+                                 is_sorted=True)
             torch.save(adj_t.to_symmetric(), path)
             print(f'Done! [{time.perf_counter() - t:.2f}s]')
 
@@ -96,28 +100,40 @@ class MAG240M(LightningDataModule):
         print(f'Done! [{time.perf_counter() - t:.2f}s]')
 
     def train_dataloader(self):
-        return NeighborSampler(self.adj_t, node_idx=self.train_idx,
-                               sizes=self.sizes, return_e_id=False,
-                               batch_size=self.batch_size, shuffle=True,
+        return NeighborSampler(self.adj_t,
+                               node_idx=self.train_idx,
+                               sizes=self.sizes,
+                               return_e_id=False,
+                               batch_size=self.batch_size,
+                               shuffle=True,
                                num_workers=12)
 
     def val_dataloader(self):
-        return NeighborSampler(self.adj_t, node_idx=self.val_idx,
-                               sizes=self.sizes, return_e_id=False,
+        return NeighborSampler(self.adj_t,
+                               node_idx=self.val_idx,
+                               sizes=self.sizes,
+                               return_e_id=False,
                                transform=self.convert_batch,
-                               batch_size=self.batch_size, num_workers=2)
+                               batch_size=self.batch_size,
+                               num_workers=2)
 
     def test_dataloader(self):  # Test best validation model once again.
-        return NeighborSampler(self.adj_t, node_idx=self.val_idx,
-                               sizes=self.sizes, return_e_id=False,
+        return NeighborSampler(self.adj_t,
+                               node_idx=self.val_idx,
+                               sizes=self.sizes,
+                               return_e_id=False,
                                transform=self.convert_batch,
-                               batch_size=self.batch_size, num_workers=2)
+                               batch_size=self.batch_size,
+                               num_workers=2)
 
     def hidden_test_dataloader(self):
-        return NeighborSampler(self.adj_t, node_idx=self.test_idx,
-                               sizes=self.sizes, return_e_id=False,
+        return NeighborSampler(self.adj_t,
+                               node_idx=self.test_idx,
+                               sizes=self.sizes,
+                               return_e_id=False,
                                transform=self.convert_batch,
-                               batch_size=self.batch_size, num_workers=3)
+                               batch_size=self.batch_size,
+                               num_workers=3)
 
     def convert_batch(self, batch_size, n_id, adjs):
         if self.in_memory:
@@ -129,8 +145,13 @@ class MAG240M(LightningDataModule):
 
 
 class GNN(LightningModule):
-    def __init__(self, model: str, in_channels: int, out_channels: int,
-                 hidden_channels: int, num_layers: int, heads: int = 4,
+    def __init__(self,
+                 model: str,
+                 in_channels: int,
+                 out_channels: int,
+                 hidden_channels: int,
+                 num_layers: int,
+                 heads: int = 4,
                  dropout: float = 0.5):
         super().__init__()
         self.save_hyperparameters()
@@ -194,14 +215,22 @@ class GNN(LightningModule):
     def validation_step(self, batch, batch_idx: int):
         y_hat = self(batch.x, batch.adjs_t)
         self.val_acc(y_hat.softmax(dim=-1), batch.y)
-        self.log('val_acc', self.val_acc, on_step=False, on_epoch=True,
-                 prog_bar=True, sync_dist=True)
+        self.log('val_acc',
+                 self.val_acc,
+                 on_step=False,
+                 on_epoch=True,
+                 prog_bar=True,
+                 sync_dist=True)
 
     def test_step(self, batch, batch_idx: int):
         y_hat = self(batch.x, batch.adjs_t)
         self.test_acc(y_hat.softmax(dim=-1), batch.y)
-        self.log('test_acc', self.test_acc, on_step=False, on_epoch=True,
-                 prog_bar=True, sync_dist=True)
+        self.log('test_acc',
+                 self.test_acc,
+                 on_step=False,
+                 on_epoch=True,
+                 prog_bar=True,
+                 sync_dist=True)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=0.001)
@@ -240,16 +269,17 @@ def train(args, model, datamodule):
             t0 = time.time()
 
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--hidden_channels', type=int, default=1024)
     parser.add_argument('--batch_size', type=int, default=1024)
     parser.add_argument('--dropout', type=float, default=0.5)
     parser.add_argument('--epochs', type=int, default=100)
-    parser.add_argument('--model', type=str, default='graphsage',
+    parser.add_argument('--model',
+                        type=str,
+                        default='graphsage',
                         choices=['gat', 'graphsage'])
-    parser.add_argument('--sizes', type=str, default='15-10-5')
+    parser.add_argument('--sizes', type=str, default='25-15')
     parser.add_argument('--in-memory', action='store_true')
     parser.add_argument('--device', type=str, default='0')
     parser.add_argument('--evaluate', action='store_true')
@@ -261,9 +291,12 @@ if __name__ == '__main__':
     datamodule = MAG240M(ROOT, args.batch_size, args.sizes, args.in_memory)
 
     if not args.evaluate:
-        model = GNN(args.model, datamodule.num_features,
-                    datamodule.num_classes, args.hidden_channels,
-                    num_layers=len(args.sizes), dropout=args.dropout)
+        model = GNN(args.model,
+                    datamodule.num_features,
+                    datamodule.num_classes,
+                    args.hidden_channels,
+                    num_layers=len(args.sizes),
+                    dropout=args.dropout)
         print(f'#Params {sum([p.numel() for p in model.parameters()])}')
         model.to(int(args.device))
         # checkpoint_callback = ModelCheckpoint(monitor='val_acc', mode = 'max', save_top_k=1)
@@ -301,4 +334,6 @@ if __name__ == '__main__':
                 out = model(batch.x, batch.adjs_t).argmax(dim=-1).cpu()
                 y_preds.append(out)
         res = {'y_pred': torch.cat(y_preds, dim=0)}
-        evaluator.save_test_submission(res, f'results/{args.model}', mode = 'test-dev')
+        evaluator.save_test_submission(res,
+                                       f'results/{args.model}',
+                                       mode='test-dev')

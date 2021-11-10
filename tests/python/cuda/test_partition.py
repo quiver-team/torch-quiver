@@ -1,4 +1,5 @@
 from os import lstat
+from numpy.lib.function_base import select
 import torch
 import torch_sparse
 import time
@@ -97,6 +98,59 @@ def test_hot():
         print(i)
         print(torch.sum(total) / cnt)
 
+def bench_read():
+    CHUNK_SIZE = 100000
+    np_file = '/data/mag/mag240m_kddcup2021/processed/paper/node_feat.npy'
+    raw_array = np.load(np_file, mmap_mode='r')
+    row, dim = raw_array.shape[0], raw_array.shape[1]
+    beg = 0
+    end = CHUNK_SIZE
+    cnt = 0
+    while end < row:
+        print(cnt)
+        t0 = time.time()
+        chunk = raw_array[beg: end]
+        torch_chunk = torch.from_numpy(chunk).to(dtype=torch.float32)
+        beg = end
+        end = min(row, beg + CHUNK_SIZE)
+        cnt += 1
+        t1 = time.time()
+        print(t1 - t0)
+
+
+def store_mmap(device, data_dir, raw, processed, selected):
+    CHUNK_SIZE = 100000
+    raw_file = osp.join(data_dir, raw)
+    processed_file = osp.join(data_dir, processed)
+    selected = selected.to(device)
+    raw_array = np.load(raw_file, mmap_mode='r')
+    row, dim = raw_array.shape[0], raw_array.shape[1]
+    feat = torch.zeros((selected.size(0), dim))
+    sorted_ids, prev_order = torch.sort(selected)
+    sorted_ids = sorted_ids.cpu()
+    prev_order = prev_order.cpu()
+    beg = 0
+    end = CHUNK_SIZE
+    cnt = 0
+    while end < selected.size(0):
+        print(cnt)
+        t0 = time.time()
+        chunk_index = sorted_ids[beg:end].numpy()
+        chunk_beg = chunk_index[0]
+        chunk_end = chunk_index[-1]
+        chunk_index -= chunk_beg
+        chunk = raw_array[chunk_beg: chunk_end + 1]
+        print(f'load {time.time() - t0}')
+        torch_chunk = torch.from_numpy(chunk).to(dtype=torch.float32)
+        print(f'trans {time.time() - t0}')
+        feat[prev_order[beg:end]] = torch_chunk[chunk_index]
+        beg = end
+        end = min(selected.size(0), beg + CHUNK_SIZE)
+        cnt += 1
+        t1 = time.time()
+        print(t1 - t0)
+    torch.save(feat, processed_file)
+
 
 def test_prob():
     indptr = torch.load("/data/mag/mag240m_kddcup2021/csr/indptr.pt")
@@ -116,15 +170,24 @@ def test_prob():
                                                  0,
                                                  mode="UVA")
     t0 = time.time()
-    prob = quiver_sampler.sample_prob(train_idx, nodes)
-    prob0 = quiver_sampler.sample_prob(train_idx0, nodes)
-    prob1 = quiver_sampler.sample_prob(train_idx1, nodes)
-    _, prev_order = torch.sort(prob, descending=True)
-    gpu_size = 20 * 1024 * 1024 * 1024 // (768 * 4)
-    cpu_size = 40 * 1024 * 1024 * 1024 // (768 * 4)
-    choice = prev_order[:gpu_size + cpu_size]
-    # gpu_part = prev_order[:gpu_size].cpu()
-    # cpu_part = prev_order[gpu_size:gpu_size + cpu_size].cpu()
+    # prob = quiver_sampler.sample_prob(train_idx, nodes)
+    # prob0 = quiver_sampler.sample_prob(train_idx0, nodes)
+    # prob1 = quiver_sampler.sample_prob(train_idx1, nodes)
+    # prob_sum = prob0 + prob1
+    # _, prev_order = torch.sort(prob_sum, descending=True)
+    # gpu_size = 20 * 1024 * 1024 * 1024 // (768 * 4)
+    # cpu_size = 40 * 1024 * 1024 * 1024 // (768 * 4)
+    # selected = prev_order[:gpu_size * 2]
+    # res = partition_without_replication(0, [prob0, prob1], selected)
+    # selected0 = res[0]
+    # selected1 = res[1]
+    # prev_order[:gpu_size * 2] = torch.cat((selected0, selected1))
+    # prev_order = prev_order.cpu()
+    # torch.save(prev_order, '/data/mag/mag240m_kddcup2021/processed/paper/prev_order2.pt')
+    # store_mmap(0, '/data/mag/mag240m_kddcup2021/processed/paper',
+    #            'node_feat.npy', 'cpu_feat2.npy', selected)
+    # choice = prev_order[:gpu_size + cpu_size]
+    exit(0)
     cpu_part = osp.join('/data1', 'cpu_feat.npy')
     gpu_part = osp.join('/data1', 'gpu_feat.npy')
     t1 = time.time()
@@ -195,3 +258,4 @@ def preprocess():
 
 test_prob()
 # preprocess()
+# bench_read()

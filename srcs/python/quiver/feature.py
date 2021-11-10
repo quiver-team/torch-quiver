@@ -101,6 +101,7 @@ class Feature(object):
         return [cpu_tensor[:cache_size], cpu_tensor[cache_size:]]
 
     def set_mmap_file(self, path, disk_map):
+        self.lazy_init_from_ipc_handle()
         self.mmap_handle_ = np.load(path, mmap_mode='r')
         self.disk_map = disk_map.to(self.rank)
 
@@ -140,9 +141,12 @@ class Feature(object):
                 )
                 shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
                 for idx, device in enumerate(clique0_device_list):
-                    cache_ids = device_config.gpu_parts[device].numpy()
-                    cache_part = torch.from_numpy(
-                        np_array[cache_ids]).to(dtype=torch.float32)
+                    if isinstance(device_config.gpu_parts[device], torch.Tensor):
+                        cache_ids = device_config.gpu_parts[device].numpy()
+                        cache_part = torch.from_numpy(
+                            np_array[cache_ids]).to(dtype=torch.float32)
+                    elif isinstance(device_config.gpu_parts[device], str):
+                        cache_part = torch.load(device_config.gpu_parts[device])
                     shard_tensor.append(cache_part, device)
                     self.device_tensor_list[device] = shard_tensor
                     del cache_part
@@ -155,9 +159,12 @@ class Feature(object):
                 )
                 shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
                 for idx, device in enumerate(clique1_device_list):
-                    cache_ids = device_config.gpu_parts[device].numpy()
-                    cache_part = torch.from_numpy(
-                        np_array[cache_ids]).to(dtype=torch.float32)
+                    if isinstance(device_config.gpu_parts[device], torch.Tensor):
+                        cache_ids = device_config.gpu_parts[device].numpy()
+                        cache_part = torch.from_numpy(
+                            np_array[cache_ids]).to(dtype=torch.float32)
+                    elif isinstance(device_config.gpu_parts[device], str):
+                        cache_part = torch.load(device_config.gpu_parts[device])
                     shard_tensor.append(cache_part, device)
                     self.device_tensor_list[device] = shard_tensor
                     del cache_part

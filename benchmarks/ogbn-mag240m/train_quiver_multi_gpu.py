@@ -3,6 +3,7 @@ import time
 import glob
 import argparse
 import os.path as osp
+from torch.utils import data
 from tqdm import tqdm
 
 from typing import Optional, List, NamedTuple
@@ -12,6 +13,9 @@ from torch import Tensor
 import torch.nn.functional as F
 from torch.nn import ModuleList, Sequential, Linear, BatchNorm1d, ReLU, Dropout
 from torch.optim.lr_scheduler import StepLR
+import torch.multiprocessing as mp
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel
 
 from pytorch_lightning.metrics import Accuracy
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -26,6 +30,7 @@ from ogb.lsc import MAG240MDataset, MAG240MEvaluator
 
 import quiver
 from quiver.feature import DeviceConfig, Feature
+import gc
 
 ROOT = '/data/mag'
 CPU_CACHE_GB = 40
@@ -98,33 +103,23 @@ class MAG240M(LightningDataModule):
             self.x = torch.from_numpy(dataset.all_paper_feat).share_memory_()
         else:
             t0 = time.time()
-            gpu_size = GPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * 4)
-            cpu_size = CPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * 4)
             cpu_part = osp.join(dataset.dir, 'processed', 'paper',
-                                'cpu_feat.npy')
-            gpu_part = osp.join(dataset.dir, 'processed', 'paper',
-                                'gpu_feat.npy')
-            feat = Feature(0, [0], 0, 'device_replicate')
-            device_config = DeviceConfig([gpu_part], cpu_part)
-            feat.from_mmap(dataset.paper_feat, device_config)
-            disk_map = torch.zeros(
-                dataset.num_papers, device=0, dtype=torch.int64) - 1
-            mem_range = torch.arange(end=cpu_size + gpu_size,
-                                     device=0,
-                                     dtype=torch.int64)
-            prev_order = torch.load(
-                osp.join(dataset.dir, 'processed', 'paper', 'prev_order.pt'))
-            disk_map[prev_order[:gpu_size + cpu_size]] = mem_range
-            feat.set_mmap_file(
-                osp.join(dataset.dir, 'processed', 'paper', 'node_feat.npy'),
-                disk_map)
+                                'cpu_feat2.npy')
+            gpu_part0 = osp.join(dataset.dir, 'processed', 'paper',
+                                 'gpu_feat0.npy')
+            gpu_part1 = osp.join(dataset.dir, 'processed', 'paper',
+                                 'gpu_feat1.npy')
+            feat = Feature(0, [0, 1], 0, 'p2p_clique_replicate')
+            device_config = DeviceConfig([gpu_part0, gpu_part1], cpu_part)
+            feat.from_mmap(None, device_config)
             self.x = feat
             print(f'feat init {time.time() - t0}')
         self.y = torch.from_numpy(dataset.all_paper_label)
 
-        self.indptr = torch.load("/data/mag/mag240m_kddcup2021/csr/indptr.pt")
+        self.indptr = torch.load(
+            "/data/mag/mag240m_kddcup2021/csr/indptr.pt").share_memory_()
         self.indices = torch.load(
-            "/data/mag/mag240m_kddcup2021/csr/indices.pt")
+            "/data/mag/mag240m_kddcup2021/csr/indices.pt").share_memory_()
         print(f'Done! [{time.perf_counter() - t:.2f}s]')
 
     def train_dataloader(self):
@@ -170,7 +165,7 @@ class MAG240M(LightningDataModule):
         return Batch(x=x, y=y, adjs_t=adjs)
 
 
-class GNN(LightningModule):
+class GNN(torch.nn.Module):
     def __init__(self,
                  model: str,
                  in_channels: int,
@@ -180,7 +175,6 @@ class GNN(LightningModule):
                  heads: int = 4,
                  dropout: float = 0.5):
         super().__init__()
-        self.save_hyperparameters()
         self.model = model.lower()
         self.dropout = dropout
 
@@ -217,7 +211,7 @@ class GNN(LightningModule):
         self.val_acc = Accuracy()
         self.test_acc = Accuracy()
 
-    def forward(self, x: Tensor, adjs_t: List[SparseTensor]) -> Tensor:
+    def forward_step(self, x: Tensor, adjs_t: List[SparseTensor]) -> Tensor:
         for i, (edge_index, _, size) in enumerate(adjs_t):
             x_target = x[:size[1]]  # Target nodes are always placed first.
             x = self.convs[i]((x, x_target), edge_index)
@@ -230,8 +224,8 @@ class GNN(LightningModule):
 
         return self.mlp(x)
 
-    def training_step(self, batch, batch_idx: int):
-        y_hat = self(batch.x, batch.adjs_t)
+    def forward(self, batch, batch_idx: int):
+        y_hat = self.forward_step(batch.x, batch.adjs_t)
         train_loss = F.cross_entropy(y_hat, batch.y)
         self.train_acc(y_hat.softmax(dim=-1), batch.y)
         # self.log('train_acc', self.train_acc, prog_bar=True, on_step=False,
@@ -264,16 +258,51 @@ class GNN(LightningModule):
         return [optimizer], [scheduler]
 
 
-def train(args, model, datamodule):
-    torch.cuda.set_device(int(args.device))
-    datamodule.setup()
-    dataloader = datamodule.train_dataloader()
-    optimizer, scheduler = model.configure_optimizers()
-    train_loader = torch.utils.data.DataLoader(datamodule.train_idx,
+def run(rank, args, world_size, quiver_sampler, quiver_feature, label,
+        train_idx, num_features, num_classes):
+    torch.cuda.set_device(rank)
+    print(f'{rank} beg')
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+    dist.init_process_group('nccl', rank=rank, world_size=world_size)
+
+    train_idx = train_idx.split(train_idx.size(0) // world_size)[rank]
+
+    torch.manual_seed(123 + 45 * rank)
+
+    gpu_size = GPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * 4)
+    cpu_size = CPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * 4)
+
+    train_loader = torch.utils.data.DataLoader(train_idx,
                                                batch_size=1024,
                                                pin_memory=True,
                                                shuffle=True)
-    for epoch in range(args.epochs):
+
+    model = GNN(args.model,
+                num_features,
+                num_classes,
+                args.hidden_channels,
+                num_layers=len(args.sizes),
+                dropout=args.dropout).to(rank)
+    model = DistributedDataParallel(model, device_ids=[rank])
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    prev_order = torch.load(
+        osp.join('/data/mag/mag240m_kddcup2021', 'processed', 'paper',
+                 'prev_order2.pt'))
+    disk_map = torch.zeros(prev_order.size(0), device=rank,
+                           dtype=torch.int64) - 1
+    mem_range = torch.arange(end=cpu_size + 2 * gpu_size,
+                             device=rank,
+                             dtype=torch.int64)
+    disk_map[prev_order[:2 * gpu_size + cpu_size]] = mem_range
+    print(f'{rank} disk map')
+    quiver_feature.set_mmap_file(
+        osp.join('/data/mag/mag240m_kddcup2021', 'processed', 'paper',
+                 'node_feat.npy'), disk_map)
+    print(f'{rank} mmap file')
+    for epoch in range(1, args.epochs + 1):
+        model.train()
+
         sample_time = []
         feat_time = []
         train_time = []
@@ -281,23 +310,42 @@ def train(args, model, datamodule):
         epoch_beg = time.time()
         for cnt, seeds in enumerate(train_loader):
             t0 = time.time()
-            n_id, batch_size, adjs = dataloader.sample(seeds)
+            n_id, batch_size, adjs = quiver_sampler.sample(seeds)
             t1 = time.time()
-            batch = datamodule.convert_batch(batch_size, n_id, adjs)
-            batch = batch.to(int(args.device))
+            x = quiver_feature[n_id]
+            y = label[n_id[:batch_size]].to(torch.long)
+            batch = Batch(x=x, y=y, adjs_t=adjs).to(rank)
             t2 = time.time()
-            optimizer[0].zero_grad()
-            loss = model.training_step(batch, 0)
+            optimizer.zero_grad()
+            loss = model(batch, 0)
             loss.backward()
-            optimizer[0].step()
+            optimizer.step()
             t3 = time.time()
             sample_time.append(t1 - t0)
             feat_time.append(t2 - t1)
             train_time.append(t3 - t2)
 
-        print(
-            f'Epoch: {epoch:03d}, Loss: {loss:.4f}, Epoch Time: {time.time() - epoch_beg}'
-        )
+        dist.barrier()
+
+        if rank == 0:
+            # remove 10% minium values and 10% maximum values
+            print(
+                f'Epoch: {epoch:03d}, Loss: {loss:.4f}, Epoch Time: {time.time() - epoch_beg}'
+            )
+
+        # if rank == 0 and epoch % 5 == 0:  # We evaluate on a single GPU for now
+        #     model.eval()
+        #     with torch.no_grad():
+        #         out = model.module.inference(quiver_feature, rank, subgraph_loader)
+        #     res = out.argmax(dim=-1) == y.cpu()
+        #     acc1 = int(res[train_idx].sum()) / train_idx.numel()
+        #     acc2 = int(res[val_idx].sum()) / val_idx.numel()
+        #     acc3 = int(res[test_idx].sum()) / test_idx.numel()
+        #     print(f'Train: {acc1:.4f}, Val: {acc2:.4f}, Test: {acc3:.4f}')
+
+        dist.barrier()
+
+    dist.destroy_process_group()
 
 
 if __name__ == '__main__':
@@ -322,19 +370,29 @@ if __name__ == '__main__':
     datamodule = MAG240M(ROOT, args.batch_size, args.sizes, args.in_memory)
 
     if not args.evaluate:
-        model = GNN(args.model,
-                    datamodule.num_features,
-                    datamodule.num_classes,
-                    args.hidden_channels,
-                    num_layers=len(args.sizes),
-                    dropout=args.dropout)
-        print(f'#Params {sum([p.numel() for p in model.parameters()])}')
-        model.to(int(args.device))
-        # checkpoint_callback = ModelCheckpoint(monitor='val_acc', mode = 'max', save_top_k=1)
-        # trainer = Trainer(gpus=args.device, max_epochs=args.epochs,
-        #                   default_root_dir=f'logs/{args.model}')
-        # trainer.fit(model, datamodule=datamodule)
-        train(args, model, datamodule)
+        world_size = 2
+
+        ##############################
+        # Create Sampler And Feature
+        ##############################
+        datamodule.setup()
+        quiver_sampler = datamodule.train_dataloader()
+        quiver_feature = datamodule.x
+        y, train_idx, num_features, num_classes = datamodule.y, datamodule.train_idx, datamodule.num_features, datamodule.num_classes
+        l = list(range(world_size))
+        quiver.init_p2p(l)
+
+        del datamodule
+        gc.collect()
+        os.system('sudo sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"')
+
+        print('Let\'s use', world_size, 'GPUs!')
+
+        mp.spawn(run,
+                 args=(args, world_size, quiver_sampler, quiver_feature, y,
+                       train_idx, num_features, num_classes),
+                 nprocs=world_size,
+                 join=True)
 
     if args.evaluate:
         dirs = glob.glob(f'logs/{args.model}/lightning_logs/*')

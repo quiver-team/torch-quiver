@@ -293,7 +293,7 @@ def child_feat_partition(rank, ws, id, device, host, hosts, global2host):
                         dtype=torch.int64,
                         device=device)
     print(f"{rank} request global {ids}")
-    host2ids = dist_feat.info.dispatch(ids)
+    host2ids, _ = dist_feat.info.dispatch(ids)
     print(f"{rank} request local {host2ids}")
     host2feats = dist_feat.comm.exchange(host2ids, feat)
     print(f"{rank} receive {host2feats}")
@@ -315,7 +315,7 @@ def child_feat_partition_pair(rank, ws, id, device, host, hosts, global2host):
                         device=device)
 
     print('ready')
-    host2ids = dist_feat.info.dispatch(ids)
+    host2ids, _ = dist_feat.info.dispatch(ids)
     for h, ids in enumerate(host2ids):
         print(f"{h} size {ids.size(0)}")
     host2feats = dist_feat.comm.exchange(host2ids, feat)
@@ -326,7 +326,7 @@ def child_feat_partition_pair(rank, ws, id, device, host, hosts, global2host):
     for i in range(num):
         print(i)
         beg = time.time()
-        host2ids = dist_feat.info.dispatch(ids)
+        host2ids, _ = dist_feat.info.dispatch(ids)
         mid = time.time()
         host2feats = dist_feat.comm.exchange(host2ids, feat)
         end = time.time()

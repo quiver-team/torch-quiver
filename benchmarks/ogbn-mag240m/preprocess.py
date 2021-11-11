@@ -4,9 +4,11 @@ import torch
 import quiver
 import os
 import os.path as osp
+from torch._C import device
 from torch_sparse import SparseTensor
 import time
-from quiver.partition import partition_with_replication, partition_without_replication
+import numpy as np
+from quiver.partition import partition_with_replication, partition_without_replication, select_nodes
 
 
 def get_nonzero():
@@ -30,7 +32,41 @@ def get_nonzero():
     return nz
 
 
-def preprocess():
+def store_mmap(device, data_dir, raw, processed, selected):
+    CHUNK_SIZE = 100000
+    raw_file = osp.join(data_dir, raw)
+    processed_file = osp.join(data_dir, processed)
+    selected = selected.to(device)
+    raw_array = np.load(raw_file, mmap_mode='r')
+    row, dim = raw_array.shape[0], raw_array.shape[1]
+    feat = torch.zeros((selected.size(0), dim))
+    sorted_ids, prev_order = torch.sort(selected)
+    sorted_ids = sorted_ids.cpu()
+    prev_order = prev_order.cpu()
+    beg = 0
+    end = CHUNK_SIZE
+    cnt = 0
+    while end < selected.size(0):
+        print(cnt)
+        t0 = time.time()
+        chunk_index = sorted_ids[beg:end].numpy()
+        chunk_beg = chunk_index[0]
+        chunk_end = chunk_index[-1]
+        chunk_index -= chunk_beg
+        chunk = raw_array[chunk_beg:chunk_end + 1]
+        print(f'load {time.time() - t0}')
+        torch_chunk = torch.from_numpy(chunk).to(dtype=torch.float32)
+        print(f'trans {time.time() - t0}')
+        feat[prev_order[beg:end]] = torch_chunk[chunk_index]
+        beg = end
+        end = min(selected.size(0), beg + CHUNK_SIZE)
+        cnt += 1
+        t1 = time.time()
+        print(t1 - t0)
+    torch.save(feat, processed_file)
+
+
+def preprocess(host, host_size, p2p_group, p2p_size):
     dataset = MAG240MDataset("/data/mag")
     path = f'{dataset.dir}/paper_to_paper_symmetric.pt'
     if not osp.exists(path):
@@ -53,34 +89,78 @@ def preprocess():
         torch.save(indices, f'{dataset.dir}/csr/indices.pt')
     indptr = torch.load("/data/mag/mag240m_kddcup2021/csr/indptr.pt")
     indices = torch.load("/data/mag/mag240m_kddcup2021/csr/indices.pt")
-    train_idx = torch.from_numpy(dataset.get_idx_split('train'))
-    idx_len = train_idx.size(0)
-    train_idx0, train_idx1 = train_idx[:idx_len // 2], train_idx[idx_len // 2:]
+    train_idx = torch.from_numpy(dataset.get_idx_split('train')).to(0)
     idx_len = train_idx.size(0)
     nodes = indptr.size(0) - 1
+    # local_gpus = p2p_group * p2p_size
+    # global_gpus = p2p_group * p2p_size * host_size
+    # train_idxs = []
+    # beg = 0
+    # for i in range(global_gpus):
+    #     end = min(idx_len, beg + (idx_len // global_gpus))
+    #     train_idxs.append(train_idx[beg: end])
+    #     beg = end
+    # nodes = indptr.size(0) - 1
+    # host_index = train_idxs[local_gpus * host: local_gpus * (host + 1)]
 
     csr_topo = quiver.CSRTopo(indptr=indptr, indices=indices)
     quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [25, 15],
                                                  0,
                                                  mode="UVA")
-
-    # prob = quiver_sampler.sample_prob(train_idx, nodes)
-    # _, prev_order = torch.sort(prob, descending=True)
-    # prev_order = prev_order.cpu()
-    # torch.save(prev_order, '/data/mag/mag240m_kddcup2021/processed/paper/prev_order.pt')
-    prob0 = quiver_sampler.sample_prob(train_idx0, nodes)
-    prob1 = quiver_sampler.sample_prob(train_idx1, nodes)
-    prob_sum = prob0 + prob1
-    _, prev_order = torch.sort(prob_sum, descending=True)
+    # train_loader = torch.utils.data.DataLoader(train_idx[:idx_len // 2],
+    #                                            batch_size=1024,
+    #                                            shuffle=True)
+    # remote = torch.ones((nodes, ), device=0)
+    # global2host = torch.load('/data/mag/mag240m_kddcup2021/processed/paper/global2host.pt').to(0)
+    # mask = global2host == host
+    # remote[mask] = 0
+    # replicate = torch.load(f'/data/mag/mag240m_kddcup2021/processed/paper/replicate{host}.pt').to(0)
+    # remote[replicate] = 0
+    # total = torch.zeros((nodes, ), device=0)
+    # cnt = 0
+    # for i in range(2):
+    #     for seeds in train_loader:
+    #         n_id, _, _ = quiver_sampler.sample(seeds)
+    #         total[n_id] += remote[n_id]
+    #         cnt += n_id.size(0)
+    #     print(i)
+    #     print(torch.sum(total) / cnt)
+    host_probs_sum = [None] * host_size
+    host_p2p_probs = [None] * host_size
+    for h in range(host_size):
+        p2p_probs = [None] * p2p_size
+        for i in range(p2p_size):
+            p2p_train_idx = torch.LongTensor([]).to(0)
+            for j in range(p2p_group):
+                gpu_index = h * p2p_size * p2p_group + p2p_size * j + i
+                gpu_train_idx = train_idxs[gpu_index]
+                p2p_train_idx = torch.cat((p2p_train_idx, gpu_train_idx))
+            p2p_probs[i] = quiver_sampler.sample_prob(p2p_train_idx, nodes)
+        host_p2p_probs[h] = p2p_probs
+        probs_sum = torch.zeros_like(p2p_probs[0])
+        for i in range(p2p_size):
+            probs_sum += p2p_probs[i]
+        host_probs_sum[h] = probs_sum
     gpu_size = 20 * 1024 * 1024 * 1024 // (768 * 4)
     cpu_size = 40 * 1024 * 1024 * 1024 // (768 * 4)
-    selected = prev_order[:gpu_size * 2]
-    res = partition_without_replication(0, [prob0, prob1], selected)
-    selected0 = res[0]
-    selected1 = res[1]
-    prev_order[:gpu_size * 2] = torch.cat((selected0, selected1))
-    prev_order = prev_order.cpu()
-    torch.save(prev_order, '/data/mag/mag240m_kddcup2021/processed/paper/prev_order2.pt')
+    _, nz = select_nodes(0, host_probs_sum, None)
+    res = partition_without_replication(0, host_probs_sum, nz.squeeze())
+    global2host = torch.zeros(nodes, dtype=torch.int32, device=0) - 1
+    for h in range(host_size):
+        global2host[res[h]] = h
+    print(res[host].size(0))
+    torch.save(global2host.cpu(),
+               '/data/mag/mag240m_kddcup2021/processed/paper/global2host.pt')
+    local_probs_sum = host_probs_sum[host]
+    local_probs_sum[res[host]] = -1e6
+    _, local_order = torch.sort(local_probs_sum, descending=True)
+    local_replicate_size = min(
+        nz.size(0), cpu_size + gpu_size * p2p_size) - res[host].size(0)
+    local_replicate = local_order[:local_replicate_size]
+    print(local_replicate.size(0))
+    torch.save(
+        local_replicate.cpu(),
+        f'/data/mag/mag240m_kddcup2021/processed/paper/replicate{host}.pt')
 
 
-preprocess()
+preprocess(0, 2, 1, 2)

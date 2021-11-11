@@ -1,6 +1,5 @@
 import torch
 import torch_quiver as torch_qv
-import time
 
 
 class HostRankTable:
@@ -105,7 +104,7 @@ class NcclComm:
         self.comm.allreduce(tensor)
 
     def exchange(self, host2ids, feature):
-        t0 = time.time()
+        # t0 = time.time()
         remote_sizes = torch.zeros(self.size * self.size, dtype=torch.int64)
         for host in range(self.table.hosts):
             ids = host2ids[host]
@@ -117,7 +116,7 @@ class NcclComm:
         comm_mat = self.table.get_comm_mat(remote_sizes)
         steps = schedule(comm_mat, self.table)
         torch.cuda.current_stream().synchronize()
-        t1 = time.time()
+        # t1 = time.time()
         req_ids = [None] * self.size
         res_feats = [None] * self.size
         for step in steps:
@@ -132,12 +131,12 @@ class NcclComm:
                     self.recv(ids, src)
                     req_ids[src] = ids
         torch.cuda.current_stream().synchronize()
-        t2 = time.time()
+        # t2 = time.time()
         for i in range(len(req_ids)):
             ids = req_ids[i]
             if ids is not None:
                 res_feats[i] = feature[ids]
-        t3 = time.time()
+        # t3 = time.time()
         host2feats = [None] * self.table.hosts
         for step in steps:
             for src, dst in step:
@@ -151,11 +150,11 @@ class NcclComm:
                     self.recv(feats, dst)
                     host2feats[self.table.host(dst)] = feats
         torch.cuda.current_stream().synchronize()
-        t4 = time.time()
-        print(f"prepare {t1 - t0}")
-        print(f"id {t2 - t1}")
-        print(f"local {t3 - t2}")
-        print(f"res {t4 - t3}")
+        # t4 = time.time()
+        # print(f"prepare {t1 - t0}")
+        # print(f"id {t2 - t1}")
+        # print(f"local {t3 - t2}")
+        # print(f"res {t4 - t3}")
         return host2feats
 
 

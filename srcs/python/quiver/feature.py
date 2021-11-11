@@ -474,15 +474,19 @@ class PartitionInfo:
 
     def dispatch(self, ids):
         host_ids = []
+        host_orders = []
+        ids_range = torch.arange(end=ids.size(0), dtype=torch.int64, device=self.device)
         host_index = self.global2host[ids]
         for host in range(self.hosts):
             mask = host_index == host
             host_nodes = torch.masked_select(ids, mask)
+            host_order = torch.masked_select(ids_range, mask)
             host_nodes = self.global2local[host_nodes]
             host_ids.append(host_nodes)
+            host_orders.append(host_order)
         torch.cuda.current_stream().synchronize()
 
-        return host_ids
+        return host_ids, host_orders
 
 
 class DistFeature:
@@ -493,4 +497,9 @@ class DistFeature:
 
     def __getitem__(self, ids):
         ids = ids.to(self.comm.device)
-        # TODO
+        host_ids, host_orders = self.info.dispatch(ids)
+        host_feats = self.comm.exchange(host_ids, self.feature)
+        feats = torch.zeros((ids.size(0), self.feature.size(1)), device=self.comm.device)
+        for feat, order in zip(host_feats, host_orders):
+            feats[order] = feat
+        return feats

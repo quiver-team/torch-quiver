@@ -118,40 +118,6 @@ def bench_read():
         print(t1 - t0)
 
 
-def store_mmap(device, data_dir, raw, processed, selected):
-    CHUNK_SIZE = 100000
-    raw_file = osp.join(data_dir, raw)
-    processed_file = osp.join(data_dir, processed)
-    selected = selected.to(device)
-    raw_array = np.load(raw_file, mmap_mode='r')
-    row, dim = raw_array.shape[0], raw_array.shape[1]
-    feat = torch.zeros((selected.size(0), dim))
-    sorted_ids, prev_order = torch.sort(selected)
-    sorted_ids = sorted_ids.cpu()
-    prev_order = prev_order.cpu()
-    beg = 0
-    end = CHUNK_SIZE
-    cnt = 0
-    while end < selected.size(0):
-        print(cnt)
-        t0 = time.time()
-        chunk_index = sorted_ids[beg:end].numpy()
-        chunk_beg = chunk_index[0]
-        chunk_end = chunk_index[-1]
-        chunk_index -= chunk_beg
-        chunk = raw_array[chunk_beg: chunk_end + 1]
-        print(f'load {time.time() - t0}')
-        torch_chunk = torch.from_numpy(chunk).to(dtype=torch.float32)
-        print(f'trans {time.time() - t0}')
-        feat[prev_order[beg:end]] = torch_chunk[chunk_index]
-        beg = end
-        end = min(selected.size(0), beg + CHUNK_SIZE)
-        cnt += 1
-        t1 = time.time()
-        print(t1 - t0)
-    torch.save(feat, processed_file)
-
-
 def test_prob():
     indptr = torch.load("/data/mag/mag240m_kddcup2021/csr/indptr.pt")
     indices = torch.load("/data/mag/mag240m_kddcup2021/csr/indices.pt")

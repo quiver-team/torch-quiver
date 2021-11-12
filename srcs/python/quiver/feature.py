@@ -515,5 +515,8 @@ class DistFeature:
         feats = torch.zeros((ids.size(0), self.feature.size(1)),
                             device=self.comm.device)
         for feat, order in zip(host_feats, host_orders):
-            feats[order] = feat
+            if feat is not None and order is not None:
+                feats[order] = feat
+        local_ids, local_order = host_ids[self.info.host], host_orders[self.info.host]
+        feats[local_order] = self.feature[local_ids]
         return feats

@@ -58,11 +58,14 @@ class MAG240M(LightningDataModule):
                  data_dir: str,
                  batch_size: int,
                  sizes: List[int],
+                 host, local_size,
                  in_memory: bool = False):
         super().__init__()
         self.data_dir = data_dir
         self.batch_size = batch_size
         self.sizes = sizes
+        self.host = host
+        self.local_size = local_size
         self.in_memory = in_memory
 
     @property
@@ -89,7 +92,7 @@ class MAG240M(LightningDataModule):
             torch.save(adj_t.to_symmetric(), path)
             print(f'Done! [{time.perf_counter() - t:.2f}s]')
 
-    def setup(self, host, local_size, stage: Optional[str] = None):
+    def setup(self, stage: Optional[str] = None):
         t = time.perf_counter()
         print('Reading dataset...', end=' ', flush=True)
         dataset = MAG240MDataset(self.data_dir)
@@ -270,7 +273,7 @@ def run(rank, args, quiver_sampler, quiver_feature, label, train_idx,
     global_size = host_size * local_size
     os.environ['MASTER_ADDR'] = MASTER_ADDR
     os.environ['MASTER_PORT'] = '12355'
-    dist.init_process_group('nccl', rank=rank, world_size=global_size)
+    dist.init_process_group('nccl', rank=global_rank, world_size=global_size)
 
     train_idx = train_idx.split(train_idx.size(0) // global_size)[global_rank]
 
@@ -389,7 +392,7 @@ if __name__ == '__main__':
     print(args)
 
     seed_everything(42)
-    datamodule = MAG240M(ROOT, args.batch_size, args.sizes, args.in_memory)
+    datamodule = MAG240M(ROOT, args.batch_size, args.sizes, 1, 2, args.in_memory)
 
     if not args.evaluate:
         host_size = 2
@@ -406,7 +409,7 @@ if __name__ == '__main__':
         ##############################
         # Create Sampler And Feature
         ##############################
-        datamodule.setup(host)
+        datamodule.setup()
         quiver_sampler = datamodule.train_dataloader()
         quiver_feature = datamodule.x
         y, train_idx, num_features, num_classes = datamodule.y, datamodule.train_idx, datamodule.num_features, datamodule.num_classes

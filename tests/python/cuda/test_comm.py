@@ -285,11 +285,13 @@ def child_feat_partition(rank, ws, id, device, host, hosts, global2host):
     size = 10
     comm = quiver.comm.NcclComm(rank, ws, id, hosts, 1)
     feat = torch.ones(
-        (size, dim), device=device, dtype=torch.float) * (1 + rank)
+        (size, dim), device=device, dtype=torch.float) * (1 + rank) * size
+    for i in range(size):
+        feat[i] += i
     print(f"{rank} hold {feat}")
     dist_feat = quiver.feature.DistFeature(feat, info, comm)
     ids = torch.randint(high=size,
-                        size=(10, ),
+                        size=(20, ),
                         dtype=torch.int64,
                         device=device)
     print(f"{rank} request global {ids}")
@@ -384,5 +386,5 @@ if __name__ == "__main__":
     # test_local()
     # test_dist_pair_bidirect(0)
     # test_nccl_allreduce_pair(0)
-    # test_feat_partition()
-    test_feat_partition_pair(0)
+    test_feat_partition()
+    # test_feat_partition_pair(0)

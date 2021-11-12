@@ -187,4 +187,4 @@ def preprocess(host, host_size, p2p_group, p2p_size):
     #     f'/data/mag/mag240m_kddcup2021/processed/paper/replicate{host}.pt')
 
 
-preprocess(0, 2, 1, 2)
+preprocess(1, 2, 1, 2)

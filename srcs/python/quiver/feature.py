@@ -123,7 +123,8 @@ class Feature(object):
             for device in self.device_list:
                 if isinstance(device_config.gpu_parts[device], torch.Tensor):
                     cache_ids = device_config.gpu_parts[device].numpy()
-                    cache_part = torch.from_numpy(np_array[cache_ids]).to(dtype=torch.float32)
+                    cache_part = torch.from_numpy(
+                        np_array[cache_ids]).to(dtype=torch.float32)
                 elif isinstance(device_config.gpu_parts[device], str):
                     cache_part = torch.load(device_config.gpu_parts[device])
                 shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
@@ -141,12 +142,14 @@ class Feature(object):
                 )
                 shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
                 for idx, device in enumerate(clique0_device_list):
-                    if isinstance(device_config.gpu_parts[device], torch.Tensor):
+                    if isinstance(device_config.gpu_parts[device],
+                                  torch.Tensor):
                         cache_ids = device_config.gpu_parts[device].numpy()
                         cache_part = torch.from_numpy(
                             np_array[cache_ids]).to(dtype=torch.float32)
                     elif isinstance(device_config.gpu_parts[device], str):
-                        cache_part = torch.load(device_config.gpu_parts[device])
+                        cache_part = torch.load(
+                            device_config.gpu_parts[device])
                     shard_tensor.append(cache_part, device)
                     self.device_tensor_list[device] = shard_tensor
                     del cache_part
@@ -159,12 +162,14 @@ class Feature(object):
                 )
                 shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
                 for idx, device in enumerate(clique1_device_list):
-                    if isinstance(device_config.gpu_parts[device], torch.Tensor):
+                    if isinstance(device_config.gpu_parts[device],
+                                  torch.Tensor):
                         cache_ids = device_config.gpu_parts[device].numpy()
                         cache_part = torch.from_numpy(
                             np_array[cache_ids]).to(dtype=torch.float32)
                     elif isinstance(device_config.gpu_parts[device], str):
-                        cache_part = torch.load(device_config.gpu_parts[device])
+                        cache_part = torch.load(
+                            device_config.gpu_parts[device])
                     shard_tensor.append(cache_part, device)
                     self.device_tensor_list[device] = shard_tensor
                     del cache_part
@@ -174,7 +179,8 @@ class Feature(object):
         # 构建CPU Tensor
         if isinstance(device_config.cpu_part, torch.Tensor):
             cache_ids = device_config.gpu_parts[device].numpy()
-            self.cpu_part = torch.from_numpy(np_array[cache_ids]).to(dtype=torch.float32)
+            self.cpu_part = torch.from_numpy(
+                np_array[cache_ids]).to(dtype=torch.float32)
         elif isinstance(device_config.cpu_part, str):
             self.cpu_part = torch.load(device_config.cpu_part)
         if self.cpu_part.numel() > 0:
@@ -283,6 +289,9 @@ class Feature(object):
                 shard_tensor.append(self.cpu_part, -1)
                 self.clique_tensor_list[clique_id] = shard_tensor
 
+    def set_local_order(self, local_order):
+        self.feature_order = local_order.to(self.rank)
+
     def __getitem__(self, node_idx: torch.Tensor):
         self.lazy_init_from_ipc_handle()
         node_idx = node_idx.to(self.rank)
@@ -299,7 +308,9 @@ class Feature(object):
         else:
             num_nodes = node_idx.size(0)
             disk_index = self.disk_map[node_idx]
-            node_range = torch.arange(end=num_nodes, device=self.rank, dtype=torch.int64)
+            node_range = torch.arange(end=num_nodes,
+                                      device=self.rank,
+                                      dtype=torch.int64)
             disk_mask = disk_index < 0
             mem_mask = disk_index >= 0
             disk_ids = torch.masked_select(node_idx, disk_mask)
@@ -475,7 +486,9 @@ class PartitionInfo:
     def dispatch(self, ids):
         host_ids = []
         host_orders = []
-        ids_range = torch.arange(end=ids.size(0), dtype=torch.int64, device=self.device)
+        ids_range = torch.arange(end=ids.size(0),
+                                 dtype=torch.int64,
+                                 device=self.device)
         host_index = self.global2host[ids]
         for host in range(self.hosts):
             mask = host_index == host
@@ -499,7 +512,8 @@ class DistFeature:
         ids = ids.to(self.comm.device)
         host_ids, host_orders = self.info.dispatch(ids)
         host_feats = self.comm.exchange(host_ids, self.feature)
-        feats = torch.zeros((ids.size(0), self.feature.size(1)), device=self.comm.device)
+        feats = torch.zeros((ids.size(0), self.feature.size(1)),
+                            device=self.comm.device)
         for feat, order in zip(host_feats, host_orders):
             feats[order] = feat
         return feats

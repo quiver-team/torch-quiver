@@ -7,7 +7,7 @@
 
 --------------------------------------------------------------------------------
 
-Quiver is a distributed graph learning library for [PyTorch Geometric](https://github.com/pyg-team/pytorch_geometric) (PyG). The goal of Quiver is to make large-scale distributed graph learning fast and easy to use.
+Quiver is a distributed graph learning library for [PyTorch Geometric](https://github.com/pyg-team/pytorch_geometric) (PyG). The goal of Quiver is to make distributed graph learning easy-to-use and achieve high-performance.
 
 [![Documentation Status](https://readthedocs.org/projects/torch-quiver/badge/?version=latest)](https://torch-quiver.readthedocs.io/en/latest/?badge=latest)
 
@@ -19,17 +19,17 @@ Quiver is a distributed graph learning library for [PyTorch Geometric](https://g
 ## Why Quiver?
 
 ----
-The primary motivation for this project is to make it easy to take a PyG script and scale it across many GPUs and CPUs. A typical scenario is: Quiver users can leverage the high-level APIs and rich examples of PyG to design graph learning algorithms, and then use Quiver to scale PyG algorithms to run at large scale. To make scaling efficient, Quiver has several features:
+The primary motivation for this project is to make it easy to take a PyG program and scale it across many GPUs and CPUs. A typical scenario is: Users can use the easy-to-use APIs of PyG to efficiently develop graph learning programs, and rely on Quiver to run these PyG programs at large scale. To make such scaling effective, Quiver has several novel features:
 <!-- 
 If you are a GNN researcher or you are a `PyG`'s or `DGL`'s user and you are suffering from consuming too much time on graph sampling and feature collection when training your GNN models, then here are some reasons to try out Quiver for your GNN model trainning. -->
 
-* **High performance**: Quiver enables GPUs to be efficiently used in accelerating performance-critical graph learning tasks: graph sampling, feature collection and data-parallel training. Quiver thus can out-perform PyG and DGL even with a single GPU, especially when processing large-scale datasets and models.
+* **High performance**: Quiver enables GPUs to be effectively used in accelerating performance-critical graph learning tasks: graph sampling, feature collection and data-parallel training. Quiver thus often significantly out-perform PyG and DGL even with a single GPU (see benchmark results below), especially when processing large-scale datasets and models.
 
-* **High scalability**: Quiver can achieve (super) linear scalability in distributed graph learning. This is contributed by Quiver's novel communication-efficient data/processor management techniques and effective usage of fast networking technologies (e.g., NVLink and RDMA).
+* **High scalability**: Quiver can achieve (super) linear scalability in distributed graph learning. This is contributed by Quiver's novel adaptive data/feature/processor management techniques and effective usage of fast networking technologies (e.g., NVLink and RDMA).
 
 <!-- * **Greate performance and scalibility**: Using CPU to do graph sample and feature collection not only leads to poor performance, but also leads to poor scalability because of CPU contention. Quiver, however, can achieve much better scalability and can even achieve `super linear scalibility` on machines equipped with NVLink. -->
 
-* **Easy to use**: Quiver requires only a few new lines of code in existing PyG programs and it has no external heavy dependency. Quiver is thus easy to be adopted by PyG users and integrated into production clusters.
+* **Easy to use**: To use Quiver, developers only need to add a few lines of code in existing PyG programs. Quiver is thus easy to be adopted by PyG users and deployed in production clusters.
 
 <!-- * **Easy-to-use and unified API**:
 Integrate Quiver into your training pipeline in `PyG` or `DGL` is just a matter of several lines of code change. We've also implemented IPC mechanism which makes it also a piece of cake to use Quiver to speedup your multi-gpu GNN model training (see the next section for a [quick tour](#quick-tour-for-new-users)).  -->
@@ -122,7 +122,7 @@ quiver_feature = quiver.Feature(rank=0, device_list=[0]).from_cpu_tensor(data.x)
   
 ## Step 3: Train PyG models with Quiver
 # for batch_size, n_id, adjs in train_loader: # Comment out PyG training loop
-for seeds in train_loader:
+for seeds in train_loader: # Use PyTorch training loop in Quiver
   n_id, batch_size, adjs = quiver_sampler.sample(seeds)  # Use Quiver graph sampler
   batch_feature = quiver_feature[n_id]  # Use Quiver feature collector
   ...
@@ -162,7 +162,7 @@ Below is an example command that runs a Quiver's script `examples/pyg/reddit_qui
 $ python3 examples/pyg/reddit_quiver.py
 ```
 
-The commands to run Quiver on single-GPU servers and multi-GPU servers are the same. We will provide multi-node examples soon. 
+Quiver has the same launch command on both single-GPU servers and multi-GPU servers. We will provide multi-node examples soon. 
 <!-- We are developing an adaptive end-to-end parallelism system in a distributed cluster.  -->
 
 <!-- You can check [our reddit example](examples/pyg/reddit_quiver.py) for details. -->
@@ -184,7 +184,7 @@ Quiver is released under the Apache 2.0 license.  -->
 
 ## Community
 
-We welcome new contributors to join the development of Quiver. Quiver is currently maintained by researchers from the [University of Edinburgh](https://www.ed.ac.uk/), [Imperial College London](https://www.imperial.ac.uk/), [Tsinghua University](https://www.tsinghua.edu.cn/en/index.htm) and [University of Waterloo](https://uwaterloo.ca/). The development of Quiver has received the support from [Alibaba](https://damo.alibaba.com/) and [Lambda Labs](https://lambdalabs.com/). 
+We welcome contributors to join the development of Quiver. Quiver is currently maintained by researchers from the [University of Edinburgh](https://www.ed.ac.uk/), [Imperial College London](https://www.imperial.ac.uk/), [Tsinghua University](https://www.tsinghua.edu.cn/en/index.htm) and [University of Waterloo](https://uwaterloo.ca/). The development of Quiver has received the support from [Alibaba](https://damo.alibaba.com/) and [Lambda Labs](https://lambdalabs.com/). 
 
 <!-- ## Architecture Overview
 Key reasons behind Quiver's high performance are that it provides two key components: `quiver.Feature` and `quiver.Sampler`.

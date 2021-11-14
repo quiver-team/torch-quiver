@@ -136,9 +136,9 @@ def load_240m():
     indptr = th.load('/data/mag/mag240m_kddcup2021/csr/indptr.pt')
     indices = th.load('/data/mag/mag240m_kddcup2021/csr/indices.pt')
     nodes = indptr.size(0) - 1
-    index = np.zeros(nodes, dtype=np.int32)
+    index = np.zeros(indices.size(0), dtype=np.int32)
 
-    csr = csr_matrix((index, indptr.numpy(), indices.numpy()),
+    csr = csr_matrix((index, indices.numpy(), indptr.numpy()),
                      shape=[nodes, nodes])
     g = dgl.from_scipy(csr)
     return g, train_idx, th.from_numpy(

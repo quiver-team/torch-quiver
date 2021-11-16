@@ -110,5 +110,6 @@ void register_cpu_quiver(pybind11::module &m)
     m.def("cpu_quiver_from_edge_index", &quiver::cpu_quiver_from_edge_index);
     py::class_<quiver::CPUQuiver>(m, "CPUQuiver")
         .def("sample_neighbor", &quiver::CPUQuiver::sample_neighbor)
-        .def("reindex_group", &quiver::CPUQuiver::reindex_group);
+        .def("reindex_group", &quiver::CPUQuiver::reindex_group)
+        .def("random_walk", &quiver::CPUQuiver::reindex_group);
 }

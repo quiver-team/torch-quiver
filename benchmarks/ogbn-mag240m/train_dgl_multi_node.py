@@ -17,7 +17,7 @@ import sklearn.metrics as skm
 from quiver.shard_tensor import ShardTensor as PyShardTensor
 from quiver.shard_tensor import ShardTensorConfig
 from ogb.lsc import MAG240MDataset
-from scipy.sparse import csr_matrix
+from scipy.sparse import csc_matrix
 
 
 class SAGE(nn.Module):
@@ -133,15 +133,12 @@ def load_reddit():
 def load_240m():
     dataset = MAG240MDataset('/data/mag')
     train_idx = th.from_numpy(dataset.get_idx_split('train'))
-    indptr = th.load('/data/mag/mag240m_kddcup2021/csr/indptr.pt')
-    indices = th.load('/data/mag/mag240m_kddcup2021/csr/indices.pt')
-    nodes = indptr.size(0) - 1
-    index = np.zeros(indices.size(0), dtype=np.int32)
+    indptr = th.load(
+        '/data/mag/mag240m_kddcup2021/csr/indptr.pt').share_memory_()
+    indices = th.load(
+        '/data/mag/mag240m_kddcup2021/csr/indices.pt').share_memory_()
 
-    csr = csr_matrix((index, indices.numpy(), indptr.numpy()),
-                     shape=[nodes, nodes])
-    g = dgl.from_scipy(csr)
-    return g, train_idx, th.from_numpy(
+    return (indptr, indices), train_idx, th.from_numpy(
         dataset.paper_label), dataset.num_classes
 
 
@@ -209,7 +206,8 @@ def evaluate(model, g, nfeat, labels, val_nid, device):
     return compute_acc(pred[val_nid], labels[val_nid])
 
 
-def load_subtensor(nfeat, labels, seeds, input_nodes, dev_id, n_gpus, host, host_size, comm_sizes):
+def load_subtensor(nfeat, labels, seeds, input_nodes, dev_id, n_gpus, host,
+                   host_size, comm_sizes):
     """
     Extracts features and labels for a subset of nodes.
     """
@@ -227,10 +225,10 @@ def load_subtensor(nfeat, labels, seeds, input_nodes, dev_id, n_gpus, host, host
                 peer = src * n_gpus + dev_id
                 temp = th.zeros((comm_sizes, 768))
                 th.distributed.recv(temp, peer)
-    input_nodes = input_nodes // args.host
+    input_nodes = input_nodes // host_size
     input_nodes = input_nodes.cpu()
     batch_inputs = nfeat[input_nodes].to(dev_id).to(th.float32)
-    batch_labels = labels[seeds].to(dev_id)
+    batch_labels = labels[seeds].to(dev_id).to(th.long)
     return batch_inputs, batch_labels
 
 
@@ -244,23 +242,30 @@ def run(proc_id, n_gpus, args, devices, data):
     print('ready')
     if n_gpus > 1:
         dist_init_method = 'tcp://{master_ip}:{master_port}'.format(
-            master_ip='192.168.0.78', master_port='12345')
+            master_ip='192.168.0.78', master_port='12975')
         world_size = n_gpus * args.host_size
-        th.distributed.init_process_group(backend="nccl",
+        th.distributed.init_process_group(backend="gloo",
                                           init_method=dist_init_method,
                                           world_size=world_size,
                                           rank=proc_id + n_gpus * args.host)
-
+    print('comm')
     # Unpack data
     n_classes, train_g, train_idx, train_labels, train_nfeat = data
     val_g = train_g
     test_g = train_g
+    indptr, indices = train_g
+    nodes = indptr.size(0) - 1
+    index = np.zeros(indices.size(0), dtype=np.int8)
+
+    csc = csc_matrix((index, indices.numpy(), indptr.numpy()),
+                     shape=[nodes, nodes])
+    train_g = dgl.from_scipy(csc)
 
     in_feats = 768
 
     # Create PyTorch DataLoader for constructing blocks
     sampler = dgl.dataloading.MultiLayerNeighborSampler(
-        [int(fanout) for fanout in args.fan_out.split(',')])
+        [int(fanout) for fanout in args.fan_out.split(',')], replace=False)
     dataloader = dgl.dataloading.NodeDataLoader(train_g,
                                                 train_idx,
                                                 sampler,
@@ -288,7 +293,7 @@ def run(proc_id, n_gpus, args, devices, data):
     comm_sizes = args.batch_size
     for size in sizes:
         comm_sizes *= size
-    comm_sizes = comm_sizes // args.host
+    comm_sizes = comm_sizes // args.host_size // 100
     for epoch in range(args.num_epochs):
         # if n_gpus > 1:
         #     dataloader.set_epoch(epoch)
@@ -302,13 +307,14 @@ def run(proc_id, n_gpus, args, devices, data):
             t1 = time.time()
             # Load the input features as well as output labels
             batch_inputs, batch_labels = load_subtensor(
-                train_nfeat, train_labels, seeds, input_nodes, dev_id, n_gpus, args.host, args.host_size, comm_sizes)
+                train_nfeat, train_labels, seeds, input_nodes, dev_id, n_gpus,
+                args.host, args.host_size, comm_sizes)
             blocks = [block.int().to(dev_id) for block in blocks]
             t2 = time.time()
             # Compute loss and prediction
+            optimizer.zero_grad()
             batch_pred = model(blocks, batch_inputs)
             loss = loss_fcn(batch_pred, batch_labels)
-            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             t3 = time.time()
@@ -337,7 +343,7 @@ def run(proc_id, n_gpus, args, devices, data):
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser("multi-gpu training")
     argparser.add_argument('--host', type=int, default=0)
-    argparser.add_argument('--host_size', type=int, default=1)
+    argparser.add_argument('--host_size', type=int, default=2)
     argparser.add_argument('--gpu',
                            type=str,
                            default='0,1',
@@ -380,13 +386,12 @@ if __name__ == '__main__':
         g, train_idx, label, n_classes = load_240m()
 
     # Construct graph
-    g = g.formats(['csr', 'csc'])
+    indptr, _ = g
 
-    nodes = g.num_nodes()
+    nodes = indptr.size(0) - 1
     per_host_nodes = (nodes + args.host_size - 1) // args.host_size
-    train_nfeat = th.zeros((per_host_nodes, 768), dtype=th.float16).share_memory_()
-
-    g = g.shared_memory("shared_g")
+    train_nfeat = th.zeros((per_host_nodes, 768),
+                           dtype=th.int8).share_memory_()
 
     if args.inductive:
         train_g, val_g, test_g = inductive_split(g)

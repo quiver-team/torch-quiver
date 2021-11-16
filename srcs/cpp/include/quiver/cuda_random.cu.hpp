@@ -34,7 +34,7 @@ __global__ void CSRRowWiseSampleKernel(
             // just copy row
             for (int idx = threadIdx.x; idx < deg; idx += WARP_SIZE) {
                 const T in_idx = in_row_start + idx;
-                out_idxs[out_row_start + idx] = in_index[in_idx];
+                out[out_row_start + idx] = in_index[in_idx];
             }
         } else {
             // generate permutation list via reservoir algorithm

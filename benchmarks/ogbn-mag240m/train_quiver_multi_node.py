@@ -35,7 +35,7 @@ import gc
 ROOT = '/data/mag'
 CPU_CACHE_GB = 40
 GPU_CACHE_GB = 20
-LOCAL_ADDR = '192.168.0.79'
+LOCAL_ADDR = '192.168.0.78'
 MASTER_ADDR = '192.168.0.78'
 MASTER_PORT = 19216
 
@@ -58,7 +58,8 @@ class MAG240M(LightningDataModule):
                  data_dir: str,
                  batch_size: int,
                  sizes: List[int],
-                 host, local_size,
+                 host,
+                 local_size,
                  in_memory: bool = False):
         super().__init__()
         self.data_dir = data_dir
@@ -392,12 +393,13 @@ if __name__ == '__main__':
     print(args)
 
     seed_everything(42)
-    datamodule = MAG240M(ROOT, args.batch_size, args.sizes, 1, 2, args.in_memory)
+    datamodule = MAG240M(ROOT, args.batch_size, args.sizes, 0, 2,
+                         args.in_memory)
 
     if not args.evaluate:
         host_size = 2
         local_size = 2
-        host = 1
+        host = 0
         store = dist.TCPStore(MASTER_ADDR, MASTER_PORT, host_size,
                               MASTER_ADDR == LOCAL_ADDR)
         if MASTER_ADDR == LOCAL_ADDR:

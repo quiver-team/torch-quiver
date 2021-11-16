@@ -369,8 +369,9 @@ class quiver<T, CUDA>
     std::pair<const T *, const T *> csr()
     {
         if (quiver_mode == DMA) {
-            return std::make_pair((const T*)thrust::raw_pointer_cast(row_ptr_.data()),
-                                  (const T*)thrust::raw_pointer_cast(col_idx_.data()));
+            return std::make_pair(
+                (const T *)thrust::raw_pointer_cast(row_ptr_.data()),
+                (const T *)thrust::raw_pointer_cast(col_idx_.data()));
         } else {
             return std::make_pair(row_ptr_mapped_, col_idx_mapped_);
         }

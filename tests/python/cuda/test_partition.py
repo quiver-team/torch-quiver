@@ -98,6 +98,7 @@ def test_hot():
         print(i)
         print(torch.sum(total) / cnt)
 
+
 def bench_read():
     CHUNK_SIZE = 100000
     np_file = '/data/mag/mag240m_kddcup2021/processed/paper/node_feat.npy'
@@ -109,7 +110,7 @@ def bench_read():
     while end < row:
         print(cnt)
         t0 = time.time()
-        chunk = raw_array[beg: end]
+        chunk = raw_array[beg:end]
         torch_chunk = torch.from_numpy(chunk).to(dtype=torch.float32)
         beg = end
         end = min(row, beg + CHUNK_SIZE)

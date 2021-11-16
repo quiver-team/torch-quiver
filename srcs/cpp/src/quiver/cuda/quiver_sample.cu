@@ -15,7 +15,6 @@
 #include <quiver/zip.hpp>
 #include <thrust/remove.h>
 
-
 template <typename IdType>
 HostOrderedHashTable<IdType> *
 FillWithDuplicates(const IdType *const input, const size_t num_input,

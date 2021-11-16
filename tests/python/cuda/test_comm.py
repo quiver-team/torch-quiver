@@ -374,7 +374,8 @@ def test_feat_partition_pair(rank):
     procs = []
     for i in range(local_size):
         proc = mp.Process(target=child_feat_partition_pair,
-                          args=(i + rank * local_size, ws, id, i, rank, 3, global2host))
+                          args=(i + rank * local_size, ws, id, i, rank, 3,
+                                global2host))
         proc.start()
         procs.append(proc)
     for proc in procs:

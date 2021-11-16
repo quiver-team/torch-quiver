@@ -290,7 +290,11 @@ class Feature(object):
                 self.clique_tensor_list[clique_id] = shard_tensor
 
     def set_local_order(self, local_order):
-        self.feature_order = local_order.to(self.rank)
+        local_range = torch.arange(end=local_order.size(0),
+                                   dtype=torch.int64,
+                                   device=self.rank)
+        self.feature_order = torch.zeros_like(local_range)
+        self.feature_order[local_order.to(self.rank)] = local_range
 
     def __getitem__(self, node_idx: torch.Tensor):
         self.lazy_init_from_ipc_handle()
@@ -517,6 +521,7 @@ class DistFeature:
         for feat, order in zip(host_feats, host_orders):
             if feat is not None and order is not None:
                 feats[order] = feat
-        local_ids, local_order = host_ids[self.info.host], host_orders[self.info.host]
+        local_ids, local_order = host_ids[self.info.host], host_orders[
+            self.info.host]
         feats[local_order] = self.feature[local_ids]
         return feats

@@ -7,6 +7,6 @@ from .utils import init_p2p
 from .comm import NcclComm, getNcclId
 
 __all__ = [
-    "Feature", "GraphSageSampler", "PartitionInfo", "CSRTopo", "p2pCliqueTopo", "init_p2p",
-    "getNcclId", "NcclComm"
+    "Feature", "GraphSageSampler", "PartitionInfo", "CSRTopo", "p2pCliqueTopo",
+    "init_p2p", "getNcclId", "NcclComm"
 ]

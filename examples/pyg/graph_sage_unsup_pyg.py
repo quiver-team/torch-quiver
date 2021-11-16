@@ -15,7 +15,7 @@ EPS = 1e-15
 
 dataset = 'Cora'
 # path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', dataset)
-path = '/data/products/' + dataset
+path = '/data/' + dataset
 dataset = Planetoid(path, dataset, transform=T.NormalizeFeatures())
 data = dataset[0]
 

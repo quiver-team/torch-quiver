@@ -212,6 +212,17 @@ class Feature(object):
             shard_tensor = self.clique_tensor_list[clique_id]
             return shard_tensor.size(dim)
 
+    def dim(self):
+        """ Get the number of dimensions for quiver.Feature
+
+        Args:
+            None
+
+        Returns:
+            int: number of dimensions
+        """
+        return len(self.shape)
+
     @property
     def shape(self):
         self.lazy_init_from_ipc_handle()

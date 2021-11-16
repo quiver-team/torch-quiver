@@ -67,6 +67,7 @@ Quiver中向用户提供**UVA-Based**（Unified Virtual Addressing Based）图�
 ### 3.1 当前已有方案
 由于GNN训练时一个batch的特征数据往往有数百MB甚至几个GB，这些特征数据任何一次在CPU内存中的搬运，以及CPU到GPU之间的数据搬运都有着较大的耗时。图特征提取优化的核心在于优化端到端的吞吐，即从特征获取到传输到GPU过程的吞吐。现有的方案一般分为两种:
 
+
 1. CPU进行特征提取，并将聚合特征传输到GPU进行训练
 2. 当特征数据较少时，将全部特征放到GPU显存中
 
@@ -141,11 +142,11 @@ quiver_feature = quiver.Feature(rank=0, device_list=[0, 1], device_cache_size="1
 quiver_feature.from_cpu_tensor(dataset[0].x)
 ```
 
-## 三、端到端性能
+## 四、端到端性能
 
 Quiver为用户提供了高性能的GNN训练核心组件，用户可以自由和CPU采样/CPU特征提取方式进行组合使用。接下来我们介绍使用Quiver可以达到的优异的单卡性能以及多卡扩展性。
 
-### 3.1 cache_policy = device_replicate
+### 4.1 cache_policy = device_replicate
 
 我们以`ogbn-product`为例子进行benchmark实验验证, 我们首先对比Quiver和使用CPU来进行特征提取和采样的Pyg性能。实验中每个训练进程中的采样并行度为5。
 
@@ -167,12 +168,12 @@ Quiver为用户提供了高性能的GNN训练核心组件，用户可以自由�
 
 我们发现Quiver拥有更好的性能的同时，多卡训练的扩展性上表现也更为优秀。
 
-### 3.2 cache_policy = p2p_clique_replicate
+### 4.2 cache_policy = p2p_clique_replicate
 
 当我们在带有NVLink的机器上训练`ogb-product`数据以及`reddit`数据，两卡训练的加速比分别为2.25和2.75(batch_size=2048), 这是由于两卡训练时，采样和GPU模型计算部分性能为线性扩展，而特征提取却为超线性扩展，故而带来了训练端到端性能的超线性扩展。
 
 
-## 四、未来展望
+## 五、未来展望
 本次我们只是开源了Quiver的单机版本。在未来我们将继续开源如下特性，敬请期待！：
 
 1. **基于CPU、GPU混合计算的采样和特征提取**：目前我们的所有采样和特征获取均为GPU执行，而单机上的CPU所具备的强大算力同样不可忽视。未来我们将研究并开源`mode=MIXED`的模式下，借助CPU和GPU并行采样和特征提取的加速。
@@ -180,7 +181,7 @@ Quiver为用户提供了高性能的GNN训练核心组件，用户可以自由�
 
 
 
-## 四、总结
+## 六、总结
 
 路漫漫其修远兮，吾将上下而求索。**quiver-team**社区致力于研究自适应，可扩展的AI系统，本次我们开源的Quiver致力于通过充分挖掘硬件性能来帮助用户更快速，更具有扩展性的训练GNN模型。Quiver还处在积极的开发中，我们也希望志同道合的朋友们能参与共建Quiver，一起向整个GNN社区提供更快的训练、推理系统。
 

@@ -8,6 +8,7 @@
         - size
         - share_ipc
         - new_from_ipc_handle
+        - dim
     rendering:
       show_source: true
       show_root_heading: true

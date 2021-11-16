@@ -26,7 +26,6 @@ dataset = Planetoid(path, dataset, transform=T.NormalizeFeatures())
 data = dataset[0]
 
 train_idx = torch.arange(data.num_nodes, dtype=torch.long)
-print(train_idx)
 #############################
 # Original Pyg Code
 #############################
@@ -43,7 +42,7 @@ csr_topo = quiver.CSRTopo(data.edge_index)
 quiver_sampler = GraphSageSampler(csr_topo, sizes =[10, 10], device=0)
 
 def sample(edge_index, batch):
-    # batch = torch.tensor(batch)
+    batch = torch.tensor(batch)
     row, col = edge_index[0], edge_index[1]
 
     # For each node in `batch`, we sample a direct neighbor (as positive

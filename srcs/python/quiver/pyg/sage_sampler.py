@@ -6,6 +6,8 @@ from typing import List, Tuple, NamedTuple
 
 from .. import utils as quiver_utils
 from dataclasses import dataclass
+import torch.multiprocessing as mp
+
 
 __all__ = ["GraphSageSampler"]
 
@@ -37,7 +39,7 @@ class GraphSageSampler:
             layer. If set to `sizes[l] = -1`, all neighbors are included
             in layer `l`.
         device (int): Device which sample kernel will be launched
-        mode (str): Sample mode, choices are [`UVA`, `GPU`, `CPU`, `GPU_CPU_MIXED`, `UVA_CPU_MIXED`], default is `UVA`.
+        mode (str): Sample mode, choices are [`UVA`, `GPU`, `CPU`], default is `UVA`.
     """
     def __init__(self,
                  csr_topo: quiver_utils.CSRTopo,
@@ -153,3 +155,61 @@ class GraphSageSampler:
         """
         csr_topo, sizes, mode = ipc_handle
         return cls(csr_topo, sizes, _FakeDevice, mode)
+    
+
+class MixedGraphSageSampler:
+    r"""
+    Quiver's GraphSageSampler behaves just like Pyg's `NeighborSampler` but with much higher performance.
+    It can work in `UVA` mode or `GPU` mode. You can set `mode=GPU` if you have enough GPU memory to place graph's topology data which will offer the best sample performance.
+    When your graph is too big for GPU memory, you can set `mode=UVA` to still use GPU to perform sample but place the data in host memory. `UVA` mode suffers 30%-40% performance loss compared to `GPU` mode
+    but is much faster than CPU sampling(normally 16x~20x) and it consumes much less GPU memory compared to `GPU` mode.
+
+    Args:
+        csr_topo (quiver.CSRTopo): A quiver.CSRTopo for graph topology
+        sizes ([int]): The number of neighbors to sample for each node in each
+            layer. If set to `sizes[l] = -1`, all neighbors are included
+            in layer `l`.
+        device (int): Device which sample kernel will be launched
+        mode (str): Sample mode, choices are [`GPU_CPU_MIXED`, `UVA_CPU_MIXED`], default is `UVA_CPU_MIXED`.
+    """
+    def __init__(self,
+                 csr_topo: quiver_utils.CSRTopo,
+                 sizes: List[int],
+                 device = 0,
+                 num_workers = 0, 
+                 mode="UVA_CPU_MIXED"):
+
+
+        self.device_quiver = GraphSageSampler(csr_topo, sizes, device=device, mode="GPU" if "GPU" in mode else "UVA")
+        self.cpu_quiver = GraphSageSampler(csr_topo, sizes, mode="CPU")
+        self.result_queue = None
+        self.task_queues = None
+        self.device_task_remain = 0
+        self.cpu_task_remain = 0
+        self.num_workers = num_workers
+    
+    def init_task(self, seeds, batch_size):
+        pass
+    
+    def __iter__(self):
+        pass
+    
+    def sample(self):
+        pass 
+
+
+
+
+
+
+
+
+
+"""
+[task_queue]
+    |
+    |
+    |
+| | | | | |
+   
+"""

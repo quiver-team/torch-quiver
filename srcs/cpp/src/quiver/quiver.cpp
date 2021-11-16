@@ -109,7 +109,7 @@ CPUQuiver cpu_quiver_from_csr_array(torch::Tensor &input_indptr,
     using T = int64_t;
     using Q = quiver<T, CPU>;
     check_eq<int64_t>(input_indptr.dim(), 1);
-    const size_t node_count = input_indptr.size(0);
+    const size_t node_count = input_indptr.size(0) - 1;
 
     check_eq<int64_t>(input_indices.dim(), 1);
     const size_t edge_count = input_indices.size(0);

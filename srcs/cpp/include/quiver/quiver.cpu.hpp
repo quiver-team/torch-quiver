@@ -5,7 +5,8 @@
 #include <quiver/quiver.hpp>
 #include <quiver/sparse.hpp>
 #include <quiver/zip.hpp>
-
+// TODO: Only For Debug
+#include <iostream>
 namespace quiver
 {
 // sample at most k elements from [begin, end), returns the sampled count.
@@ -48,7 +49,7 @@ class quiver<T, CPU>
 
     virtual ~quiver() = default;
 
-    size_t size() const { return row_ptr_.size(); }
+    size_t size() const { return row_ptr_.size();}
 
     size_t edge_counts() const { return col_idx_.size(); }
 

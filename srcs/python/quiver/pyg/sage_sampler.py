@@ -5,6 +5,7 @@ import torch_quiver as qv
 from typing import List, Tuple, NamedTuple
 
 from .. import utils as quiver_utils
+from dataclasses import dataclass
 
 __all__ = ["GraphSageSampler"]
 
@@ -18,6 +19,10 @@ class Adj(NamedTuple):
         return Adj(self.edge_index.to(*args, **kwargs),
                    self.e_id.to(*args, **kwargs), self.size)
 
+
+@dataclass(frozen=True)
+class _FakeDevice(object):
+    pass
 
 class GraphSageSampler:
     r"""
@@ -37,27 +42,27 @@ class GraphSageSampler:
     def __init__(self,
                  csr_topo: quiver_utils.CSRTopo,
                  sizes: List[int],
-                 device = -1,
+                 device = 0,
                  mode="UVA"):
 
         assert mode in ["UVA",
                         "GPU",
                         "CPU"], f"sampler mode should be one of [UVA, GPU]"
-        assert (device >= 0 and mode == "CPU") or (device < 0 and mode != "CPU"), f"Device setting and Mode setting not compatitive"
+        assert device is _FakeDevice or mode == "CPU" or (device >= 0 and mode != "CPU"), f"Device setting and Mode setting not compatitive"
         
         self.sizes = sizes
-        self.device_quiver = None
-        self.cpu_quiver = None
+        self.quiver = None
         self.csr_topo = csr_topo
         self.mode = mode
-        if device >= 0:
+        if self.mode in ["GPU", "UVA"] and device is not _FakeDevice and  device >= 0:
             edge_id = torch.zeros(1, dtype=torch.long)
-            self.device_quiver = qv.new_quiver_from_csr_array(self.csr_topo.indptr,
+            self.quiver = qv.device_quiver_from_csr_array(self.csr_topo.indptr,
                                                        self.csr_topo.indices,
                                                        edge_id, device,
                                                        self.mode != "UVA")
-        if "CPU" in self.mode:
-            self.cpu_quiver = qv.cpu_quiver_from_csr_array(self.csr_topo.indptr, self.csr_topo.indices)
+        elif self.mode == "CPU" and device is not _FakeDevice:
+            self.quiver = qv.cpu_quiver_from_csr_array(self.csr_topo.indptr, self.csr_topo.indices)
+            device = "cpu"
         
         self.device = device
         self.ipc_handle_ = None
@@ -68,23 +73,34 @@ class GraphSageSampler:
             batch = torch.tensor(batch)
 
         batch_size: int = len(batch)
-        n_id = batch.to(torch.device(self.device))
+        n_id = batch.to(self.device)
         size = size if size != -1 else self.csr_topo.node_count
-        n_id, count = self.device_quiver.sample_neighbor(0, n_id, size)
+        if self.mode in ["GPU", "UVA"]:
+            n_id, count = self.quiver.sample_neighbor(0, n_id, size)
+        else:
+            n_id, count = self.quiver.sample_neighbor(n_id, size)
+            
         return n_id, count
 
     def lazy_init_quiver(self):
-        if self.device_quiver is not None:
+
+        if self.quiver is not None:
             return
-        self.device = torch.cuda.current_device()
-        edge_id = torch.zeros(1, dtype=torch.long)
-        self.device_quiver = qv.new_quiver_from_csr_array(self.csr_topo.indptr,
-                                                   self.csr_topo.indices,
-                                                   edge_id, self.device,
-                                                   self.mode != "UVA")
+
+        self.device = "cpu" if self.mode == "CPU" else torch.cuda.current_device()
+        
+    
+        if "CPU"  == self.mode:
+            self.quiver = qv.cpu_quiver_from_csr_array(self.csr_topo.indptr, self.csr_topo.indices)
+        else:
+            edge_id = torch.zeros(1, dtype=torch.long)
+            self.quiver = qv.device_quiver_from_csr_array(self.csr_topo.indptr,
+                                                       self.csr_topo.indices,
+                                                       edge_id, self.device,
+                                                       self.mode != "UVA")
 
     def reindex(self, inputs, outputs, counts):
-        return qv.reindex_single(inputs, outputs, counts)
+        return self.quiver.reindex_single(inputs, outputs, counts)
 
     def sample(self, input_nodes):
         """Sample k-hop neighbors from input_nodes
@@ -96,6 +112,7 @@ class GraphSageSampler:
             Tuple: Return results are the same with Pyg's sampler
         """
         self.lazy_init_quiver()
+        
         nodes = input_nodes.to(self.device)
         adjs = []
 
@@ -135,4 +152,4 @@ class GraphSageSampler:
             quiver.pyg.GraphSageSampler: Sampler created from ipc handle
         """
         csr_topo, sizes, mode = ipc_handle
-        return cls(csr_topo, sizes, -1, mode)
+        return cls(csr_topo, sizes, _FakeDevice, mode)

@@ -38,15 +38,14 @@ class CPUQuiver
     }
 
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
-    reindex_group(torch::Tensor prev_inputs, torch::Tensor inputs,
-                  torch::Tensor counts, torch::Tensor outputs)
+    reindex_single(torch::Tensor inputs, torch::Tensor outputs, torch::Tensor counts)
     {
         std::unordered_map<T, T> out_map;
         size_t in_size = inputs.size(0);
         size_t out_size = outputs.size(0);
 
         T *in_vec = inputs.data_ptr<T>();
-        T *prev_in_vec = prev_inputs.data_ptr<T>();
+        //T *prev_in_vec = prev_inputs.data_ptr<T>();
         T *cnt_vec = counts.data_ptr<T>();
         T *out_vec = outputs.data_ptr<T>();
 
@@ -68,7 +67,7 @@ class CPUQuiver
         std::vector<T> col_idx(out_size);
         size_t cnt = 0;
         for (size_t i = 0; i < in_size; i++) {
-            T in = prev_in_vec[i];
+            T in = in_vec[i];
             for (T j = 0; j < cnt_vec[i]; j++) {
                 row_idx[cnt] = out_map[in];
                 col_idx[cnt] = out_map[out_vec[cnt]];
@@ -127,5 +126,5 @@ void register_cpu_quiver(pybind11::module &m)
     m.def("cpu_quiver_from_csr_array", &quiver::cpu_quiver_from_csr_array);
     py::class_<quiver::CPUQuiver>(m, "CPUQuiver")
         .def("sample_neighbor", &quiver::CPUQuiver::sample_neighbor)
-        .def("reindex_group", &quiver::CPUQuiver::reindex_group);
+        .def("reindex_single", &quiver::CPUQuiver::reindex_single);
 }

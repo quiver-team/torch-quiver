@@ -4,6 +4,7 @@
 #include <quiver/quiver.hpp>
 
 #include <torch/extension.h>
+#include <quiver/common.hpp>
 
 namespace quiver
 {
@@ -103,11 +104,27 @@ CPUQuiver cpu_quiver_from_edge_index(size_t n, torch::Tensor edge_index)
     Q quiver(n, std::move(ei));
     return CPUQuiver(std::move(quiver));
 }
+CPUQuiver cpu_quiver_from_csr_array(torch::Tensor &input_indptr,
+                                    torch::Tensor &input_indices)
+{
+    using T = int64_t;
+    using Q = quiver<T, CPU>;
+    check_eq<int64_t>(input_indptr.dim(), 1);
+    const size_t node_count = input_indptr.size(0);
+
+    check_eq<int64_t>(input_indices.dim(), 1);
+    const size_t edge_count = input_indices.size(0);
+
+    Q quiver(node_count, edge_count, input_indptr.data_ptr<T>(), input_indices.data_ptr<T>());
+    return CPUQuiver(std::move(quiver));
+}
+
 }  // namespace quiver
 
 void register_cpu_quiver(pybind11::module &m)
 {
     m.def("cpu_quiver_from_edge_index", &quiver::cpu_quiver_from_edge_index);
+    m.def("cpu_quiver_from_csr_array", &quiver::cpu_quiver_from_csr_array);
     py::class_<quiver::CPUQuiver>(m, "CPUQuiver")
         .def("sample_neighbor", &quiver::CPUQuiver::sample_neighbor)
         .def("reindex_group", &quiver::CPUQuiver::reindex_group);

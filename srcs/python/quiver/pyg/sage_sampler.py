@@ -32,29 +32,34 @@ class GraphSageSampler:
             layer. If set to `sizes[l] = -1`, all neighbors are included
             in layer `l`.
         device (int): Device which sample kernel will be launched
-        mode (str): Sample mode, choices are [`UVA`, `GPU`], default is `UVA`.
+        mode (str): Sample mode, choices are [`UVA`, `GPU`, `CPU`, `GPU_CPU_MIXED`, `UVA_CPU_MIXED`], default is `UVA`.
     """
     def __init__(self,
                  csr_topo: quiver_utils.CSRTopo,
                  sizes: List[int],
-                 device,
+                 device = -1,
                  mode="UVA"):
 
         assert mode in ["UVA",
-                        "GPU"], f"sampler mode should be one of [UVA, GPU]"
+                        "GPU",
+                        "CPU"], f"sampler mode should be one of [UVA, GPU]"
+        assert (device >= 0 and mode == "CPU") or (device < 0 and mode != "CPU"), f"Device setting and Mode setting not compatitive"
+        
         self.sizes = sizes
-        self.quiver = None
+        self.device_quiver = None
+        self.cpu_quiver = None
         self.csr_topo = csr_topo
         self.mode = mode
         if device >= 0:
             edge_id = torch.zeros(1, dtype=torch.long)
-            self.quiver = qv.new_quiver_from_csr_array(self.csr_topo.indptr,
+            self.device_quiver = qv.new_quiver_from_csr_array(self.csr_topo.indptr,
                                                        self.csr_topo.indices,
                                                        edge_id, device,
                                                        self.mode != "UVA")
-
+        if "CPU" in self.mode:
+            self.cpu_quiver = qv.cpu_quiver_from_csr_array(self.csr_topo.indptr, self.csr_topo.indices)
+        
         self.device = device
-
         self.ipc_handle_ = None
 
     def sample_layer(self, batch, size):
@@ -65,15 +70,15 @@ class GraphSageSampler:
         batch_size: int = len(batch)
         n_id = batch.to(torch.device(self.device))
         size = size if size != -1 else self.csr_topo.node_count
-        n_id, count = self.quiver.sample_neighbor(0, n_id, size)
+        n_id, count = self.device_quiver.sample_neighbor(0, n_id, size)
         return n_id, count
 
     def lazy_init_quiver(self):
-        if self.quiver is not None:
+        if self.device_quiver is not None:
             return
         self.device = torch.cuda.current_device()
         edge_id = torch.zeros(1, dtype=torch.long)
-        self.quiver = qv.new_quiver_from_csr_array(self.csr_topo.indptr,
+        self.device_quiver = qv.new_quiver_from_csr_array(self.csr_topo.indptr,
                                                    self.csr_topo.indices,
                                                    edge_id, self.device,
                                                    self.mode != "UVA")

@@ -30,6 +30,7 @@ class quiver<T, CPU>
     std::vector<T> row_ptr_;
     std::vector<T> col_idx_;
 
+
   public:
     quiver(T n, std::vector<std::pair<T, T>> edge_index)
         : row_ptr_(n), col_idx_(edge_index.size())
@@ -39,6 +40,10 @@ class quiver<T, CPU>
         std::vector<T> row_ptr = compress_row_idx(n, row_idx);
         std::copy(row_ptr.begin(), row_ptr.end(), row_ptr_.begin());
         std::copy(col_idx.begin(), col_idx.end(), col_idx_.begin());
+    }
+    quiver(T node_count, T edge_count, T* row_ptr, T* indices){
+        row_ptr_ = std::vector<T>(row_ptr, row_ptr + node_count);
+        col_idx_ = std::vector<T>(indices, indices + edge_count);
     }
 
     virtual ~quiver() = default;

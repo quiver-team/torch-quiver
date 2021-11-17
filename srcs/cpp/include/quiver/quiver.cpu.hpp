@@ -5,8 +5,6 @@
 #include <quiver/quiver.hpp>
 #include <quiver/sparse.hpp>
 #include <quiver/zip.hpp>
-// TODO: Only For Debug
-#include <iostream>
 namespace quiver
 {
 // sample at most k elements from [begin, end), returns the sampled count.

@@ -328,3 +328,25 @@ class MixedGraphSageSampler:
             
             for _ in self.task_queues:
                 self.result_queue.get()
+
+
+
+        
+        
+
+
+
+
+
+
+
+
+
+"""
+[task_queue]
+    |
+    |
+    |
+| | | | | |
+   
+"""

@@ -211,7 +211,7 @@ def bench_on_ogbproduct_mixed():
     sample_job = MySampleJob(train_idx, 256)
     print(f"Job task num = ", len(sample_job))
     csr_topo = quiver.CSRTopo(dataset[0].edge_index)
-    quiver_sampler = MixedGraphSageSampler(sample_job, 10, csr_topo, [15, 10, 5], device=0, mode="GPU")
+    quiver_sampler = MixedGraphSageSampler(sample_job, 10, csr_topo, [15, 10, 5], device=0, mode="UVA_CPU_MIXED")
 
     sample_time = 0
     sampled_edges = 0

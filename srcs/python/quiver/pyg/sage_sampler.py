@@ -216,8 +216,10 @@ class MixedGraphSageSampler:
                  device = 0,
                  mode="UVA_CPU_MIXED"):
 
-        self.device_quiver = GraphSageSampler(csr_topo, sizes, device=device, mode="GPU" if "GPU" in mode else "UVA")
-        self.cpu_quiver = GraphSageSampler(csr_topo, sizes, mode="CPU")
+        self.csr_topo = csr_topo
+        self.device = device
+        self.device_quiver = GraphSageSampler(self.csr_topo, sizes, device=device, mode="GPU" if "GPU" in mode else "UVA")
+        self.cpu_quiver = GraphSageSampler(self.csr_topo, sizes, mode="CPU")
         self.result_queue = None
         self.task_queues = []
         self.device_task_remain = None
@@ -237,18 +239,25 @@ class MixedGraphSageSampler:
     
     def __iter__(self):
         self.sample_job.shuffle()
+        self.device_task_remain = None
+        self.cpu_task_remain = None
         self.current_task_id = 0
+        self.device_sample_time = 0
+        self.cpu_sample_time = 0
+        self.device_sample_total = 0
+        self.cpu_sample_total = 0
         
         return self.iter_sampler()
 
     def decide_task_num(self):
         if self.device_task_remain is None:
-            self.device_task_remain = self.num_workers * 2 * 2
-            self.cpu_task_remain = self.num_workers * 2
-        else:
+            self.device_task_remain = self.num_workers * 2
             self.cpu_task_remain = self.num_workers
-            self.device_task_remain = int(self.cpu_sample_time * self.cpu_task_remain / self.device_sample_time)
+        else:
+            self.device_task_remain = self.num_workers * 2
+            self.cpu_task_remain = max(1, int(self.device_sample_time * self.device_task_remain  / self.cpu_sample_time / 2))
 
+        print(f"Device average sample time: {self.device_sample_time}\tCPU average sample time: {self.cpu_sample_time}")
         print(f"Assign {self.device_task_remain} tasks to Device, Assign {self.cpu_task_remain} to CPU")
 
     def assign_cpu_tasks(self) -> bool:
@@ -286,6 +295,7 @@ class MixedGraphSageSampler:
                     sample_start = time.time()
                     if self.current_task_id >= len(self.sample_job):
                         break
+                    
                     res = self.device_quiver.sample(self.sample_job[self.current_task_id])
                     sample_end = time.time()
 
@@ -299,7 +309,6 @@ class MixedGraphSageSampler:
 
                 if self.current_task_id >= len(self.sample_job):
                         break
-                
                 while self.cpu_task_remain > 0:
                     sample_start = time.time()
                     res = self.result_queue.get()
@@ -321,7 +330,7 @@ class MixedGraphSageSampler:
                 if self.current_task_id >= len(self.sample_job):
                         break
         except:
-            print("something wron")
+            print("something wrong")
             # make sure all child process exit 
             for task_queue in self.task_queues:
                 task_queue.put(_StopWork)

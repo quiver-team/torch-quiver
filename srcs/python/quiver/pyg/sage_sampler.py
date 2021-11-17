@@ -260,10 +260,10 @@ class MixedGraphSageSampler:
 
     def decide_task_num(self):
         if self.device_task_remain is None:
-            self.device_task_remain = self.num_workers * 2
+            self.device_task_remain = max(20, self.num_workers * 2)
             self.cpu_task_remain = self.num_workers
         else:
-            self.device_task_remain = self.num_workers * 2
+            self.device_task_remain = max(20, self.num_workers * 2)
             self.cpu_task_remain = max(1, int(self.device_sample_time * self.device_task_remain  / self.cpu_sample_time / 2))
 
         print(f"Device average sample time: {self.device_sample_time}\tCPU average sample time: {self.cpu_sample_time}")

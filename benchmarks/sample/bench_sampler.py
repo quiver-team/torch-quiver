@@ -9,7 +9,7 @@ import os.path as osp
 import random
 from multiprocessing.reduction import ForkingPickler
 import quiver
-from sampler import MixedGraphSageSampler, GraphSageSampler
+#from sampler import MixedGraphSageSampler, GraphSageSampler
 
 print(
     "\n\nNOTE: We Use Sampled Edges Per Second(SEPS) = #SampledEdges/Time as metric to evaluate sampler performance\n\n"
@@ -211,7 +211,7 @@ def bench_on_ogbproduct_mixed():
     sample_job = MySampleJob(train_idx, 256)
     print(f"Job task num = ", len(sample_job))
     csr_topo = quiver.CSRTopo(dataset[0].edge_index)
-    quiver_sampler = MixedGraphSageSampler(sample_job, 10, csr_topo, [15, 10, 5], device=0, mode="UVA_CPU_MIXED")
+    quiver_sampler = quiver.pyg.MixedGraphSageSampler(sample_job, 10, csr_topo, [15, 10, 5], device=0, mode="UVA_CPU_MIXED")
 
     sample_time = 0
     sampled_edges = 0
@@ -231,27 +231,8 @@ def bench_on_ogbproduct_mixed():
         f"mean degree {np.mean(csr_topo.degree.numpy())}\tSample Speed {sampled_edges / sample_time / 1000000}M SEPS"
     )
 
-def rebuild_pyg_sampler(cls, ipc_handle):
-    #print("rebuild sampler")
-    sampler = cls.lazy_from_ipc_handle(ipc_handle)
-    return sampler
-
-
-def reduce_pyg_sampler(sampler):
-    #print("reduce sampler")
-    ipc_handle = sampler.share_ipc()
-    return (rebuild_pyg_sampler, (
-        type(sampler),
-        ipc_handle,
-    ))
-
-
-def init_reductions():
-    ForkingPickler.register(GraphSageSampler, reduce_pyg_sampler)
-
 if __name__ == "__main__":
     mp.set_start_method('spawn')
-    init_reductions()
     #bench_on_ogbproduct()
     # bench_on_ogbproduct_cpu()
     # bench_on_reddit()

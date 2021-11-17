@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import torch.multiprocessing as mp
 import itertools
 import time
+import quiver
 import quiver.utils as quiver_utils
 
 
@@ -347,3 +348,11 @@ class MixedGraphSageSampler:
             
             for _ in self.task_queues:
                 self.result_queue.get()
+    
+    def share_ipc(self):
+        return self.sample_job, self.num_workers, self.csr_topo, self.sizes, self.device, self.mode
+    
+    @classmethod
+    def lazy_from_ipc_handle(cls, ipc_handle):
+        sample_job, num_workers, csr_topo, sizes, device, mode =ipc_handle
+        return cls(sample_job, num_workers, csr_topo, sizes, device, mode)

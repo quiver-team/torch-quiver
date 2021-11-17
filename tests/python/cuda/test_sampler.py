@@ -11,7 +11,6 @@ import os.path as osp
 import quiver
 import torch.multiprocessing as mp
 from multiprocessing.reduction import ForkingPickler
-#from quiver.pyg import GraphSageSampler
 import torch
 from torch import Tensor
 from torch_sparse import SparseTensor
@@ -99,13 +98,14 @@ def test_ipc():
 
 
 def rebuild_pyg_sampler(cls, ipc_handle):
-    #print("rebuild sampler")
+    print("rebuild sampler")
     sampler = cls.lazy_from_ipc_handle(ipc_handle)
+    print("rebuild successfully")
     return sampler
 
 
 def reduce_pyg_sampler(sampler):
-    #print("reduce sampler")
+    print("reduce sampler")
     ipc_handle = sampler.share_ipc()
     return (rebuild_pyg_sampler, (
         type(sampler),
@@ -114,7 +114,9 @@ def reduce_pyg_sampler(sampler):
 
 
 def init_reductions():
+    print("init reductions")
     ForkingPickler.register(GraphSageSampler, reduce_pyg_sampler)
+    ForkingPickler.register(MixedGraphSageSampler, reduce_pyg_sampler)
 
 def test_cpu_mode():
     print(f"{'*' * 10} TEST WITH REAL GRAPH {'*' * 10}")
@@ -161,17 +163,36 @@ def test_mixed_mode():
 
     data = dataset[0]
     csr_topo = quiver.CSRTopo(data.edge_index)
-    sage_sampler = MixedGraphSageSampler(sample_job, 5, csr_topo, sizes=[15, 10, 5], device=0, mode="UVA")
+    sage_sampler = MixedGraphSageSampler(sample_job, 5, csr_topo, sizes=[15, 10, 5], device=0, mode="UVA_CPU_MIXED")
     for epoch in range(10):
         for res in sage_sampler:
             pass
         print("epoch finished")
 
+def mixed_child_process(rank, sage_sampler):
+    for epoch in range(2):
+        for res in sage_sampler:
+            pass
+        print("epoch finished")
+
+def test_mixed_mode_ipc():
+    root = "/home/dalong/data/products/"
+    dataset = PygNodePropPredDataset('ogbn-products', root)
+    train_idx = dataset.get_idx_split()['train']
+    sample_job = MySampleJob(train_idx, 256)
+
+    data = dataset[0]
+    csr_topo = quiver.CSRTopo(data.edge_index)
+    sage_sampler = quiver.pyg.MixedGraphSageSampler(sample_job, 5, csr_topo, sizes=[15, 10, 5], device=0, mode="UVA_CPU_MIXED")
+
+    mp.spawn(mixed_child_process, args=(sage_sampler, ), nprocs=1, join=True)
+
 if __name__ == "__main__":
     mp.set_start_method("spawn")
-    init_reductions()
+    #init_reductions()
 
     #test_GraphSageSampler()
     #test_ipc()
     #test_cpu_mode()
-    test_mixed_mode()
+    #test_mixed_mode()
+    test_mixed_mode_ipc()

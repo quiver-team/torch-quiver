@@ -184,7 +184,7 @@ Quiver is released under the Apache 2.0 license.  -->
 
 ## Community
 
-We welcome contributors to join the development of Quiver. Quiver is currently maintained by researchers from the [University of Edinburgh](https://www.ed.ac.uk/), [Imperial College London](https://www.imperial.ac.uk/), [Tsinghua University](https://www.tsinghua.edu.cn/en/index.htm) and [University of Waterloo](https://uwaterloo.ca/). The development of Quiver has received the support from [Alibaba](https://github.com/orgs/alibaba/repositories/) and [Lambda Labs](https://lambdalabs.com/). 
+We welcome contributors to join the development of Quiver. Quiver is currently maintained by researchers from the [University of Edinburgh](https://www.ed.ac.uk/), [Imperial College London](https://www.imperial.ac.uk/), [Tsinghua University](https://www.tsinghua.edu.cn/en/index.htm) and [University of Waterloo](https://uwaterloo.ca/). The development of Quiver has received the support from [Alibaba](https://github.com/alibaba) and [Lambda Labs](https://lambdalabs.com/). 
 
 <!-- ## Architecture Overview
 Key reasons behind Quiver's high performance are that it provides two key components: `quiver.Feature` and `quiver.Sampler`.

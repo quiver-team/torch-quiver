@@ -9,7 +9,7 @@ import os.path as osp
 import random
 from multiprocessing.reduction import ForkingPickler
 import quiver
-#from sampler import MixedGraphSageSampler, GraphSageSampler
+from sampler import MixedGraphSageSampler, GraphSageSampler
 
 print(
     "\n\nNOTE: We Use Sampled Edges Per Second(SEPS) = #SampledEdges/Time as metric to evaluate sampler performance\n\n"
@@ -205,20 +205,25 @@ class MySampleJob(quiver.SampleJob):
 
 def bench_on_ogbproduct_mixed():
     print("=" * 20 + "OGBn-Product Mixed" + "=" * 20)
-    root = "/home/dalong/data/products"
+    root = "/data/products"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     train_idx = dataset.get_idx_split()["train"]
+    # batch_size = 256
     sample_job = MySampleJob(train_idx, 256)
     print(f"Job task num = ", len(sample_job))
     csr_topo = quiver.CSRTopo(dataset[0].edge_index)
-    quiver_sampler = quiver.pyg.MixedGraphSageSampler(sample_job, 10, csr_topo, [15, 10, 5], device=0, mode="UVA_CPU_MIXED")
+    # num_workers = 10
+    # mode in ['GPU_ONLY', 'GPU_CPU_MIXED']
+    # mode in ['UVA_ONLY', 'UVA_CPU_MIXED']
+
+    quiver_sampler = MixedGraphSageSampler(sample_job, 10, csr_topo, [15, 10, 5], device=0, mode="UVA_ONLY")
 
     sample_time = 0
     sampled_edges = 0
     sample_start = time.time()
-    for epoch in range(5):
+    for epoch in range(3):
         for index, res in enumerate(quiver_sampler):
-            if epoch == 4:
+            if epoch == 2:
                 sample_time += time.time() - sample_start
                 _, _, adjs = res
                 for adj in adjs:

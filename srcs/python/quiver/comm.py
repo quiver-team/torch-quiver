@@ -76,6 +76,27 @@ def schedule(comm_mat, table):
 
 
 class NcclComm:
+    """NCCL Communicator is used to exchange data between worker processes. Essentially
+    it is a wrapper of the communicator in the NCCL library. It supports both p2p
+    communication (e.g. send/recv) and collective communication (e.g. allreduce).
+
+    It is initialized by NCCL ID, which is provided by getNcclId. After this ID is synced
+    across all workers in the cluster and every worker knows the cluster topology, then
+    an NCCL communicator can be constructed with them.
+    
+    ```python
+    >>> id = getNCCLId() # only one worker needs to get this and sync it to all peers
+    >>> comm = NcclComm(rank, ws, id...)
+    ```
+
+    Args:
+        rank (int): global rank of the worker
+        ws (int): global world size
+        id (bytes): NCCL unique ID
+        hosts (int): the number of hosts in the cluster
+        rank_per_host (int): the number of workers per host
+        
+    """
     def __init__(self, rank, ws, id, hosts=None, rank_per_host=None):
         self.comm = torch_qv.NcclComm(rank, ws, id)
         if hosts is not None:
@@ -104,7 +125,18 @@ class NcclComm:
         self.comm.allreduce(tensor)
 
     def exchange(self, host2ids, feature):
-        # t0 = time.time()
+        """Exchange features to remote peers. Each worker will send requests which contain
+        remote feature IDs. After recerving requests, each worker will collect features
+        and send back feature tensor responses to the peers who request features.
+
+        Args:
+            host2ids ([torch.Tensor]): list of remote IDs in requests
+            feature (quiver.Feature): local feature object
+
+        Returns:
+            [torch.Tensor]: list of remote feature tensors in responses
+
+        """
         remote_sizes = torch.zeros(self.size * self.size, dtype=torch.int64)
         for host in range(self.table.hosts):
             ids = host2ids[host]
@@ -116,7 +148,6 @@ class NcclComm:
         comm_mat = self.table.get_comm_mat(remote_sizes)
         steps = schedule(comm_mat, self.table)
         torch.cuda.current_stream().synchronize()
-        # t1 = time.time()
         req_ids = [None] * self.size
         res_feats = [None] * self.size
         for step in steps:
@@ -131,12 +162,10 @@ class NcclComm:
                     self.recv(ids, src)
                     req_ids[src] = ids
         torch.cuda.current_stream().synchronize()
-        # t2 = time.time()
         for i in range(len(req_ids)):
             ids = req_ids[i]
             if ids is not None:
                 res_feats[i] = feature[ids]
-        # t3 = time.time()
         host2feats = [None] * self.table.hosts
         for step in steps:
             for src, dst in step:
@@ -150,11 +179,6 @@ class NcclComm:
                     self.recv(feats, dst)
                     host2feats[self.table.host(dst)] = feats
         torch.cuda.current_stream().synchronize()
-        # t4 = time.time()
-        # print(f"prepare {t1 - t0}")
-        # print(f"id {t2 - t1}")
-        # print(f"local {t3 - t2}")
-        # print(f"res {t4 - t3}")
         return host2feats
 
 

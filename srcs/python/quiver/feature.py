@@ -290,6 +290,12 @@ class Feature(object):
                 self.clique_tensor_list[clique_id] = shard_tensor
 
     def set_local_order(self, local_order):
+        """ Set local order array for quiver.Feature
+
+        Args:
+            local_order (torch.Tensor): Tensor which contains the original indices of the features
+
+        """
         local_range = torch.arange(end=local_order.size(0),
                                    dtype=torch.int64,
                                    device=self.rank)
@@ -461,6 +467,17 @@ class Feature(object):
 
 
 class PartitionInfo:
+    """PartitionInfo is the partitioning information of how features are distributed across nodes.
+    It is mainly used for distributed feature collection, by DistFeature.
+
+    Args:
+        device (int): device for local feature partition
+        host (int): host id for current node
+        hosts (int): the number of hosts in the cluster
+        global2host (torch.Tensor): global feature id to host id mapping
+        replicate (torch.Tensor, optional): CSRTopo of the graph for feature reordering
+        
+    """
     def __init__(self, device, host, hosts, global2host, replicate=None):
         self.global2host = global2host.to(device)
         self.host = host
@@ -518,6 +535,26 @@ class PartitionInfo:
 
 
 class DistFeature:
+    """DistFeature stores local features and it can fetch remote features by the network.
+    Normally, each trainer process holds a DistFeature object. 
+    We can create DistFeature by a local feature object, a partition information object and a network communicator.
+    After creation, each worker process can collect features just like a local tensor.
+    It is a synchronous operation, which means every process should collect features at the same time.
+ 
+    ```python
+    >>> info = quiver.feature.PartitionInfo(...)
+    >>> comm = quiver.comm.NcclComm(...)
+    >>> quiver_feature = quiver.Feature(...)
+    >>> dist_feature = quiver.feature.DistFeature(quiver_feature, info, comm)
+    >>> features = dist_feature[node_idx]
+    ```
+
+    Args:
+        feature (Feature): local feature
+        info (PartitionInfo): partitioning information across nodes
+        comm (quiver.comm.NcclComm): communication topology for distributed features
+        
+    """
     def __init__(self, feature, info, comm):
         self.feature = feature
         self.info = info

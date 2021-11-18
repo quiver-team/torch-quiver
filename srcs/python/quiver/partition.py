@@ -1,11 +1,22 @@
 import torch
-import time
 
 CHUNK_NUM = 24
 
 
 def partition_without_replication(device, probs, ids):
-    t0 = time.time()
+    """Partition node with given node IDs and node access distribution.
+    The result will cause no replication between each parititon.
+    We assume node IDs can be placed in the given device.
+
+    Args:
+        device (int): device which computes the partitioning strategy
+        probs (torch.Tensor): node access distribution
+        ids (Optional[torch.Tensor]): specified node IDs
+
+    Returns:
+        [torch.Tensor]: list of IDs for each partition
+
+    """
     ranks = len(probs)
     if ids is not None:
         ids = ids.to(device)
@@ -20,7 +31,6 @@ def partition_without_replication(device, probs, ids):
     CHUNK_SIZE = (total_size + CHUNK_NUM - 1) // CHUNK_NUM
     chunk_beg = 0
     beg_rank = 0
-    t1 = time.time()
     for i in range(CHUNK_NUM):
         chunk_end = min(total_size, chunk_beg + CHUNK_SIZE)
         chunk_size = chunk_end - chunk_beg
@@ -53,16 +63,18 @@ def partition_without_replication(device, probs, ids):
             acc_size += rank_size
         beg_rank += 1
         chunk_beg += chunk_size
-    t2 = time.time()
     for rank in range(ranks):
         res[rank] = torch.cat(res[rank])
         if ids is not None:
             res[rank] = ids[res[rank]]
-    t3 = time.time()
     return res
 
 
 def partition_with_replication(device, probs, ids, per_rank_size):
+    """Partition node with given node IDs and node access distribution.
+    The result will cause replication between each parititon,
+    but the size of each partition will not exceed per_rank_size.
+    """
     partition_res = partition_without_replication(device, probs, ids)
     if ids is not None:
         ids = ids.to(device)
@@ -97,6 +109,10 @@ def select_nodes(device, probs, ids):
 
 
 def partition_free(device, probs, ids, per_rank_size):
+    """Partition node with given node IDs and node access distribution.
+    The result will cause either replication or missing nodes across partitions.
+    The size of each partition is limited by per_rank_size.
+    """
     prob_sum, node_ids = select_nodes(device, probs, ids)
     nodes = node_ids.size(0)
     ranks = len(probs)

@@ -242,21 +242,23 @@ class MixedGraphSageSampler:
         self.device_sample_total = 0
         self.cpu_sample_total = 0
 
-        
         self.worker_ids = itertools.cycle(range(self.num_workers))
     
         self.inited = False
+        self.epoch = 0
     
     def __iter__(self):
         self.sample_job.shuffle()
-        self.device_task_remain = None
-        self.cpu_task_remain = None
-        self.current_task_id = 0
-        self.device_sample_time = 0
-        self.cpu_sample_time = 0
-        self.device_sample_total = 0
-        self.cpu_sample_total = 0
+        if self.epoch <= 1:
+            self.device_task_remain = None
+            self.cpu_task_remain = None
+            self.device_sample_time = 0
+            self.cpu_sample_time = 0
+            self.device_sample_total = 0
+            self.cpu_sample_total = 0
         
+        self.current_task_id = 0
+        self.epoch += 1
         return self.iter_sampler()
 
     def decide_task_num(self):

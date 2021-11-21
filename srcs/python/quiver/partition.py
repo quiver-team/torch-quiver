@@ -1,6 +1,6 @@
 import torch
 
-CHUNK_NUM = 24
+CHUNK_NUM = 32
 
 
 def partition_without_replication(device, probs, ids):

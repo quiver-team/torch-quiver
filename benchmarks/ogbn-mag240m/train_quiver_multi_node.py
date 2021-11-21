@@ -32,9 +32,9 @@ import quiver
 from quiver.feature import DeviceConfig, Feature, DistFeature
 import gc
 
-ROOT = '/data/mag'
-CPU_CACHE_GB = 40
-GPU_CACHE_GB = 20
+ROOT = '/mnt/data/mag'
+CPU_CACHE_GB = 60
+GPU_CACHE_GB = 40
 LOCAL_ADDR = '192.168.0.78'
 MASTER_ADDR = '192.168.0.78'
 MASTER_PORT = 19216
@@ -109,15 +109,15 @@ class MAG240M(LightningDataModule):
         if self.in_memory:
             self.x = torch.from_numpy(dataset.all_paper_feat).share_memory_()
         else:
+            host_size = 2
+            host = 0
             t0 = time.time()
-            cpu_part = osp.join(dataset.dir, 'processed', 'paper',
-                                f'cpu_feat{host}.npy')
+            cpu_part = f'/mnt/data/mag/{host_size}h/cpu_feat{host}.npy'
             gpu_parts = []
             for i in range(local_size):
-                gpu_part = osp.join(dataset.dir, 'processed', 'paper',
-                                    f'gpu_feat{host}{i}.npy')
+                gpu_part = f'/mnt/data/mag/{host_size}h/gpu_feat{host}{i}.npy'
                 gpu_parts.append(gpu_part)
-            feat = Feature(0, [0, 1], 0, 'p2p_clique_replicate')
+            feat = Feature(0, [0], 0, 'p2p_clique_replicate')
             device_config = DeviceConfig(gpu_parts, cpu_part)
             feat.from_mmap(None, device_config)
             self.x = feat
@@ -125,9 +125,9 @@ class MAG240M(LightningDataModule):
         self.y = torch.from_numpy(dataset.all_paper_label)
 
         self.indptr = torch.load(
-            "/data/mag/mag240m_kddcup2021/csr/indptr.pt").share_memory_()
+            "/mnt/data/mag/mag240m_kddcup2021/csr/indptr.pt").share_memory_()
         self.indices = torch.load(
-            "/data/mag/mag240m_kddcup2021/csr/indices.pt").share_memory_()
+            "/mnt/data/mag/mag240m_kddcup2021/csr/indices.pt").share_memory_()
         print(f'Done! [{time.perf_counter() - t:.2f}s]')
 
     def train_dataloader(self):
@@ -296,20 +296,15 @@ def run(rank, args, quiver_sampler, quiver_feature, label, train_idx,
                 dropout=args.dropout).to(rank)
     model = DistributedDataParallel(model, device_ids=[rank])
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    global2host = torch.load(
-        osp.join('/data/mag/mag240m_kddcup2021', 'processed', 'paper',
-                 'global2host.pt'))
-    replicate = torch.load(
-        osp.join('/data/mag/mag240m_kddcup2021', 'processed', 'paper',
-                 f'replicate{host}.pt'))
+    global2host = torch.load(f'/mnt/data/mag/{host_size}h/global2host.pt')
+    replicate = torch.load(f'/mnt/data/mag/{host_size}h/replicate{host}.pt')
     info = quiver.feature.PartitionInfo(rank, host, host_size, global2host,
                                         replicate)
     comm = quiver.comm.NcclComm(global_rank, global_size, id, host_size,
                                 local_size)
     quiver_feature.lazy_init_from_ipc_handle()
     local_order = torch.load(
-        osp.join('/data/mag/mag240m_kddcup2021', 'processed', 'paper',
-                 f'local_order{host}.pt'))
+        f'/mnt/data/mag/{host_size}h/local_order{host}.pt')
     quiver_feature.set_local_order(local_order)
     dist_feature = DistFeature(quiver_feature, info, comm)
     # prev_order = torch.load(
@@ -393,13 +388,13 @@ if __name__ == '__main__':
     print(args)
 
     seed_everything(42)
-    datamodule = MAG240M(ROOT, args.batch_size, args.sizes, 0, 2,
+    host_size = 2
+    local_size = 1
+    host = 0
+    datamodule = MAG240M(ROOT, args.batch_size, args.sizes, host, host_size,
                          args.in_memory)
 
     if not args.evaluate:
-        host_size = 2
-        local_size = 2
-        host = 0
         store = dist.TCPStore(MASTER_ADDR, MASTER_PORT, host_size,
                               MASTER_ADDR == LOCAL_ADDR)
         if MASTER_ADDR == LOCAL_ADDR:

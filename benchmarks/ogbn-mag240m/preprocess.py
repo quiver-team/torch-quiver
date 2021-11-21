@@ -67,9 +67,9 @@ def store_mmap(device, data_dir, raw, processed, selected):
 
 
 def preprocess(host, host_size, p2p_group, p2p_size):
-    GPU_CACHE_GB = 20
-    CPU_CACHE_GB = 40
-    dataset = MAG240MDataset("/data/mag")
+    GPU_CACHE_GB = 40
+    CPU_CACHE_GB = 60
+    dataset = MAG240MDataset("/mnt/data/mag")
     path = f'{dataset.dir}/paper_to_paper_symmetric.pt'
     if not osp.exists(path):
         t = time.perf_counter()
@@ -80,8 +80,9 @@ def preprocess(host, host_size, p2p_group, p2p_size):
                              col=edge_index[1],
                              sparse_sizes=(dataset.num_papers,
                                            dataset.num_papers),
-                             is_sorted=True).csr
-        torch.save(adj_t.to_symmetric(), path)
+                             is_sorted=True)
+        adj_t = adj_t.to_symmetric()
+        torch.save(adj_t, path)
         print(f'Done! [{time.perf_counter() - t:.2f}s]')
     if not osp.exists(f'{dataset.dir}/csr'):
         os.mkdir(f'{dataset.dir}/csr')
@@ -89,8 +90,9 @@ def preprocess(host, host_size, p2p_group, p2p_size):
         indptr, indices, _ = adj_t.csr()
         torch.save(indptr, f'{dataset.dir}/csr/indptr.pt')
         torch.save(indices, f'{dataset.dir}/csr/indices.pt')
-    indptr = torch.load("/data/mag/mag240m_kddcup2021/csr/indptr.pt")
-    indices = torch.load("/data/mag/mag240m_kddcup2021/csr/indices.pt")
+
+    indptr = torch.load("/mnt/data/mag/mag240m_kddcup2021/csr/indptr.pt")
+    indices = torch.load("/mnt/data/mag/mag240m_kddcup2021/csr/indices.pt")
     train_idx = torch.from_numpy(dataset.get_idx_split('train')).to(0)
     idx_len = train_idx.size(0)
     nodes = indptr.size(0) - 1
@@ -110,6 +112,7 @@ def preprocess(host, host_size, p2p_group, p2p_size):
                                                  mode="UVA")
     host_probs_sum = [None] * host_size
     host_p2p_probs = [None] * host_size
+    t0 = time.time()
     for h in range(host_size):
         p2p_probs = [None] * p2p_size
         for i in range(p2p_size):
@@ -129,19 +132,23 @@ def preprocess(host, host_size, p2p_group, p2p_size):
     _, nz = select_nodes(0, host_probs_sum, None)
     res = partition_without_replication(0, host_probs_sum, nz.squeeze())
     global2host = torch.zeros(nodes, dtype=torch.int32, device=0) - 1
+    t1 = time.time()
+    print(f'prob {t1 - t0}')
     for h in range(host_size):
         global2host[res[h]] = h
-    torch.save(global2host.cpu(),
-               '/data/mag/mag240m_kddcup2021/processed/paper/global2host.pt')
+    torch.save(global2host.cpu(), f'/mnt/data/mag/{host_size}h/global2host.pt')
+    t2 = time.time()
+    print(f'g2h {t2 - t1}')
     local_probs_sum = host_probs_sum[host]
     local_probs_sum[res[host]] = -1e6
     _, local_order = torch.sort(local_probs_sum, descending=True)
     local_replicate_size = min(
         nz.size(0), cpu_size + gpu_size * p2p_size) - res[host].size(0)
     replicate = local_order[:local_replicate_size]
-    torch.save(
-        replicate.cpu(),
-        f'/data/mag/mag240m_kddcup2021/processed/paper/replicate{host}.pt')
+    torch.save(replicate.cpu(),
+               f'/mnt/data/mag/{host_size}h/replicate{host}.pt')
+    t3 = time.time()
+    print(f'replicate {t3 - t2}')
     total_range = torch.arange(end=nodes, dtype=torch.int64, device=0)
     local_mask = global2host == host
     local_part = total_range[local_mask]
@@ -157,14 +164,17 @@ def preprocess(host, host_size, p2p_group, p2p_size):
     local_gpu_orders = torch.cat(local_res)
     local_gpu_ids = [local_all[r] for r in local_res]
     local_orders = torch.cat((local_gpu_orders, local_cpu_order))
-    torch.save(
-        local_orders.cpu(),
-        f'/data/mag/mag240m_kddcup2021/processed/paper/local_order{host}.pt')
-    store_mmap(0, '/data/mag/mag240m_kddcup2021/processed/paper',
-               'node_feat.npy', f'cpu_feat{host}.npy', local_cpu_ids)
-    for i in range(p2p_size):
-        store_mmap(0, '/data/mag/mag240m_kddcup2021/processed/paper',
-                   'node_feat.npy', f'gpu_feat{host}{i}.npy', local_gpu_ids[i])
+    torch.save(local_orders.cpu(),
+               f'/mnt/data/mag/{host_size}h/local_order{host}.pt')
+    t4 = time.time()
+    print(f'order {t4 - t3}')
+    # store_mmap(0, '/mnt/data/mag/mag240m_kddcup2021/processed/paper',
+    #            'node_feat.npy', f'cpu_feat{host_size}-{host}.npy', local_cpu_ids)
+    # for i in range(p2p_size):
+    #     store_mmap(0, '/mnt/data/mag/mag240m_kddcup2021/processed/paper',
+    #                'node_feat.npy', f'gpu_feat{host_size}-{host}{i}.npy', local_gpu_ids[i])
+    # t5 = time.time()
+    # print(f'mmap {t5 - t4}')
 
 
-preprocess(0, 2, 1, 2)
+preprocess(0, 2, 1, 1)

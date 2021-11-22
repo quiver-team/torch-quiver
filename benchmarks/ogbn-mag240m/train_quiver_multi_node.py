@@ -34,9 +34,9 @@ import gc
 
 ROOT = '/mnt/data/mag'
 CPU_CACHE_GB = 60
-GPU_CACHE_GB = 40
-LOCAL_ADDR = '192.168.0.78'
-MASTER_ADDR = '192.168.0.78'
+GPU_CACHE_GB = 32
+LOCAL_ADDR = 
+MASTER_ADDR = 
 MASTER_PORT = 19216
 
 
@@ -112,10 +112,10 @@ class MAG240M(LightningDataModule):
             host_size = 2
             host = 0
             t0 = time.time()
-            cpu_part = f'/mnt/data/mag/{host_size}h/cpu_feat{host}.npy'
+            cpu_part = f'/mnt/data/mag/{host_size}h/cpu_feat{host}.pt'
             gpu_parts = []
             for i in range(local_size):
-                gpu_part = f'/mnt/data/mag/{host_size}h/gpu_feat{host}{i}.npy'
+                gpu_part = f'/mnt/data/mag/{host_size}h/gpu_feat{host}_{i}.pt'
                 gpu_parts.append(gpu_part)
             feat = Feature(0, [0], 0, 'p2p_clique_replicate')
             device_config = DeviceConfig(gpu_parts, cpu_part)

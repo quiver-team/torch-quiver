@@ -67,7 +67,7 @@ def store_mmap(device, data_dir, raw, processed, selected):
 
 
 def preprocess(host, host_size, p2p_group, p2p_size):
-    GPU_CACHE_GB = 40
+    GPU_CACHE_GB = 32
     CPU_CACHE_GB = 60
     dataset = MAG240MDataset("/mnt/data/mag")
     path = f'{dataset.dir}/paper_to_paper_symmetric.pt'
@@ -168,6 +168,13 @@ def preprocess(host, host_size, p2p_group, p2p_size):
                f'/mnt/data/mag/{host_size}h/local_order{host}.pt')
     t4 = time.time()
     print(f'order {t4 - t3}')
+    for gpu in range(p2p_size):
+        t = torch.zeros((gpu_size, 768))
+        torch.save(t, f'/mnt/data/mag/{host_size}h/gpu_feat{host}_{gpu}.pt')
+    t = torch.zeros((cpu_size, 768))
+    torch.save(t, f'/mnt/data/mag/{host_size}h/cpu_feat{host}.pt')
+    t5 = time.time()
+    print(f'feat {t5 - t4}')
     # store_mmap(0, '/mnt/data/mag/mag240m_kddcup2021/processed/paper',
     #            'node_feat.npy', f'cpu_feat{host_size}-{host}.npy', local_cpu_ids)
     # for i in range(p2p_size):

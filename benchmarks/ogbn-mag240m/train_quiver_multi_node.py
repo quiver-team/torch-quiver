@@ -33,10 +33,10 @@ from quiver.feature import DeviceConfig, Feature, DistFeature
 import gc
 
 ROOT = '/mnt/data/mag'
-CPU_CACHE_GB = 60
+CPU_CACHE_GB = 48
 GPU_CACHE_GB = 32
-LOCAL_ADDR = 
-MASTER_ADDR = 
+LOCAL_ADDR = '104.171.200.116'
+MASTER_ADDR = '104.171.200.116'
 MASTER_PORT = 19216
 
 
@@ -59,6 +59,7 @@ class MAG240M(LightningDataModule):
                  batch_size: int,
                  sizes: List[int],
                  host,
+                 host_size,
                  local_size,
                  in_memory: bool = False):
         super().__init__()
@@ -66,6 +67,7 @@ class MAG240M(LightningDataModule):
         self.batch_size = batch_size
         self.sizes = sizes
         self.host = host
+        self.host_size = host_size
         self.local_size = local_size
         self.in_memory = in_memory
 
@@ -109,13 +111,13 @@ class MAG240M(LightningDataModule):
         if self.in_memory:
             self.x = torch.from_numpy(dataset.all_paper_feat).share_memory_()
         else:
-            host_size = 2
-            host = 0
+            host_size = self.host_size
+            host = self.host
             t0 = time.time()
-            cpu_part = f'/mnt/data/mag/{host_size}h/cpu_feat{host}.pt'
+            cpu_part = f'/home/ubuntu/temp/{host_size}h/cpu_feat{host}.pt'
             gpu_parts = []
-            for i in range(local_size):
-                gpu_part = f'/mnt/data/mag/{host_size}h/gpu_feat{host}_{i}.pt'
+            for i in range(self.local_size):
+                gpu_part = f'/home/ubuntu/temp/{host_size}h/gpu_feat{host}_{i}.pt'
                 gpu_parts.append(gpu_part)
             feat = Feature(0, [0], 0, 'p2p_clique_replicate')
             device_config = DeviceConfig(gpu_parts, cpu_part)
@@ -392,7 +394,7 @@ if __name__ == '__main__':
     local_size = 1
     host = 0
     datamodule = MAG240M(ROOT, args.batch_size, args.sizes, host, host_size,
-                         args.in_memory)
+                         local_size, args.in_memory)
 
     if not args.evaluate:
         store = dist.TCPStore(MASTER_ADDR, MASTER_PORT, host_size,
@@ -402,6 +404,17 @@ if __name__ == '__main__':
             store.set("id", id)
         else:
             id = store.get("id")
+        print(id)
+        global_rank = 0 + host * local_size
+        global_size = host_size * local_size
+        print(global_rank)
+        print(global_size)
+        print(host_size)
+        print(local_size)
+        comm = quiver.comm.NcclComm(global_rank, global_size, id, host_size,
+                                    local_size)
+        print('comm')
+        exit(0)
 
         ##############################
         # Create Sampler And Feature
@@ -419,12 +432,15 @@ if __name__ == '__main__':
 
         print('Let\'s use', local_size, 'GPUs!')
 
-        mp.spawn(run,
-                 args=(args, quiver_sampler, quiver_feature, y, train_idx,
-                       num_features, num_classes, id, local_size, host,
-                       host_size),
-                 nprocs=local_size,
-                 join=True)
+        run(0, args, quiver_sampler, quiver_feature, y, train_idx,
+            num_features, num_classes, id, local_size, host, host_size)
+
+        # mp.spawn(run,
+        #          args=(args, quiver_sampler, quiver_feature, y, train_idx,
+        #                num_features, num_classes, id, local_size, host,
+        #                host_size),
+        #          nprocs=local_size,
+        #          join=True)
 
     if args.evaluate:
         dirs = glob.glob(f'logs/{args.model}/lightning_logs/*')

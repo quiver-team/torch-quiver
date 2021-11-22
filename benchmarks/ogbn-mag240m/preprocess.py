@@ -178,14 +178,17 @@ def preprocess(host, host_size, p2p_group, p2p_size):
 
 
 def init_feat(host, host_size, p2p_group, p2p_size):
+    GPU_CACHE_GB = 32
+    CPU_CACHE_GB = 48
+    t = torch.zeros((cpu_size, 768))
+    torch.save(t, f'/mnt/data/mag/{host_size}h/cpu_feat{host}.pt')
+    del t
     gpu_size = GPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * 4)
     cpu_size = CPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * 4)
     for gpu in range(p2p_size):
         t = torch.zeros((gpu_size, 768))
         torch.save(t, f'/mnt/data/mag/{host_size}h/gpu_feat{host}_{gpu}.pt')
         del t
-    t = torch.zeros((cpu_size, 768))
-    torch.save(t, f'/mnt/data/mag/{host_size}h/cpu_feat{host}.pt')
 
 
 preprocess(0, 2, 1, 1)

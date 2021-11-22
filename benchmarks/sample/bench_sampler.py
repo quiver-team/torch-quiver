@@ -9,7 +9,7 @@ import os.path as osp
 import random
 from multiprocessing.reduction import ForkingPickler
 import quiver
-from sampler import MixedGraphSageSampler, GraphSageSampler
+#from sampler import MixedGraphSageSampler, GraphSageSampler
 
 print(
     "\n\nNOTE: We Use Sampled Edges Per Second(SEPS) = #SampledEdges/Time as metric to evaluate sampler performance\n\n"

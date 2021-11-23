@@ -12,8 +12,8 @@ from quiver.partition import partition_with_replication, partition_without_repli
 
 
 SCALE = 1
-GPU_CACHE_GB = 8
-CPU_CACHE_GB = 256
+GPU_CACHE_GB = 6
+CPU_CACHE_GB = 160
 
 def get_nonzero():
     dataset = MAG240MDataset("/data/mag")

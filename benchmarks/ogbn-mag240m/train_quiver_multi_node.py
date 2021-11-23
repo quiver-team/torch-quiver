@@ -33,8 +33,8 @@ from quiver.feature import DeviceConfig, Feature, DistFeature
 import gc
 
 ROOT = '/home/ubuntu/temp/mag'
-CPU_CACHE_GB = 256
-GPU_CACHE_GB = 8
+CPU_CACHE_GB = 160
+GPU_CACHE_GB = 6
 LOCAL_ADDR = '104.171.200.142'
 MASTER_ADDR = '104.171.200.142'
 MASTER_PORT = 19216
@@ -116,7 +116,7 @@ class MAG240M(LightningDataModule):
             cpu_size = CPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * host_size * 4)
             host = self.host
             t0 = time.time()
-            cpu_part = torch.zeros((cpu_size, 768 * host_size))
+            cpu_part = torch.zeros((cpu_size, 768 * host_size)).share_memory_()
             gpu_parts = []
             for i in range(self.local_size):
                 gpu_part = torch.zeros((gpu_size, 768 * host_size))
@@ -325,6 +325,7 @@ def run(rank, args, quiver_sampler, quiver_feature, label, train_idx,
     #     osp.join('/data/mag/mag240m_kddcup2021', 'processed', 'paper',
     #              'node_feat.npy'), disk_map)
     # print(f'{rank} mmap file')
+    torch.cuda.empty_cache()
     for epoch in range(1, args.epochs + 1):
         model.train()
 
@@ -349,6 +350,12 @@ def run(rank, args, quiver_sampler, quiver_feature, label, train_idx,
             sample_time.append(t1 - t0)
             feat_time.append(t2 - t1)
             train_time.append(t3 - t2)
+            torch.cuda.empty_cache()
+
+            if rank == 0:
+                print(sample_time[-1])
+                print(feat_time[-1])
+                print(train_time[-1])
 
         dist.barrier()
 

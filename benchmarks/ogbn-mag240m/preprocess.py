@@ -11,6 +11,9 @@ import numpy as np
 from quiver.partition import partition_with_replication, partition_without_replication, select_nodes
 
 
+GPU_CACHE_GB = 8
+CPU_CACHE_GB = 256
+
 def get_nonzero():
     dataset = MAG240MDataset("/data/mag")
 
@@ -67,8 +70,6 @@ def store_mmap(device, data_dir, raw, processed, selected):
 
 
 def preprocess(host, host_size, p2p_group, p2p_size):
-    GPU_CACHE_GB = 32
-    CPU_CACHE_GB = 48
     dataset = MAG240MDataset("/mnt/data/mag")
     path = f'{dataset.dir}/paper_to_paper_symmetric.pt'
     if not osp.exists(path):
@@ -178,8 +179,6 @@ def preprocess(host, host_size, p2p_group, p2p_size):
 
 
 def init_feat(host, host_size, p2p_group, p2p_size):
-    GPU_CACHE_GB = 32
-    CPU_CACHE_GB = 48
     t = torch.zeros((cpu_size, 768))
     torch.save(t, f'/mnt/data/mag/{host_size}h/cpu_feat{host}.pt')
     del t
@@ -191,5 +190,5 @@ def init_feat(host, host_size, p2p_group, p2p_size):
         del t
 
 
-preprocess(0, 2, 1, 1)
-init_feat(0, 2, 1, 1)
+preprocess(0, 2, 2, 4)
+init_feat(0, 2, 2, 4)

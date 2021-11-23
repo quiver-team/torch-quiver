@@ -119,7 +119,7 @@ class MAG240M(LightningDataModule):
             for i in range(self.local_size):
                 gpu_part = f'/home/ubuntu/temp/{host_size}h/gpu_feat{host}_{i}.pt'
                 gpu_parts.append(gpu_part)
-            feat = Feature(0, [0], 0, 'p2p_clique_replicate')
+            feat = Feature(0, list(range(self.local_size)), 0, 'p2p_clique_replicate')
             device_config = DeviceConfig(gpu_parts, cpu_part)
             feat.from_mmap(None, device_config)
             self.x = feat
@@ -391,7 +391,7 @@ if __name__ == '__main__':
 
     seed_everything(42)
     host_size = 2
-    local_size = 1
+    local_size = 8
     host = 0
     datamodule = MAG240M(ROOT, args.batch_size, args.sizes, host, host_size,
                          local_size, args.in_memory)
@@ -404,17 +404,6 @@ if __name__ == '__main__':
             store.set("id", id)
         else:
             id = store.get("id")
-        print(id)
-        global_rank = 0 + host * local_size
-        global_size = host_size * local_size
-        print(global_rank)
-        print(global_size)
-        print(host_size)
-        print(local_size)
-        comm = quiver.comm.NcclComm(global_rank, global_size, id, host_size,
-                                    local_size)
-        print('comm')
-        exit(0)
 
         ##############################
         # Create Sampler And Feature
@@ -432,15 +421,12 @@ if __name__ == '__main__':
 
         print('Let\'s use', local_size, 'GPUs!')
 
-        run(0, args, quiver_sampler, quiver_feature, y, train_idx,
-            num_features, num_classes, id, local_size, host, host_size)
-
-        # mp.spawn(run,
-        #          args=(args, quiver_sampler, quiver_feature, y, train_idx,
-        #                num_features, num_classes, id, local_size, host,
-        #                host_size),
-        #          nprocs=local_size,
-        #          join=True)
+        mp.spawn(run,
+                 args=(args, quiver_sampler, quiver_feature, y, train_idx,
+                       num_features, num_classes, id, local_size, host,
+                       host_size),
+                 nprocs=local_size,
+                 join=True)
 
     if args.evaluate:
         dirs = glob.glob(f'logs/{args.model}/lightning_logs/*')

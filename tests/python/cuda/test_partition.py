@@ -6,10 +6,17 @@ import time
 from scipy.sparse import coo, coo_matrix, csr_matrix
 import numpy as np
 import quiver
+#import dgl
 from quiver.partition import partition_with_replication, partition_without_replication
 from quiver.feature import DeviceConfig, Feature
 from ogb.lsc import MAG240MDataset
 import os.path as osp
+import random
+from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
+from matplotlib import pyplot as plt
+from torch_geometric.datasets import Reddit
+
+
 
 
 def test_metis():
@@ -219,10 +226,182 @@ def preprocess():
                "/data/papers/ogbn_papers100M/csr/indices_bi.pt")
 
 
+def test_cdf_on_mag240M():
+    indptr = torch.load("/data/mag/mag240m_kddcup2021/csr/indptr.pt")
+    indices = torch.load("/data/mag/mag240m_kddcup2021/csr/indices.pt")
+    dataset = MAG240MDataset("/data/mag")
+    train_idx = torch.from_numpy(dataset.get_idx_split('train'))
+    csr_topo = quiver.CSRTopo(indptr=indptr, indices=indices)
+    quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], 0, mode="UVA")
+    for partition_num in range(1, 10, 1):
+        idx_len = train_idx.size(0)
+        hit_cum = torch.zeros_like(csr_topo.indptr)
+        random.shuffle(train_idx)
+        real_train_idx = train_idx[:idx_len // partition_num]
+
+        train_loader = torch.utils.data.DataLoader(real_train_idx,
+                                                batch_size=1024,
+                                                pin_memory=True,
+                                                shuffle=True)
+        for _ in range(10):
+            for seeds in train_loader:
+                n_id, _, _ = quiver_sampler.sample(seeds)
+                hit_cum[n_id] += 1
+        
+        sorted_hit_cum, _ = torch.sort(hit_cum, descending=True)
+        total_hit = torch.sum(sorted_hit_cum)
+        levels = []
+        x = []
+        total_levels = 20
+        for level in range(total_levels):
+            total_sum_pos = int(1.0 * level * sorted_hit_cum.shape[0] / total_levels)
+            total_sum = torch.sum(sorted_hit_cum[:total_sum_pos])
+            levels.append(total_sum / total_hit)
+            x.append(total_sum_pos / (csr_topo.indptr.shape[0] - 1))
+        print(levels)
+
+        plt.plot(x, levels, label=f"partition_num={partition_num}")
+        plt.scatter(x, levels, label=f"partition_num={partition_num}")
+    plt.savefig("mag240M_30_cdf.png")
+
+
+
+
+def test_cdf_on_paper100M():
+    
+    indptr = torch.load("/data/papers/ogbn_papers100M/csr/indptr_bi.pt")
+    indices = torch.load("/data/papers/ogbn_papers100M/csr/indices_bi.pt")
+    train_idx = torch.load("/data/papers/ogbn_papers100M/index/train_idx.pt")
+    idx_len = train_idx.size(0)
+    csr_topo = quiver.CSRTopo(indptr=indptr, indices=indices)
+    quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], 0, mode="UVA")
+    for partition_num in range(1, 10, 1):
+        idx_len = train_idx.size(0)
+        hit_cum = torch.zeros_like(csr_topo.indptr)
+        random.shuffle(train_idx)
+        real_train_idx = train_idx[:idx_len // partition_num]
+
+        train_loader = torch.utils.data.DataLoader(real_train_idx,
+                                                batch_size=1024,
+                                                pin_memory=True,
+                                                shuffle=True)
+        for _ in range(10):
+            for seeds in train_loader:
+                n_id, _, _ = quiver_sampler.sample(seeds)
+                hit_cum[n_id] += 1
+        
+        sorted_hit_cum, _ = torch.sort(hit_cum, descending=True)
+        total_hit = torch.sum(sorted_hit_cum)
+        levels = []
+        x = []
+        total_levels = 20
+        for level in range(total_levels):
+            total_sum_pos = int(1.0 * level * sorted_hit_cum.shape[0] / total_levels)
+            total_sum = torch.sum(sorted_hit_cum[:total_sum_pos])
+            levels.append(total_sum / total_hit)
+            x.append(total_sum_pos / (csr_topo.indptr.shape[0] - 1))
+        print(levels)
+
+        plt.plot(x, levels, label=f"partition_num={partition_num}")
+        plt.scatter(x, levels, label=f"partition_num={partition_num}")
+    plt.savefig("paper100M_30_cdf.png")
+ 
+
+
+def test_cdf_on_products():
+    
+    root = "/home/dalong/data/products/"
+    dataset = PygNodePropPredDataset('ogbn-products', root)
+    data = dataset[0]
+    csr_topo = quiver.CSRTopo(data.edge_index)
+    split_idx = dataset.get_idx_split()
+    train_idx = split_idx['train']
+
+    quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], 0, mode="UVA")
+
+
+    for partition_num in range(1, 10, 1):
+        idx_len = train_idx.size(0)
+        hit_cum = torch.zeros_like(csr_topo.indptr)
+        random.shuffle(train_idx)
+        real_train_idx = train_idx[:idx_len // partition_num]
+
+        train_loader = torch.utils.data.DataLoader(real_train_idx,
+                                                batch_size=1024,
+                                                pin_memory=True,
+                                                shuffle=True)
+        for _ in range(10):
+            for seeds in train_loader:
+                n_id, _, _ = quiver_sampler.sample(seeds)
+                hit_cum[n_id] += 1
+        
+        sorted_hit_cum, _ = torch.sort(hit_cum, descending=True)
+        total_hit = torch.sum(sorted_hit_cum)
+        levels = []
+        x = []
+        for level in range(11):
+            total_sum_pos = int(1.0 * level * sorted_hit_cum.shape[0] / 10)
+            total_sum = torch.sum(sorted_hit_cum[:total_sum_pos])
+            levels.append(total_sum / total_hit)
+            x.append(total_sum_pos / (csr_topo.indptr.shape[0] - 1))
+        print(levels)
+
+        plt.plot(x, levels, label=f"partition_num={partition_num}")
+        plt.scatter(x, levels, label=f"partition_num={partition_num}")
+    plt.savefig("products_30_cdf.png")
+
+def test_cdf_on_reddit():
+
+    path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'Reddit')
+    dataset = Reddit(path)
+    data = dataset[0]
+    train_idx = data.train_mask.nonzero(as_tuple=False).view(-1)
+    csr_topo = quiver.CSRTopo(data.edge_index)
+
+
+    quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [25, 10], 0, mode="UVA")
+
+
+    for partition_num in range(1, 10, 1):
+        idx_len = train_idx.size(0)
+        hit_cum = torch.zeros_like(csr_topo.indptr)
+        random.shuffle(train_idx)
+        real_train_idx = train_idx[:idx_len // partition_num]
+
+        train_loader = torch.utils.data.DataLoader(real_train_idx,
+                                                batch_size=1024,
+                                                pin_memory=True,
+                                                shuffle=True)
+        for _ in range(10):
+            for seeds in train_loader:
+                n_id, _, _ = quiver_sampler.sample(seeds)
+                hit_cum[n_id] += 1
+        
+        sorted_hit_cum, _ = torch.sort(hit_cum, descending=True)
+        total_hit = torch.sum(sorted_hit_cum)
+        levels = []
+        x = []
+        for level in range(11):
+            total_sum_pos = int(1.0 * level * sorted_hit_cum.shape[0] / 10)
+            total_sum = torch.sum(sorted_hit_cum[:total_sum_pos])
+            levels.append(total_sum / total_hit)
+            x.append(total_sum_pos / (csr_topo.indptr.shape[0] - 1))
+        print(levels)
+
+        plt.plot(x, levels, label=f"partition_num={partition_num}")
+        plt.scatter(x, levels, label=f"partition_num={partition_num}")
+    plt.savefig("reddit_30_cdf.png")
+
+
+    
 # test_metis()
 # test_random()
 # test_hot()
 
-test_prob()
+#test_prob()
+#test_cdf_on_products()
+#test_cdf_on_reddit()
+#test_cdf_on_paper100M()
+test_cdf_on_mag240M()
 # preprocess()
 # bench_read()

@@ -11,6 +11,7 @@ import numpy as np
 from quiver.partition import partition_with_replication, partition_without_replication, select_nodes
 
 
+SCALE = 1
 GPU_CACHE_GB = 8
 CPU_CACHE_GB = 256
 
@@ -70,30 +71,30 @@ def store_mmap(device, data_dir, raw, processed, selected):
 
 
 def preprocess(host, host_size, p2p_group, p2p_size):
-    dataset = MAG240MDataset("/mnt/data/mag")
+    dataset = MAG240MDataset("/home/ubuntu/temp/mag")
     path = f'{dataset.dir}/paper_to_paper_symmetric.pt'
-    if not osp.exists(path):
-        t = time.perf_counter()
-        print('Converting adjacency matrix...', end=' ', flush=True)
-        edge_index = dataset.edge_index('paper', 'cites', 'paper')
-        edge_index = torch.from_numpy(edge_index)
-        adj_t = SparseTensor(row=edge_index[0],
-                             col=edge_index[1],
-                             sparse_sizes=(dataset.num_papers,
-                                           dataset.num_papers),
-                             is_sorted=True)
-        adj_t = adj_t.to_symmetric()
-        torch.save(adj_t, path)
-        print(f'Done! [{time.perf_counter() - t:.2f}s]')
-    if not osp.exists(f'{dataset.dir}/csr'):
-        os.mkdir(f'{dataset.dir}/csr')
-        adj_t = torch.load(f'{dataset.dir}/paper_to_paper_symmetric.pt')
-        indptr, indices, _ = adj_t.csr()
-        torch.save(indptr, f'{dataset.dir}/csr/indptr.pt')
-        torch.save(indices, f'{dataset.dir}/csr/indices.pt')
+    # if not osp.exists(path):
+    #     t = time.perf_counter()
+    #     print('Converting adjacency matrix...', end=' ', flush=True)
+    #     edge_index = dataset.edge_index('paper', 'cites', 'paper')
+    #     edge_index = torch.from_numpy(edge_index)
+    #     adj_t = SparseTensor(row=edge_index[0],
+    #                          col=edge_index[1],
+    #                          sparse_sizes=(dataset.num_papers,
+    #                                        dataset.num_papers),
+    #                          is_sorted=True)
+    #     adj_t = adj_t.to_symmetric()
+    #     torch.save(adj_t, path)
+    #     print(f'Done! [{time.perf_counter() - t:.2f}s]')
+    # if not osp.exists(f'{dataset.dir}/csr'):
+    #     os.mkdir(f'{dataset.dir}/csr')
+    #     adj_t = torch.load(f'{dataset.dir}/paper_to_paper_symmetric.pt')
+    #     indptr, indices, _ = adj_t.csr()
+    #     torch.save(indptr, f'{dataset.dir}/csr/indptr.pt')
+    #     torch.save(indices, f'{dataset.dir}/csr/indices.pt')
 
-    indptr = torch.load("/mnt/data/mag/mag240m_kddcup2021/csr/indptr.pt")
-    indices = torch.load("/mnt/data/mag/mag240m_kddcup2021/csr/indices.pt")
+    indptr = torch.load("/home/ubuntu/temp/mag/mag240m_kddcup2021/csr/indptr.pt")
+    indices = torch.load("/home/ubuntu/temp/mag/mag240m_kddcup2021/csr/indices.pt")
     train_idx = torch.from_numpy(dataset.get_idx_split('train')).to(0)
     idx_len = train_idx.size(0)
     nodes = indptr.size(0) - 1
@@ -128,8 +129,8 @@ def preprocess(host, host_size, p2p_group, p2p_size):
         for i in range(p2p_size):
             probs_sum += p2p_probs[i]
         host_probs_sum[h] = probs_sum
-    gpu_size = GPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * 4)
-    cpu_size = CPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * 4)
+    gpu_size = GPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * SCALE * 4)
+    cpu_size = CPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * SCALE * 4)
     _, nz = select_nodes(0, host_probs_sum, None)
     res = partition_without_replication(0, host_probs_sum, nz.squeeze())
     global2host = torch.zeros(nodes, dtype=torch.int32, device=0) - 1
@@ -137,7 +138,7 @@ def preprocess(host, host_size, p2p_group, p2p_size):
     print(f'prob {t1 - t0}')
     for h in range(host_size):
         global2host[res[h]] = h
-    torch.save(global2host.cpu(), f'/mnt/data/mag/{host_size}h/global2host.pt')
+    torch.save(global2host.cpu(), f'/home/ubuntu/temp/mag/{host_size}h/global2host.pt')
     t2 = time.time()
     print(f'g2h {t2 - t1}')
     local_probs_sum = host_probs_sum[host]
@@ -147,7 +148,7 @@ def preprocess(host, host_size, p2p_group, p2p_size):
         nz.size(0), cpu_size + gpu_size * p2p_size) - res[host].size(0)
     replicate = local_order[:local_replicate_size]
     torch.save(replicate.cpu(),
-               f'/mnt/data/mag/{host_size}h/replicate{host}.pt')
+               f'/home/ubuntu/temp/mag/{host_size}h/replicate{host}.pt')
     t3 = time.time()
     print(f'replicate {t3 - t2}')
     total_range = torch.arange(end=nodes, dtype=torch.int64, device=0)
@@ -166,29 +167,29 @@ def preprocess(host, host_size, p2p_group, p2p_size):
     local_gpu_ids = [local_all[r] for r in local_res]
     local_orders = torch.cat((local_gpu_orders, local_cpu_order))
     torch.save(local_orders.cpu(),
-               f'/mnt/data/mag/{host_size}h/local_order{host}.pt')
+               f'/home/ubuntu/temp/mag/{host_size}h/local_order{host}.pt')
     t4 = time.time()
     print(f'order {t4 - t3}')
-    # store_mmap(0, '/mnt/data/mag/mag240m_kddcup2021/processed/paper',
+    # store_mmap(0, '/home/ubuntu/temp/mag/mag240m_kddcup2021/processed/paper',
     #            'node_feat.npy', f'cpu_feat{host_size}-{host}.npy', local_cpu_ids)
     # for i in range(p2p_size):
-    #     store_mmap(0, '/mnt/data/mag/mag240m_kddcup2021/processed/paper',
+    #     store_mmap(0, '/home/ubuntu/temp/mag/mag240m_kddcup2021/processed/paper',
     #                'node_feat.npy', f'gpu_feat{host_size}-{host}{i}.npy', local_gpu_ids[i])
     # t5 = time.time()
     # print(f'mmap {t5 - t4}')
 
 
 def init_feat(host, host_size, p2p_group, p2p_size):
-    t = torch.zeros((cpu_size, 768))
-    torch.save(t, f'/mnt/data/mag/{host_size}h/cpu_feat{host}.pt')
+    t = torch.zeros((cpu_size, 768 * SCALE))
+    torch.save(t, f'/home/ubuntu/temp/mag/{host_size}h/cpu_feat{host}.pt')
     del t
-    gpu_size = GPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * 4)
-    cpu_size = CPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * 4)
+    gpu_size = GPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * SCALE * 4)
+    cpu_size = CPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * SCALE * 4)
     for gpu in range(p2p_size):
-        t = torch.zeros((gpu_size, 768))
-        torch.save(t, f'/mnt/data/mag/{host_size}h/gpu_feat{host}_{gpu}.pt')
+        t = torch.zeros((gpu_size, 768 * SCALE))
+        torch.save(t, f'/home/ubuntu/temp/mag/{host_size}h/gpu_feat{host}_{gpu}.pt')
         del t
 
 
-preprocess(0, 2, 2, 4)
-init_feat(0, 2, 2, 4)
+preprocess(0, 1, 2, 4)
+# init_feat(0, 1, 2, 4)

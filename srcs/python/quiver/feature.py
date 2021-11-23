@@ -122,9 +122,12 @@ class Feature(object):
         if self.cache_policy == "device_replicate":
             for device in self.device_list:
                 if isinstance(device_config.gpu_parts[device], torch.Tensor):
-                    cache_ids = device_config.gpu_parts[device].numpy()
-                    cache_part = torch.from_numpy(
-                        np_array[cache_ids]).to(dtype=torch.float32)
+                    if np_array is None:
+                        cache_part = device_config.gpu_parts[device].to(dtype=torch.float32)
+                    else:
+                        cache_ids = device_config.gpu_parts[device].numpy()
+                        cache_part = torch.from_numpy(
+                            np_array[cache_ids]).to(dtype=torch.float32)
                 elif isinstance(device_config.gpu_parts[device], str):
                     cache_part = torch.load(device_config.gpu_parts[device])
                 shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
@@ -144,9 +147,12 @@ class Feature(object):
                 for idx, device in enumerate(clique0_device_list):
                     if isinstance(device_config.gpu_parts[device],
                                   torch.Tensor):
-                        cache_ids = device_config.gpu_parts[device].numpy()
-                        cache_part = torch.from_numpy(
-                            np_array[cache_ids]).to(dtype=torch.float32)
+                        if np_array is None:
+                            cache_part = device_config.gpu_parts[device].to(dtype=torch.float32)
+                        else:
+                            cache_ids = device_config.gpu_parts[device].numpy()
+                            cache_part = torch.from_numpy(
+                                np_array[cache_ids]).to(dtype=torch.float32)
                     elif isinstance(device_config.gpu_parts[device], str):
                         cache_part = torch.load(
                             device_config.gpu_parts[device])
@@ -164,9 +170,12 @@ class Feature(object):
                 for idx, device in enumerate(clique1_device_list):
                     if isinstance(device_config.gpu_parts[device],
                                   torch.Tensor):
-                        cache_ids = device_config.gpu_parts[device].numpy()
-                        cache_part = torch.from_numpy(
-                            np_array[cache_ids]).to(dtype=torch.float32)
+                        if np_array is None:
+                            cache_part = device_config.gpu_parts[device].to(dtype=torch.float32)
+                        else:
+                            cache_ids = device_config.gpu_parts[device].numpy()
+                            cache_part = torch.from_numpy(
+                                np_array[cache_ids]).to(dtype=torch.float32)
                     elif isinstance(device_config.gpu_parts[device], str):
                         cache_part = torch.load(
                             device_config.gpu_parts[device])
@@ -178,9 +187,12 @@ class Feature(object):
 
         # 构建CPU Tensor
         if isinstance(device_config.cpu_part, torch.Tensor):
-            cache_ids = device_config.gpu_parts[device].numpy()
-            self.cpu_part = torch.from_numpy(
-                np_array[cache_ids]).to(dtype=torch.float32)
+            if np_array is None:
+                self.cpu_part = device_config.cpu_part
+            else:
+                cache_ids = device_config.cpu_part.numpy()
+                self.cpu_part = torch.from_numpy(
+                    np_array[cache_ids]).to(dtype=torch.float32)
         elif isinstance(device_config.cpu_part, str):
             self.cpu_part = torch.load(device_config.cpu_part)
         if self.cpu_part.numel() > 0:
@@ -395,6 +407,7 @@ class Feature(object):
         Returns:
             tuples: ipc handles for ShardTensor and torch.Tensor and python native objects
         """
+        self.cpu_part.share_memory_()
         gpu_ipc_handle_dict = {}
         if self.cache_policy == "device_replicate":
             for device in self.device_tensor_list:

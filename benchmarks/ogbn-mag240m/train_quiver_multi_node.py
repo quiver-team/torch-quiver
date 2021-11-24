@@ -34,7 +34,7 @@ import gc
 
 ROOT = '/home/ubuntu/temp/mag'
 CPU_CACHE_GB = 160
-GPU_CACHE_GB = 6
+GPU_CACHE_GB = 4
 LOCAL_ADDR = '104.171.200.142'
 MASTER_ADDR = '104.171.200.142'
 MASTER_PORT = 19216
@@ -293,7 +293,7 @@ def run(rank, args, quiver_sampler, quiver_feature, label, train_idx,
                                                shuffle=True)
 
     model = GNN(args.model,
-                num_features,
+                num_features * host_size,
                 num_classes,
                 args.hidden_channels,
                 num_layers=len(args.sizes),
@@ -399,7 +399,7 @@ if __name__ == '__main__':
     print(args)
 
     seed_everything(42)
-    host_size = 1
+    host_size = 2
     local_size = 8
     host = 0
     datamodule = MAG240M(ROOT, args.batch_size, args.sizes, host, host_size,

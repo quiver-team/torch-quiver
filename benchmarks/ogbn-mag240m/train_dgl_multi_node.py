@@ -131,12 +131,12 @@ def load_reddit():
 
 
 def load_240m():
-    dataset = MAG240MDataset('/data/mag')
+    dataset = MAG240MDataset('/home/ubuntu/temp/mag')
     train_idx = th.from_numpy(dataset.get_idx_split('train'))
     indptr = th.load(
-        '/data/mag/mag240m_kddcup2021/csr/indptr.pt').share_memory_()
+        '/home/ubuntu/temp/mag/mag240m_kddcup2021/csr/indptr.pt').share_memory_()
     indices = th.load(
-        '/data/mag/mag240m_kddcup2021/csr/indices.pt').share_memory_()
+        '/home/ubuntu/temp/mag/mag240m_kddcup2021/csr/indices.pt').share_memory_()
 
     return (indptr, indices), train_idx, th.from_numpy(
         dataset.paper_label), dataset.num_classes
@@ -207,7 +207,7 @@ def evaluate(model, g, nfeat, labels, val_nid, device):
 
 
 def load_subtensor(nfeat, labels, seeds, input_nodes, dev_id, n_gpus, host,
-                   host_size, comm_sizes):
+                   host_size, temp):
     """
     Extracts features and labels for a subset of nodes.
     """
@@ -219,11 +219,9 @@ def load_subtensor(nfeat, labels, seeds, input_nodes, dev_id, n_gpus, host,
                 continue
             if src == host:
                 peer = dst * n_gpus + dev_id
-                temp = th.zeros((comm_sizes, 768))
                 th.distributed.send(temp, peer)
             elif dst == host:
                 peer = src * n_gpus + dev_id
-                temp = th.zeros((comm_sizes, 768))
                 th.distributed.recv(temp, peer)
     input_nodes = input_nodes // host_size
     input_nodes = input_nodes.cpu()
@@ -242,7 +240,7 @@ def run(proc_id, n_gpus, args, devices, data):
     print('ready')
     if n_gpus > 1:
         dist_init_method = 'tcp://{master_ip}:{master_port}'.format(
-            master_ip='192.168.0.78', master_port='12975')
+            master_ip='104.171.200.142', master_port='12975')
         world_size = n_gpus * args.host_size
         th.distributed.init_process_group(backend="gloo",
                                           init_method=dist_init_method,
@@ -261,7 +259,7 @@ def run(proc_id, n_gpus, args, devices, data):
                      shape=[nodes, nodes])
     train_g = dgl.from_scipy(csc)
 
-    in_feats = 768
+    in_feats = 768 * args.host_size
 
     # Create PyTorch DataLoader for constructing blocks
     sampler = dgl.dataloading.MultiLayerNeighborSampler(
@@ -293,7 +291,8 @@ def run(proc_id, n_gpus, args, devices, data):
     comm_sizes = args.batch_size
     for size in sizes:
         comm_sizes *= size
-    comm_sizes = comm_sizes // args.host_size // 100
+    comm_sizes = comm_sizes // 2 * (args.host_size - 1) // args.host_size
+    temp = th.zeros((comm_sizes, 1024), dtype=th.float16)
     for epoch in range(args.num_epochs):
         # if n_gpus > 1:
         #     dataloader.set_epoch(epoch)
@@ -308,7 +307,7 @@ def run(proc_id, n_gpus, args, devices, data):
             # Load the input features as well as output labels
             batch_inputs, batch_labels = load_subtensor(
                 train_nfeat, train_labels, seeds, input_nodes, dev_id, n_gpus,
-                args.host, args.host_size, comm_sizes)
+                args.host, args.host_size, temp)
             blocks = [block.int().to(dev_id) for block in blocks]
             t2 = time.time()
             # Compute loss and prediction
@@ -346,7 +345,7 @@ if __name__ == '__main__':
     argparser.add_argument('--host_size', type=int, default=2)
     argparser.add_argument('--gpu',
                            type=str,
-                           default='0,1',
+                           default='0,1,2,3,4,5,6,7',
                            help="Comma separated list of GPU device IDs.")
     argparser.add_argument('--dataset', type=str, default='ogbn-mag240m')
     argparser.add_argument('--num-epochs', type=int, default=100)
@@ -390,8 +389,8 @@ if __name__ == '__main__':
 
     nodes = indptr.size(0) - 1
     per_host_nodes = (nodes + args.host_size - 1) // args.host_size
-    train_nfeat = th.zeros((per_host_nodes, 768),
-                           dtype=th.int8).share_memory_()
+    train_nfeat = th.zeros((per_host_nodes, 768 * args.host_size),
+                           dtype=th.float16).share_memory_()
 
     if args.inductive:
         train_g, val_g, test_g = inductive_split(g)

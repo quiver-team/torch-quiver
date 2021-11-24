@@ -7,15 +7,10 @@ import torch.optim as optim
 import dgl.nn.pytorch as dglnn
 import time
 import argparse
-import tqdm
+from tqdm import tqdm
 from ogb.nodeproppred import DglNodePropPredDataset
 
-######################
-# Import From Quiver
-######################
 import quiver
-from quiver.pyg import GraphSageSampler
-
 
 class SAGE(nn.Module):
     def __init__(self,
@@ -119,20 +114,25 @@ def evaluate(model, g, nfeat, labels, val_nid, test_nid, device):
     return compute_acc(pred[val_nid], labels[val_nid]), compute_acc(pred[test_nid], labels[test_nid]), pred
 
 
-def load_subtensor(nfeat, labels, seeds, input_nodes):
+def load_subtensor(nfeat, labels, seeds, input_nodes, device):
     """
     Extracts features and labels for a set of nodes.
     """
-    batch_inputs = nfeat[input_nodes]
-    batch_labels = labels[seeds]
+    batch_inputs = nfeat[input_nodes].to(device)
+    batch_labels = labels[seeds].to(device)
     return batch_inputs, batch_labels
 
 # Entry point
 
-
 def run(args, device, data):
     # Unpack data
     train_nid, val_nid, test_nid, in_feats, labels, n_classes, nfeat, g = data
+
+    if args.sample_gpu:
+        train_nid = train_nid.to(device)
+        # copy only the csc to the GPU
+        g = g.formats(['csc'])
+        g = g.to(device)
 
     # Create PyTorch DataLoader for constructing blocks
     sampler = dgl.dataloading.MultiLayerNeighborSampler(
@@ -141,10 +141,12 @@ def run(args, device, data):
         g,
         train_nid,
         sampler,
+        device=device,
         batch_size=args.batch_size,
         shuffle=True,
-        drop_last=False,
-        num_workers=args.num_workers)
+        drop_last=True,
+        num_workers=0 if args.sample_gpu else args.num_workers,
+        persistent_workers=not args.sample_gpu)
 
     # Define model and optimizer
     model = SAGE(in_feats, args.num_hidden, n_classes,
@@ -155,24 +157,23 @@ def run(args, device, data):
         model.parameters(), lr=args.lr, weight_decay=args.wd)
 
     # Training loop
-    avg = 0
-    iter_tput = []
-    best_eval_acc = 0
-    best_test_acc = 0
     for epoch in range(args.num_epochs):
         tic = time.time()
 
+        model.train()
+        pbar = tqdm(total=train_nid.size(0))
+        pbar.set_description(f'Epoch {epoch:02d}')
+        total_loss = total_correct = 0
         # Loop over the dataloader to sample the computation dependency graph as a list of
         # blocks.
-        for step, (input_nodes, seeds, blocks) in enumerate(dataloader):
-            tic_step = time.time()
+        for input_nodes, seeds, blocks in dataloader:
 
             # copy block to gpu
             blocks = [blk.int().to(device) for blk in blocks]
 
             # Load the input features as well as output labels
             batch_inputs, batch_labels = load_subtensor(
-                nfeat, labels, seeds, input_nodes)
+                nfeat, labels, seeds, input_nodes, device)
 
             # Compute loss and prediction
             batch_pred = model(blocks, batch_inputs)
@@ -181,41 +182,26 @@ def run(args, device, data):
             loss.backward()
             optimizer.step()
 
-            iter_tput.append(len(seeds) / (time.time() - tic_step))
-            if step % args.log_every == 0:
-                acc = compute_acc(batch_pred, batch_labels)
-                gpu_mem_alloc = th.cuda.max_memory_allocated(
-                ) / 1000000 if th.cuda.is_available() else 0
-                print('Epoch {:05d} | Step {:05d} | Loss {:.4f} | Train Acc {:.4f} | Speed (samples/sec) {:.4f} | GPU {:.1f} MB'.format(
-                    epoch, step, loss.item(), acc.item(), np.mean(iter_tput[3:]), gpu_mem_alloc))
+            total_loss += loss.item()
+            total_correct += batch_pred.argmax(dim=-1).eq(batch_labels).sum().item()
+            pbar.update(args.batch_size)
 
-        toc = time.time()
-        print('Epoch Time(s): {:.4f}'.format(toc - tic))
-        if epoch >= 5:
-            avg += toc - tic
-        # if epoch % args.eval_every == 0 and epoch != 0:
-        #     eval_acc, test_acc, pred = evaluate(model, g, nfeat, labels, val_nid, test_nid, device)
-        #     if args.save_pred:
-        #         np.savetxt(args.save_pred + '%02d' % epoch, pred.argmax(1).cpu().numpy(), '%d')
-        #     print('Eval Acc {:.4f}'.format(eval_acc))
-        #     if eval_acc > best_eval_acc:
-        #         best_eval_acc = eval_acc
-        #         best_test_acc = test_acc
-        #     print('Best Eval Acc {:.4f} Test Acc {:.4f}'.format(best_eval_acc, best_test_acc))
+        pbar.close()
 
-    print('Avg epoch time: {}'.format(avg / (epoch - 4)))
-    return best_test_acc
+        loss = total_loss / len(dataloader)
+        approx_acc = total_correct / (len(dataloader) * args.batch_size)
+        print(f'Epoch {epoch:02d}, Loss: {loss:.4f}, Approx. Train: {approx_acc:.4f}, Epoch Time: {time.time() - tic:.4f}')
 
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser("multi-gpu training")
     argparser.add_argument('--gpu', type=int, default=0,
                            help="GPU device ID. Use -1 for CPU training")
-    argparser.add_argument('--num-epochs', type=int, default=20)
+    argparser.add_argument('--num-epochs', type=int, default=10)
     argparser.add_argument('--num-hidden', type=int, default=256)
     argparser.add_argument('--num-layers', type=int, default=3)
     argparser.add_argument('--fan-out', type=str, default='5,10,15')
-    argparser.add_argument('--batch-size', type=int, default=1000)
+    argparser.add_argument('--batch-size', type=int, default=1024)
     argparser.add_argument('--val-batch-size', type=int, default=10000)
     argparser.add_argument('--log-every', type=int, default=20)
     argparser.add_argument('--eval-every', type=int, default=1)
@@ -225,6 +211,8 @@ if __name__ == '__main__':
                            help="Number of sampling processes. Use 0 for no extra process.")
     argparser.add_argument('--save-pred', type=str, default='')
     argparser.add_argument('--wd', type=float, default=0)
+    argparser.add_argument('--sample-gpu', action='store_true')
+    argparser.add_argument('--data', type=str, choices=('cpu', 'gpu', 'quiver', 'unified'))
     args = argparser.parse_args()
 
     if args.gpu >= 0:
@@ -233,18 +221,30 @@ if __name__ == '__main__':
         device = th.device('cpu')
 
     # load ogbn-products data
-    data = DglNodePropPredDataset(name='ogbn-products', root='/data/products')
+    data = DglNodePropPredDataset(name='ogbn-products', root='/workspace/gnn/dataset/')
     splitted_idx = data.get_idx_split()
     train_idx, val_idx, test_idx = splitted_idx['train'], splitted_idx['valid'], splitted_idx['test']
     graph, labels = data[0]
-    # nfeat = graph.ndata.pop('feat').to(device)
-    feat = graph.ndata.pop('feat')
-
-    csr = graph.adj(scipy_fmt='csr')
-    nfeat = quiver.Feature(rank=args.gpu, device_list=[
-                           args.gpu], device_cache_size="200M", cache_policy="device_replicate", reorder=csr)
-    nfeat.from_cpu_tensor(feat)
     labels = labels[:, 0].to(device)
+
+    feat = graph.ndata.pop('feat')
+    if args.data == 'cpu':
+        nfeat = feat
+    elif args.data == 'gpu':
+        nfeat = feat.to(device)
+    elif args.data == 'quiver':
+        csr_topo = quiver.CSRTopo(th.stack(graph.edges('uv')))
+        nfeat = quiver.Feature(rank=args.gpu, device_list=[args.gpu], 
+                               device_cache_size="200M", cache_policy="device_replicate", 
+                               csr_topo=csr_topo)
+        nfeat.from_cpu_tensor(feat)
+    elif args.data == 'unified':
+        from distutils.version import LooseVersion
+        assert LooseVersion(dgl.__version__) >= LooseVersion('0.8.0'), \
+            f'Current DGL version ({dgl.__version__}) does not support UnifiedTensor.'
+        nfeat = dgl.contrib.UnifiedTensor(feat, device=device)
+    else:
+        raise ValueError(f'Unsupported feature storing place {args.data}.')
 
     in_feats = nfeat.shape[1]
     n_classes = (labels.max() + 1).item()
@@ -254,9 +254,4 @@ if __name__ == '__main__':
     # Pack data
     data = train_idx, val_idx, test_idx, in_feats, labels, n_classes, nfeat, graph
 
-    # Run 10 times
-    test_accs = []
-    for i in range(10):
-        test_accs.append(run(args, device, data).cpu().numpy())
-        print('Average test accuracy:', np.mean(
-            test_accs), '±', np.std(test_accs))
+    run(args, device, data)

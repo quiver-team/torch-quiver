@@ -1,0 +1,1 @@
+python3 benchmarks/ogbn-mag240m/dist_dgl/train_dist.py  --graph_name ogb-product --ip_config ip_config.txt --num_epochs 3 --batch_size 1000 --part_config products_partition/ogb-product.json --standalone

@@ -11,8 +11,8 @@ import numpy as np
 from quiver.partition import partition_with_replication, partition_without_replication, select_nodes
 
 
-SCALE = 2
-GPU_CACHE_GB = 4
+SCALE = 4
+GPU_CACHE_GB = 2
 CPU_CACHE_GB = 160
 
 def get_nonzero():
@@ -141,25 +141,32 @@ def preprocess(host, host_size, p2p_group, p2p_size):
     torch.save(global2host.cpu(), f'/home/ubuntu/temp/mag/{host_size}h/global2host.pt')
     t2 = time.time()
     print(f'g2h {t2 - t1}')
-    local_probs_sum = host_probs_sum[host]
-    local_probs_sum[res[host]] = -1e6
-    _, local_order = torch.sort(local_probs_sum, descending=True)
+    del global2host
+    local_probs_sum = host_probs_sum[host].clone()
+    del host_probs_sum
+    local_p2p_probs = host_p2p_probs[host]
+    del host_p2p_probs
+    choice = res[host].clone()
+    del res
+
+    local_probs_sum_clone = local_probs_sum.clone()
+    local_probs_sum_clone[choice] = -1e6
+    
+    _, local_order = torch.sort(local_probs_sum_clone, descending=True)
+    del local_probs_sum_clone
     local_replicate_size = min(
-        nz.size(0), cpu_size + gpu_size * p2p_size) - res[host].size(0)
+        nz.size(0), cpu_size + gpu_size * p2p_size) - choice.size(0)
     replicate = local_order[:local_replicate_size]
     torch.save(replicate.cpu(),
                f'/home/ubuntu/temp/mag/{host_size}h/replicate{host}.pt')
     t3 = time.time()
     print(f'replicate {t3 - t2}')
-    total_range = torch.arange(end=nodes, dtype=torch.int64, device=0)
-    local_mask = global2host == host
-    local_part = total_range[local_mask]
-    local_all = torch.cat([local_part, replicate])
-    _, local_prev_order = torch.sort(host_probs_sum[host][local_all],
+    local_all = torch.cat([choice, replicate])
+    _, local_prev_order = torch.sort(local_probs_sum[local_all],
                                      descending=True)
     local_gpu_order = local_prev_order[:gpu_size * p2p_size]
     local_cpu_order = local_prev_order[gpu_size * p2p_size:]
-    local_p2p_probs = [prob[local_all] for prob in host_p2p_probs[host]]
+    local_p2p_probs = [prob[local_all] for prob in local_p2p_probs]
     local_res = partition_without_replication(0, local_p2p_probs,
                                               local_gpu_order)
     local_cpu_ids = local_all[local_cpu_order]
@@ -191,5 +198,5 @@ def init_feat(host, host_size, p2p_group, p2p_size):
         del t
 
 
-preprocess(0, 2, 2, 4)
+preprocess(0, 4, 2, 4)
 # init_feat(0, 1, 2, 4)

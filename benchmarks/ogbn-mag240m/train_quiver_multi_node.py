@@ -34,9 +34,9 @@ import gc
 
 ROOT = '/home/ubuntu/temp/mag'
 CPU_CACHE_GB = 160
-GPU_CACHE_GB = 4
-LOCAL_ADDR = '104.171.200.142'
-MASTER_ADDR = '104.171.200.142'
+GPU_CACHE_GB = 2
+LOCAL_ADDR = '104.171.200.18'
+MASTER_ADDR = '104.171.200.18'
 MASTER_PORT = 19216
 
 
@@ -343,8 +343,8 @@ def run(rank, args, quiver_sampler, quiver_feature, label, train_idx,
             batch = Batch(x=x, y=y, adjs_t=adjs).to(rank)
             t2 = time.time()
             optimizer.zero_grad()
-            loss = model(batch, 0)
-            loss.backward()
+            # loss = model(batch, 0)
+            # loss.backward()
             optimizer.step()
             t3 = time.time()
             sample_time.append(t1 - t0)
@@ -399,7 +399,7 @@ if __name__ == '__main__':
     print(args)
 
     seed_everything(42)
-    host_size = 2
+    host_size = 4
     local_size = 8
     host = 0
     datamodule = MAG240M(ROOT, args.batch_size, args.sizes, host, host_size,

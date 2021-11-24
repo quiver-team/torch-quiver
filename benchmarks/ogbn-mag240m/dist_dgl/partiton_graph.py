@@ -31,10 +31,23 @@ def load_mag240M():
 def load_paper100M():
     indptr = torch.load("/data/papers/ogbn_papers100M/csr/indptr_bi.pt")
     indices = torch.load("/data/papers/ogbn_papers100M/csr/indices_bi.pt")
+    train_idx = torch.load("/data/papers/ogbn_papers100M/index/train_idx.pt")
+    val_idx = torch.load("/data/papers/ogbn_papers100M/index/valid_idx.pt")
+    test_idx = torch.load("/data/papers/ogbn_papers100M/index/test_idx.pt")
+    label = torch.load("/data/papers/ogbn_papers100M/label/label.pt")
     csr_topo = quiver.CSRTopo(indptr=indptr, indices=indices)
-    train_mask = torch.ones(csr_topo.indptr.shape[0]-1, dtype=torch.uint8)
+
+    train_mask = torch.zeros(csr_topo.indptr.shape[0]-1, dtype=torch.uint8)
+    train_mask[train_idx] = 1
+
+    val_mask = torch.zeros(csr_topo.indptr.shape[0]-1, dtype=torch.uint8)
+    val_mask[val_idx] = 1
+
+    test_mask = torch.zeros(csr_topo.indptr.shape[0]-1, dtype=torch.uint8)
+    test_mask[test_idx] = 1
+
     
-    return train_mask, csr_topo
+    return (train_mask, val_mask, test_mask), csr_topo, None, label
 
 def load_products():
     root = "/home/dalong/data/products/"
@@ -113,7 +126,8 @@ if __name__ == '__main__':
     train_g.ndata['val_mask'] = data_split[1]
     train_g.ndata['test_mask'] = data_split[2]
     train_g.ndata["labels"] = label
-    train_g.ndata["features"] = feature
+    if feature is not None:
+        train_g.ndata["features"] = feature
 
     if args.balance_train:
         balance_ntypes = train_g.ndata['train_mask']
@@ -124,4 +138,6 @@ if __name__ == '__main__':
                                     part_method=args.part_method,
                                     balance_ntypes=balance_ntypes,
                                     balance_edges=args.balance_edges,
+                                    num_hops = 0,
+                                    reshuffle = True,
                                     num_trainers_per_machine=args.num_trainers_per_machine)

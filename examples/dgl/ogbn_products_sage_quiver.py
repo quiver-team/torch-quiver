@@ -1,5 +1,6 @@
+# Reaches around 0.7866 ± 0.0041 test accuracy.
+
 import dgl
-import numpy as np
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
@@ -68,17 +69,18 @@ class SAGE(nn.Module):
             sampler = dgl.dataloading.MultiLayerFullNeighborSampler(1)
             dataloader = dgl.dataloading.NodeDataLoader(
                 g,
-                th.arange(g.num_nodes()),
+                th.arange(g.num_nodes(), device=g.device),
                 sampler,
-                batch_size=args.batch_size,
-                shuffle=True,
+                device=device,
+                batch_size=args.batch_size*4,
+                shuffle=False,
                 drop_last=False,
-                num_workers=args.num_workers)
+                num_workers=0 if args.sample_gpu else args.num_workers*2)
 
-            for input_nodes, output_nodes, blocks in tqdm.tqdm(dataloader):
+            for input_nodes, output_nodes, blocks in tqdm(dataloader):
                 block = blocks[0].int().to(device)
 
-                h = x[input_nodes]
+                h = x[input_nodes].to(device)
                 h_dst = h[:block.num_dst_nodes()]
                 h = layer(block, (h, h_dst))
                 if l != len(self.layers) - 1:
@@ -111,7 +113,7 @@ def evaluate(model, g, nfeat, labels, val_nid, test_nid, device):
     with th.no_grad():
         pred = model.inference(g, nfeat, device)
     model.train()
-    return compute_acc(pred[val_nid], labels[val_nid]), compute_acc(pred[test_nid], labels[test_nid]), pred
+    return compute_acc(pred[val_nid], labels[val_nid]), compute_acc(pred[test_nid], labels[test_nid])
 
 
 def load_subtensor(nfeat, labels, seeds, input_nodes, device):
@@ -157,6 +159,7 @@ def run(args, device, data):
         model.parameters(), lr=args.lr, weight_decay=args.wd)
 
     # Training loop
+    best_val_acc = final_test_acc = 0
     for epoch in range(args.num_epochs):
         tic = time.time()
 
@@ -192,19 +195,24 @@ def run(args, device, data):
         approx_acc = total_correct / (len(dataloader) * args.batch_size)
         print(f'Epoch {epoch:02d}, Loss: {loss:.4f}, Approx. Train: {approx_acc:.4f}, Epoch Time: {time.time() - tic:.4f}')
 
+        if epoch >= 5:
+            val_acc, test_acc = evaluate(model, g, nfeat, labels, val_nid, test_nid, device)
+            print(f'Val: {val_acc:.4f}, Test: {test_acc:.4f}')
+
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                final_test_acc = test_acc
+    return final_test_acc
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser("multi-gpu training")
     argparser.add_argument('--gpu', type=int, default=0,
                            help="GPU device ID. Use -1 for CPU training")
-    argparser.add_argument('--num-epochs', type=int, default=10)
+    argparser.add_argument('--num-epochs', type=int, default=20)
     argparser.add_argument('--num-hidden', type=int, default=256)
     argparser.add_argument('--num-layers', type=int, default=3)
     argparser.add_argument('--fan-out', type=str, default='5,10,15')
     argparser.add_argument('--batch-size', type=int, default=1024)
-    argparser.add_argument('--val-batch-size', type=int, default=10000)
-    argparser.add_argument('--log-every', type=int, default=20)
-    argparser.add_argument('--eval-every', type=int, default=1)
     argparser.add_argument('--lr', type=float, default=0.003)
     argparser.add_argument('--dropout', type=float, default=0.5)
     argparser.add_argument('--num-workers', type=int, default=4,
@@ -254,4 +262,11 @@ if __name__ == '__main__':
     # Pack data
     data = train_idx, val_idx, test_idx, in_feats, labels, n_classes, nfeat, graph
 
-    run(args, device, data)
+    test_accs = []
+    for i in range(1, 11):
+        print(f'\nRun {i:02d}:\n')
+        test_acc = run(args, device, data)
+        test_accs.append(test_acc)
+    test_accs = th.tensor(test_accs)
+    print('============================')
+    print(f'Final Test: {test_accs.mean():.4f} ± {test_accs.std():.4f}')

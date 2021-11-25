@@ -252,7 +252,7 @@ if __name__ == '__main__':
             f'Current DGL version ({dgl.__version__}) does not support UnifiedTensor.'
         nfeat = dgl.contrib.UnifiedTensor(feat, device=device)
     else:
-        raise ValueError(f'Unsupported feature storing place {args.data}.')
+        raise ValueError(f'Unsupported feature storage location {args.data}.')
 
     in_feats = nfeat.shape[1]
     n_classes = (labels.max() + 1).item()

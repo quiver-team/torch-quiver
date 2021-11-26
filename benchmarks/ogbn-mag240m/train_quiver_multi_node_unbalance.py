@@ -34,7 +34,8 @@ import gc
 
 ROOT = '/home/ubuntu/temp/mag'
 CPU_CACHE_GB = 160
-GPU_CACHE_GB = 5
+GPU_CACHE_GB = 6
+GPU_IDLE_CACHE_GB = 14
 LOCAL_ADDR = '104.171.200.118'
 MASTER_ADDR = '104.171.200.118'
 MASTER_PORT = 19216
@@ -113,13 +114,17 @@ class MAG240M(LightningDataModule):
         else:
             host_size = self.host_size
             gpu_size = GPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * host_size * 4)
+            gpu_idle_size = GPU_IDLE_CACHE_GB * 1024 * 1024 * 1024 // (768 * host_size * 4)
             cpu_size = CPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * host_size * 4)
             host = self.host
             t0 = time.time()
             cpu_part = torch.zeros((cpu_size, 768 * host_size)).share_memory_()
             gpu_parts = []
             for i in range(self.local_size):
-                gpu_part = torch.zeros((gpu_size, 768 * host_size))
+                if i % 4 != 0:
+                    gpu_part = torch.zeros((gpu_idle_size, 768 * host_size))
+                else:
+                    gpu_part = torch.zeros((gpu_size, 768 * host_size))
                 gpu_parts.append(gpu_part)
             feat = Feature(0, list(range(self.local_size)), 0, 'p2p_clique_replicate')
             device_config = DeviceConfig(gpu_parts, cpu_part)
@@ -272,10 +277,11 @@ class GNN(torch.nn.Module):
 
 def run(rank, args, quiver_sampler, quiver_feature, label, train_idx,
         num_features, num_classes, id, local_size, host, host_size):
-    torch.cuda.set_device(rank)
+    device = rank * 4
+    torch.cuda.set_device(device)
     print(f'{rank} beg')
-    global_rank = rank + host * local_size
-    global_size = host_size * local_size
+    global_rank = rank + host * 2
+    global_size = host_size * 2
     os.environ['MASTER_ADDR'] = MASTER_ADDR
     os.environ['MASTER_PORT'] = '12355'
     dist.init_process_group('nccl', rank=global_rank, world_size=global_size)
@@ -285,6 +291,7 @@ def run(rank, args, quiver_sampler, quiver_feature, label, train_idx,
     torch.manual_seed(123 + 45 * rank)
 
     gpu_size = GPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * 4)
+    gpu_idle_size = GPU_IDLE_CACHE_GB * 1024 * 1024 * 1024 // (768 * 4)
     cpu_size = CPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * 4)
 
     train_loader = torch.utils.data.DataLoader(train_idx,
@@ -297,15 +304,15 @@ def run(rank, args, quiver_sampler, quiver_feature, label, train_idx,
                 num_classes,
                 args.hidden_channels,
                 num_layers=len(args.sizes),
-                dropout=args.dropout).to(rank)
-    model = DistributedDataParallel(model, device_ids=[rank])
+                dropout=args.dropout).to(device)
+    model = DistributedDataParallel(model, device_ids=[device])
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     global2host = torch.load(f'/home/ubuntu/temp/mag/{host_size}h/global2host.pt')
     replicate = torch.load(f'/home/ubuntu/temp/mag/{host_size}h/replicate{host}.pt')
-    info = quiver.feature.PartitionInfo(rank, host, host_size, global2host,
+    info = quiver.feature.PartitionInfo(device, host, host_size, global2host,
                                         replicate)
     comm = quiver.comm.NcclComm(global_rank, global_size, id, host_size,
-                                local_size)
+                                2)
     quiver_feature.lazy_init_from_ipc_handle()
     local_order = torch.load(
         f'/home/ubuntu/temp/mag/{host_size}h/local_order{host}.pt')
@@ -340,12 +347,13 @@ def run(rank, args, quiver_sampler, quiver_feature, label, train_idx,
             t1 = time.time()
             x = dist_feature[n_id]
             y = label[n_id[:batch_size]].to(torch.long)
-            batch = Batch(x=x, y=y, adjs_t=adjs).to(rank)
+            batch = Batch(x=x, y=y, adjs_t=adjs).to(device)
             t2 = time.time()
             optimizer.zero_grad()
             loss = model(batch, 0)
             loss.backward()
-            optimizer.step()
+            if cnt % 4 == 3:
+                optimizer.step()
             t3 = time.time()
             sample_time.append(t1 - t0)
             feat_time.append(t2 - t1)
@@ -399,9 +407,11 @@ if __name__ == '__main__':
     print(args)
 
     seed_everything(42)
-    host_size = 4
+    host_size = 1
     local_size = 8
     host = 0
+    l = list(range(local_size))
+    quiver.init_p2p(l)
     datamodule = MAG240M(ROOT, args.batch_size, args.sizes, host, host_size,
                          local_size, args.in_memory)
 
@@ -421,8 +431,6 @@ if __name__ == '__main__':
         quiver_sampler = datamodule.train_dataloader()
         quiver_feature = datamodule.x
         y, train_idx, num_features, num_classes = datamodule.y, datamodule.train_idx, datamodule.num_features, datamodule.num_classes
-        l = list(range(local_size))
-        quiver.init_p2p(l)
 
         del datamodule
         gc.collect()
@@ -434,7 +442,7 @@ if __name__ == '__main__':
                  args=(args, quiver_sampler, quiver_feature, y, train_idx,
                        num_features, num_classes, id, local_size, host,
                        host_size),
-                 nprocs=local_size,
+                 nprocs=2,
                  join=True)
 
     if args.evaluate:

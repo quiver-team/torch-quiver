@@ -240,7 +240,7 @@ def run(proc_id, n_gpus, args, devices, data):
     print('ready')
     if n_gpus > 1:
         dist_init_method = 'tcp://{master_ip}:{master_port}'.format(
-            master_ip='104.171.200.18', master_port='12975')
+            master_ip='104.171.200.118', master_port='12975')
         world_size = n_gpus * args.host_size
         th.distributed.init_process_group(backend="gloo",
                                           init_method=dist_init_method,
@@ -292,7 +292,7 @@ def run(proc_id, n_gpus, args, devices, data):
     for size in sizes:
         comm_sizes *= size
     comm_sizes = comm_sizes // 2 * (args.host_size - 1) // args.host_size
-    temp = th.zeros((comm_sizes, 1024), dtype=th.float16)
+    temp = th.zeros((comm_sizes, 768 * args.host_size), dtype=th.float16)
     for epoch in range(args.num_epochs):
         # if n_gpus > 1:
         #     dataloader.set_epoch(epoch)
@@ -342,7 +342,7 @@ def run(proc_id, n_gpus, args, devices, data):
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser("multi-gpu training")
     argparser.add_argument('--host', type=int, default=0)
-    argparser.add_argument('--host_size', type=int, default=4)
+    argparser.add_argument('--host_size', type=int, default=1)
     argparser.add_argument('--gpu',
                            type=str,
                            default='0,1,2,3,4,5,6,7',

@@ -258,7 +258,7 @@ class Feature(object):
                 gpu_ipc_handle_dict[clique_id] = self.clique_tensor_list[
                     clique_id].share_ipc()[0]
 
-        return gpu_ipc_handle_dict, self.cpu_part, self.device_list, self.device_cache_size, self.cache_policy, self.csr_topo
+        return gpu_ipc_handle_dict, self.cpu_part if self.cpu_part.numel() > 0 else None, self.device_list, self.device_cache_size, self.cache_policy, self.csr_topo
 
     def from_gpu_ipc_handle_dict(self, gpu_ipc_handle_dict, cpu_tensor):
         if self.cache_policy == "device_replicate":

@@ -303,15 +303,130 @@ def test_cdf():
     plt.savefig("reddit_30_cdf.png")
 
 
-
-
+def test_random_partiton():
+    train_idx, csr_topo, quiver_sampler = load_products()
     
-# test_metis()
-# test_random()
-# test_hot()
 
-#test_prob()
+    for partition_num in range(1, 10, 1):
+        idx_len = train_idx.size(0)
+        random.shuffle(train_idx)
+        partition_book = torch.randint(0, partition_num, size = (csr_topo.node_count, ))
 
-test_cdf()
-# preprocess()
-# bench_read()
+
+        local_train_idx = train_idx[:idx_len // partition_num]
+
+        train_loader = torch.utils.data.DataLoader(local_train_idx,
+                                                batch_size=1024,
+                                                pin_memory=True,
+                                                shuffle=True)
+        total_count = 0
+        total_hit = 0
+        for _ in range(10):
+            for seeds in train_loader:
+                n_id, _, _ = quiver_sampler.sample(seeds)
+                
+                hit_count = ((partition_book[n_id] == 0).nonzero()).shape[0]
+                total_hit += hit_count
+                total_count += n_id.shape[0]
+        print(f"Partition = {partition_num}, Local hit rate = {total_hit / total_count}")
+
+
+
+def test_random_partition_with_hot_replicate():
+    train_idx, csr_topo, quiver_sampler = load_products()
+
+    cache_rate = 0.2
+    node_degree = csr_topo.degree
+    _, idx = torch.sort(node_degree, descending=True)
+  
+
+    for partition_num in range(1, 10, 1):
+        idx_len = train_idx.size(0)
+        random.shuffle(train_idx)
+        feature = torch.arange(0, csr_topo.node_count, dtype=torch.long)
+        feature = feature[idx]
+        cached_nodes = int(cache_rate * csr_topo.node_count)
+        # random partition
+        partition_book = torch.randint(0, partition_num, size = (csr_topo.node_count, ))
+        # cache hot data 
+        partition_book[idx[:cached_nodes]] = 0
+
+        distribution = [((partition_book == partition).nonzero()).shape[0] for partition in range(partition_num)]
+
+        print(f"partition distribution: {distribution}")
+
+
+        local_train_idx = train_idx[:idx_len // partition_num]
+
+        train_loader = torch.utils.data.DataLoader(local_train_idx,
+                                                batch_size=1024,
+                                                pin_memory=True,
+                                                shuffle=True)
+        total_count = 0
+        total_hit = 0
+        for _ in range(10):
+            for seeds in train_loader:
+                n_id, _, _ = quiver_sampler.sample(seeds)
+                hit_count = ((partition_book[n_id] == 0).nonzero()).shape[0]
+                total_hit += hit_count
+                total_count += n_id.shape[0]
+        print(f"Partition = {partition_num}, Local hit rate = {total_hit / total_count}")
+
+
+def test_application_driven_partition_with_no_replication():
+    train_idx, csr_topo, quiver_sampler = load_products()
+    cache_rate = 0.2
+
+    for partition_num in range(2, 10, 1):
+        idx_len = train_idx.size(0)
+        random.shuffle(train_idx)
+        feature_access_distribution = torch.zeros((partition_num, csr_topo.node_count))
+        for _ in range(2):
+            for partition in range(partition_num):
+                partition_train_idx = train_idx[(idx_len // partition_num) * partition: (idx_len // partition_num) * (partition+1)]
+                train_loader = torch.utils.data.DataLoader(partition_train_idx,
+                                                        batch_size=1024,
+                                                        pin_memory=True,
+                                                        shuffle=True)
+                for seeds in train_loader:
+                        n_id, _, _ = quiver_sampler.sample(seeds)
+                        n_id = n_id.cpu()
+                        feature_access_distribution[partition][n_id] += 1
+
+        '''
+        feature_access_distribution_total = torch.sum(feature_access_distribution, dim = 1)
+        feature_access_distribution_total = feature_access_distribution_total.unsqueeze(0)
+        feature_access_distribution_total = torch.transpose(feature_access_distribution_total, 0, 1)
+        feature_access_distribution /= feature_access_distribution_total
+        '''
+
+        #partition_book = torch.argmax(feature_access_distribution, dim = 0)
+        partition_book = torch.randint(0, partition_num, size = (csr_topo.node_count, ))
+        _, idx = torch.sort(feature_access_distribution[1], descending=True)
+        total_access_count = ((feature_access_distribution[1] > 0).nonzero()).shape[0]
+        print(f"cached nodes = {int(total_access_count * cache_rate)}")
+        partition_book[idx[: int(idx.shape[0] * cache_rate)]] = 1
+
+        distribution = [((partition_book == partition).nonzero()).shape[0] for partition in range(partition_num)]
+
+        print(f"partition distribution: {distribution}")
+        
+        local_train_idx = train_idx[idx_len // partition_num: 2 * idx_len // partition_num]
+
+        train_loader = torch.utils.data.DataLoader(local_train_idx, batch_size=1024, pin_memory=True, shuffle=True)
+
+        total_count = 0
+        total_hit = 0
+        for _ in range(10):
+            for seeds in train_loader:
+                n_id, _, _ = quiver_sampler.sample(seeds)
+                hit_count = ((partition_book[n_id] == 1).nonzero()).shape[0]
+                total_hit += hit_count
+                total_count += n_id.shape[0]
+        print(f"Partition = {partition_num}, Local hit rate = {total_hit / total_count}")
+
+
+
+#test_random_partiton()
+#test_random_partition_with_hot_replicate()
+test_application_driven_partition_with_no_replication()

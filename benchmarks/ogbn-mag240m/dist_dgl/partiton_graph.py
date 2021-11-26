@@ -15,26 +15,31 @@ from dgl.data.tensor_serialize import save_tensors, load_tensors
 
 
 def load_mag240M():
-    indptr = torch.load("/data/mag/mag240m_kddcup2021/csr/indptr.pt")
-    indices = torch.load("/data/mag/mag240m_kddcup2021/csr/indices.pt")
-    dataset = MAG240MDataset("/data/mag")
+    indptr = torch.load("/home/ubuntu/temp/mag/mag240m_kddcup2021/csr/indptr.pt")
+    indices = torch.load("/home/ubuntu/temp/mag/mag240m_kddcup2021/csr/indices.pt")
+    dataset = MAG240MDataset("/home/ubuntu/temp/mag")
     train_idx = torch.from_numpy(dataset.get_idx_split('train'))
-    val_idx = torch.from_numpy(dataset.get_idx_split('validate'))
-    test_idx = torch.from_numpy(dataset.get_idx_split('test'))
+    val_idx = torch.from_numpy(dataset.get_idx_split('valid'))
+    test_idx = torch.from_numpy(dataset.get_idx_split('test-dev'))
 
     csr_topo = quiver.CSRTopo(indptr=indptr, indices=indices)
 
     train_mask = torch.zeros(csr_topo.indptr.shape[0]-1, dtype=torch.uint8)
     train_mask[train_idx] = 1
-    return train_mask, csr_topo
+    val_mask = torch.zeros(csr_topo.indptr.shape[0]-1, dtype=torch.uint8)
+    val_mask[val_idx] = 1
+    test_mask = torch.zeros(csr_topo.indptr.shape[0]-1, dtype=torch.uint8)
+    test_mask[test_idx] = 1
+    labels = torch.zeros(csr_topo.indptr.shape[0]-1, dtype=torch.uint8)
+    return (train_mask, val_mask, test_mask), csr_topo, None, labels
 
 def load_paper100M():
-    indptr = torch.load("/data/papers/ogbn_papers100M/csr/indptr_bi.pt")
-    indices = torch.load("/data/papers/ogbn_papers100M/csr/indices_bi.pt")
-    train_idx = torch.load("/data/papers/ogbn_papers100M/index/train_idx.pt")
-    val_idx = torch.load("/data/papers/ogbn_papers100M/index/valid_idx.pt")
-    test_idx = torch.load("/data/papers/ogbn_papers100M/index/test_idx.pt")
-    label = torch.load("/data/papers/ogbn_papers100M/label/label.pt")
+    indptr = torch.load("/home/ubuntu/temp/papers/ogbn_papers100M/csr/indptr_bi.pt")
+    indices = torch.load("/home/ubuntu/temp/papers/ogbn_papers100M/csr/indices_bi.pt")
+    train_idx = torch.load("/home/ubuntu/temp/papers/ogbn_papers100M/index/train_idx.pt")
+    val_idx = torch.load("/home/ubuntu/temp/papers/ogbn_papers100M/index/valid_idx.pt")
+    test_idx = torch.load("/home/ubuntu/temp/papers/ogbn_papers100M/index/test_idx.pt")
+    label = torch.load("/home/ubuntu/temp/papers/ogbn_papers100M/label/label.pt")
     csr_topo = quiver.CSRTopo(indptr=indptr, indices=indices)
 
     train_mask = torch.zeros(csr_topo.indptr.shape[0]-1, dtype=torch.uint8)
@@ -50,7 +55,7 @@ def load_paper100M():
     return (train_mask, val_mask, test_mask), csr_topo, None, label
 
 def load_products():
-    root = "/home/dalong/data/products/"
+    root = "/home/dalong/home/ubuntu/temp/products/"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     data = dataset[0]
     csr_topo = quiver.CSRTopo(data.edge_index)
@@ -99,7 +104,7 @@ if __name__ == '__main__':
                            help='turn the graph into an undirected graph.')
     argparser.add_argument('--balance_edges', action='store_true',
                            help='balance the number of edges in each partition.')
-    argparser.add_argument('--num_trainers_per_machine', type=int, default=1,
+    argparser.add_argument('--num_trainers_per_machine', type=int, default=8,
                            help='the number of trainers per machine. The trainer ids are stored\
                                 in the node feature \'trainer_id\'')
     argparser.add_argument('--output', type=str, default='data',

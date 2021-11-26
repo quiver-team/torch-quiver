@@ -34,9 +34,9 @@ import gc
 
 ROOT = '/home/ubuntu/temp/mag'
 CPU_CACHE_GB = 160
-GPU_CACHE_GB = 2
-LOCAL_ADDR = '104.171.200.18'
-MASTER_ADDR = '104.171.200.18'
+GPU_CACHE_GB = 5
+LOCAL_ADDR = '104.171.200.118'
+MASTER_ADDR = '104.171.200.118'
 MASTER_PORT = 19216
 
 
@@ -112,8 +112,8 @@ class MAG240M(LightningDataModule):
             self.x = torch.from_numpy(dataset.all_paper_feat).share_memory_()
         else:
             host_size = self.host_size
-            gpu_size = GPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * host_size * 4)
-            cpu_size = CPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * host_size * 4)
+            gpu_size = GPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * 4)
+            cpu_size = CPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * 4)
             host = self.host
             t0 = time.time()
             cpu_part = torch.zeros((cpu_size, 768 * host_size)).share_memory_()

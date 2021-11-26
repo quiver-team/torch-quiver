@@ -116,10 +116,10 @@ class MAG240M(LightningDataModule):
             cpu_size = CPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * 4)
             host = self.host
             t0 = time.time()
-            cpu_part = torch.zeros((cpu_size, 768 * host_size)).share_memory_()
+            cpu_part = torch.zeros((cpu_size, 768)).share_memory_()
             gpu_parts = []
             for i in range(self.local_size):
-                gpu_part = torch.zeros((gpu_size, 768 * host_size))
+                gpu_part = torch.zeros((gpu_size, 768))
                 gpu_parts.append(gpu_part)
             feat = Feature(0, list(range(self.local_size)), 0, 'p2p_clique_replicate')
             device_config = DeviceConfig(gpu_parts, cpu_part)

@@ -259,7 +259,7 @@ def run(proc_id, n_gpus, args, devices, data):
                      shape=[nodes, nodes])
     train_g = dgl.from_scipy(csc)
 
-    in_feats = 768 * args.host_size
+    in_feats = 768
 
     # Create PyTorch DataLoader for constructing blocks
     sampler = dgl.dataloading.MultiLayerNeighborSampler(
@@ -292,7 +292,7 @@ def run(proc_id, n_gpus, args, devices, data):
     for size in sizes:
         comm_sizes *= size
     comm_sizes = comm_sizes // 2 * (args.host_size - 1) // args.host_size
-    temp = th.zeros((comm_sizes, 768 * args.host_size), dtype=th.float16)
+    temp = th.zeros((comm_sizes, 768), dtype=th.float16)
     for epoch in range(args.num_epochs):
         # if n_gpus > 1:
         #     dataloader.set_epoch(epoch)

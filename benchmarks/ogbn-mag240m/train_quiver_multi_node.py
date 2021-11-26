@@ -33,7 +33,7 @@ from quiver.feature import DeviceConfig, Feature, DistFeature
 import gc
 
 ROOT = '/home/ubuntu/temp/mag'
-CPU_CACHE_GB = 160
+CPU_CACHE_GB = 100
 GPU_CACHE_GB = 5
 LOCAL_ADDR = '104.171.200.118'
 MASTER_ADDR = '104.171.200.118'
@@ -306,6 +306,7 @@ def run(rank, args, quiver_sampler, quiver_feature, label, train_idx,
                                         replicate)
     comm = quiver.comm.NcclComm(global_rank, global_size, id, host_size,
                                 local_size)
+    print('comm')
     quiver_feature.lazy_init_from_ipc_handle()
     local_order = torch.load(
         f'/home/ubuntu/temp/mag/{host_size}h/local_order{host}.pt')

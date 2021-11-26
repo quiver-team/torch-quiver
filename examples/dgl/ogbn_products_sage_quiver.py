@@ -75,7 +75,7 @@ class SAGE(nn.Module):
                 batch_size=args.batch_size*4,
                 shuffle=False,
                 drop_last=False,
-                num_workers=0 if args.sample_gpu else args.num_workers*2)
+                num_workers=0 if args.sample_gpu else args.num_workers)
 
             for input_nodes, output_nodes, blocks in tqdm(dataloader):
                 block = blocks[0].int().to(device)
@@ -229,7 +229,7 @@ if __name__ == '__main__':
         device = th.device('cpu')
 
     # load ogbn-products data
-    data = DglNodePropPredDataset(name='ogbn-products', root='/workspace/gnn/dataset/')
+    data = DglNodePropPredDataset(name='ogbn-products', root='/data/products')
     splitted_idx = data.get_idx_split()
     train_idx, val_idx, test_idx = splitted_idx['train'], splitted_idx['valid'], splitted_idx['test']
     graph, labels = data[0]

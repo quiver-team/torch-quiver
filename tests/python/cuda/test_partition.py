@@ -19,6 +19,7 @@ from torch_geometric.datasets import Reddit
 
 
 
+
 def test_metis():
     indptr = torch.load("/data/papers/ogbn_papers100M/csr/indptr.pt")
     indices = torch.load("/data/papers/ogbn_papers100M/csr/indices.pt")
@@ -233,6 +234,7 @@ def load_mag240M():
     train_idx = torch.from_numpy(dataset.get_idx_split('train'))
     csr_topo = quiver.CSRTopo(indptr=indptr, indices=indices)
     quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], 0, mode="UVA")
+    print(f"average degree of MAG240M = {torch.sum(csr_topo.degree) / csr_topo.node_count}")
     return train_idx, csr_topo, quiver_sampler
 
 def load_paper100M():
@@ -241,6 +243,7 @@ def load_paper100M():
     train_idx = torch.load("/data/papers/ogbn_papers100M/index/train_idx.pt")
     csr_topo = quiver.CSRTopo(indptr=indptr, indices=indices)
     quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], 0, mode="UVA")
+    print(f"average degree of paper100M = {torch.sum(csr_topo.degree) / csr_topo.node_count}")
     return train_idx, csr_topo, quiver_sampler
 
 def load_products():
@@ -251,6 +254,7 @@ def load_products():
     split_idx = dataset.get_idx_split()
     train_idx = split_idx['train']
     quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], 0, mode="UVA")
+    print(f"average degree of products = {torch.sum(csr_topo.degree) / csr_topo.node_count}")
     return train_idx, csr_topo, quiver_sampler
 
 def load_reddit():
@@ -260,15 +264,27 @@ def load_reddit():
     train_idx = data.train_mask.nonzero(as_tuple=False).view(-1)
     csr_topo = quiver.CSRTopo(data.edge_index)
     quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [25, 10], 0, mode="UVA")
+    print(f"average degree of Reddit = {torch.sum(csr_topo.degree) / csr_topo.node_count}")
     return train_idx, csr_topo, quiver_sampler
 
+def load_com_lj():
+    indptr = torch.load("/home/dalong/data/com-lj_indptr.pt")
+    indices = torch.load("/home/dalong/data/com-lj_indices.pt")
+    csr_topo = quiver.CSRTopo(indptr=indptr, indices=indices)
+    print("node count", csr_topo.node_count)
+    print("edge count", csr_topo.edge_count)
+    
+    quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, [15, 10, 5], 0, mode="UVA")
+    train_idx = torch.randint(0, csr_topo.node_count, (csr_topo.node_count // 5, ))
+    print(f"average degree of LJ = {torch.sum(csr_topo.degree) / csr_topo.node_count}")
+    return train_idx, csr_topo, quiver_sampler
 
 def test_cdf():
 
 
     #train_idx, csr_topo, quiver_sampler = load_mag240M()
     #train_idx, csr_topo, quiver_sampler = load_paper100M()
-    train_idx, csr_topo, quiver_sampler = load_products()
+    train_idx, csr_topo, quiver_sampler = load_com_lj()
     #train_idx, csr_topo, quiver_sampler = load_reddit()
 
     for partition_num in range(1, 10, 1):
@@ -281,10 +297,12 @@ def test_cdf():
                                                 batch_size=1024,
                                                 pin_memory=True,
                                                 shuffle=True)
-        for _ in range(10):
+        for epoch in range(5):
             for seeds in train_loader:
                 n_id, _, _ = quiver_sampler.sample(seeds)
                 hit_cum[n_id] += 1
+            #print(f"Done {epoch}/{partition_num}")
+
         
         sorted_hit_cum, _ = torch.sort(hit_cum, descending=True)
         total_hit = torch.sum(sorted_hit_cum)
@@ -300,10 +318,11 @@ def test_cdf():
 
         plt.plot(x, levels, label=f"partition_num={partition_num}")
         plt.scatter(x, levels, label=f"partition_num={partition_num}")
-    plt.savefig("reddit_30_cdf.png")
+    plt.savefig("lj_30_cdf.png")
 
 
 def test_random_partiton():
+    print(f"{'=' * 30 } Random Partition {'=' * 30 }")
     train_idx, csr_topo, quiver_sampler = load_products()
     
 
@@ -311,6 +330,10 @@ def test_random_partiton():
         idx_len = train_idx.size(0)
         random.shuffle(train_idx)
         partition_book = torch.randint(0, partition_num, size = (csr_topo.node_count, ))
+
+        distribution = [((partition_book == partition).nonzero()).shape[0] for partition in range(partition_num)]
+
+        print(f"partition distribution: {distribution}")
 
 
         local_train_idx = train_idx[:idx_len // partition_num]
@@ -333,14 +356,16 @@ def test_random_partiton():
 
 
 def test_random_partition_with_hot_replicate():
-    train_idx, csr_topo, quiver_sampler = load_paper100M()
+    print(f"{'=' * 30 } Random Partition With Replication {'=' * 30 }")
+    train_idx, csr_topo, quiver_sampler = load_reddit()
 
     cache_rate = 0.2
     node_degree = csr_topo.degree
     _, idx = torch.sort(node_degree, descending=True)
-  
+    x = []
+    y = []
 
-    for partition_num in range(1, 10, 1):
+    for partition_num in range(2, 10, 1):
         idx_len = train_idx.size(0)
         random.shuffle(train_idx)
         feature = torch.arange(0, csr_topo.node_count, dtype=torch.long)
@@ -371,11 +396,20 @@ def test_random_partition_with_hot_replicate():
                 total_hit += hit_count
                 total_count += n_id.shape[0]
         print(f"Partition = {partition_num}, Local hit rate = {total_hit / total_count}")
+        x.append(partition_num)
+        y.append(total_hit / total_count)
+
+    plt.plot(x, y)
 
 
-def test_application_driven_partition_with_no_replication():
-    train_idx, csr_topo, quiver_sampler = load_paper100M()
+def test_application_driven_partition():
+    print(f"{'=' * 30 } ADP With Replication {'=' * 30 }")
+    train_idx, csr_topo, quiver_sampler = load_reddit()
     cache_rate = 0.2
+
+    x = []
+    y = []
+    
 
     for partition_num in range(2, 10, 1):
         idx_len = train_idx.size(0)
@@ -404,7 +438,7 @@ def test_application_driven_partition_with_no_replication():
         partition_book = torch.randint(0, partition_num, size = (csr_topo.node_count, ))
         _, idx = torch.sort(feature_access_distribution[0], descending=True)
         total_access_count = idx.shape[0]
-        print(f"cached nodes = {int(total_access_count * cache_rate)}")
+        #print(f"cached nodes = {int(total_access_count * cache_rate)}")
         partition_book[idx[: int(idx.shape[0] * cache_rate)]] = 0
 
         distribution = [((partition_book == partition).nonzero()).shape[0] for partition in range(partition_num)]
@@ -424,10 +458,14 @@ def test_application_driven_partition_with_no_replication():
                 total_hit += hit_count
                 total_count += n_id.shape[0]
         print(f"Partition = {partition_num}, Local hit rate = {total_hit / total_count}")
+        x.append(partition_num)
+        y.append(total_hit / total_count)
+    
+    plt.plot(x, y)
 
 
-
+#test_cdf()
 #test_random_partiton()
 test_random_partition_with_hot_replicate()
-#test_cdf()
-#test_application_driven_partition_with_no_replication()
+test_application_driven_partition()
+plt.savefig("local_hit_rate.png")

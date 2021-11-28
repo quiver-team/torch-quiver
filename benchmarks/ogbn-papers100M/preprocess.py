@@ -27,8 +27,8 @@ from quiver.partition import partition_with_replication, partition_without_repli
 # path.mkdir(parents=True)
 
 SCALE = 1
-GPU_CACHE_GB = 16
-CPU_CACHE_GB = 26
+GPU_CACHE_GB = 4
+CPU_CACHE_GB = 18
 
 
 def get_csr_from_coo(edge_index, reverse=False):
@@ -210,4 +210,4 @@ def preprocess(host, host_size, p2p_group, p2p_size):
 # sort_feature()
 # process_index()
 
-preprocess(0, 2, 1, 2)
+preprocess(0, 3, 1, 2)

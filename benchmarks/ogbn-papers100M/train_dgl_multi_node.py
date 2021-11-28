@@ -343,7 +343,7 @@ def run(proc_id, n_gpus, args, devices, data):
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser("multi-gpu training")
     argparser.add_argument('--host', type=int, default=0)
-    argparser.add_argument('--host_size', type=int, default=1)
+    argparser.add_argument('--host_size', type=int, default=3)
     argparser.add_argument('--gpu',
                            type=str,
                            default='0,1',

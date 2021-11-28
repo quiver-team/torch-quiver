@@ -33,8 +33,8 @@ from quiver.feature import DeviceConfig, Feature, DistFeature
 import gc
 
 ROOT = '/data/papers'
-CPU_CACHE_GB = 26
-GPU_CACHE_GB = 16
+CPU_CACHE_GB = 18
+GPU_CACHE_GB = 4
 LOCAL_ADDR = '192.168.0.78'
 MASTER_ADDR = '192.168.0.78'
 MASTER_PORT = 19216
@@ -290,7 +290,7 @@ def run(rank, args, quiver_sampler, quiver_feature, label, train_idx,
                                                shuffle=True)
 
     model = GNN(args.model,
-                num_features * host_size,
+                num_features,
                 num_classes,
                 args.hidden_channels,
                 num_layers=len(args.sizes),
@@ -395,7 +395,7 @@ if __name__ == '__main__':
     print(args)
 
     seed_everything(42)
-    host_size = 2
+    host_size = 3
     local_size = 2
     host = 0
     datamodule = MAG240M(ROOT, args.batch_size, args.sizes, host, host_size,

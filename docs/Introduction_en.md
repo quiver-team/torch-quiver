@@ -163,14 +163,14 @@ We show that Quiver has a better performance and a better scalability.
 
 When we train `ogb-product` and `reddit` datasets on the machine with NVLink, the speedup with 2 GPUs are 2.25 and 2.75(batch_size=2048), which shows the super-linear scalability of our feature collection strategy.
 
-## 4 Future Works
+## 5 Future Works
 
 This time we open-source the single-machine version of Quiver. Next we will work on new features below:
 
 1. **Adaptive allocation**: Now the strategy choice of feature collection and sampling is manually configured. This could be improved by providing the mechanism of making such decisions automatically according to the characteristics of the workload and hardware.
 2. **Distributed Quiver**：Next we will support multi-machine distributed version of Quiver to train larger datasets.
 
-## 5 End
+## 6 End
 
 The **quiver-team** community will work on adaptive and scalable AI systems. Quiver will fully utilize hardware to help users train GNN efficiently. Quiver is being developed actively, and we hope people who are interested can build Quiver and make it a better GNN system.
 

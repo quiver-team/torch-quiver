@@ -1,10 +1,13 @@
 #pragma once
 #include <algorithm>
 #include <random>
-
+#include <quiver/common.hpp>
 #include <quiver/quiver.hpp>
 #include <quiver/sparse.hpp>
 #include <quiver/zip.hpp>
+#include <ATen/Parallel.h>
+#include <iostream>
+
 namespace quiver
 {
 // sample at most k elements from [begin, end), returns the sampled count.
@@ -55,22 +58,46 @@ class quiver<T, CPU>
     sample_kernel(const std::vector<T> &inputs, int k) const
     {
         const size_t bs = inputs.size();
-        std::vector<T> outputs(k * bs);
+        std::vector<T> outputs;
         std::vector<T> output_counts(bs);
+        std::vector<T> output_count_prefix_sum(bs + 1);
+        output_count_prefix_sum[0] = 0;
 
         const T n = row_ptr_.size();
         const T m = col_idx_.size();
-        size_t total = 0;
-        for (size_t i = 0; i < bs; ++i) {
-            T v = inputs[i];
-            T begin = row_ptr_[v];
-            const T end = v + 1 < n ? row_ptr_[v + 1] : m;
-            output_counts[i] =
-                safe_sample(col_idx_.data() + begin, col_idx_.data() + end, k,
-                            outputs.data() + total);
-            total += output_counts[i];
+
+        std::cout<<"get num threads "<< at::get_num_threads()<<std::endl;
+        
+        at::parallel_for(0, bs, 1, [&](size_t start, size_t end){
+            for(size_t i = start; i < end; i++){
+                T v = inputs[i];
+                T begin = row_ptr_[v];
+                const T end = v + 1 < n ? row_ptr_[v + 1] : m;
+                output_counts[i] = (end - begin) < k ? end - begin : k;
+            }
+        });
+
+        {
+            // output_count_prefix_sum should be [0, output_counts[0], output_counts[0] + output_counts[1], ]
+            for(size_t i = 1; i <= bs; i ++){
+                output_count_prefix_sum[i] = output_count_prefix_sum[i - 1] + output_counts[i - 1];
+            }
+
         }
-        outputs.resize(total);
+
+        //std::cout<<"all sampled nodes "<< output_count_prefix_sum[bs]<<std::endl;
+        outputs.resize(output_count_prefix_sum[bs]);
+
+        at::parallel_for(0, bs, 1, [&](size_t start, size_t end){
+            for(size_t i = start; i < end; ++i) {
+                T v = inputs[i];
+                T begin = row_ptr_[v];
+                const T end = v + 1 < n ? row_ptr_[v + 1] : m;
+                
+                safe_sample(col_idx_.data() + begin, col_idx_.data() + end, k, outputs.data() + output_count_prefix_sum[i]);
+            }
+
+        });
         return std::make_tuple(std::move(outputs), std::move(output_counts));
     }
 };

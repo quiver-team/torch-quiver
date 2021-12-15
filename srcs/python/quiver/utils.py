@@ -210,7 +210,21 @@ class CSRTopo:
         Returns:
             int: edge count
         """
-        return self.indices_.shape[0] - 1
+        return self.indices_.shape[0]
+
+    
+    def share_memory_(self):
+        """
+        Place this CSRTopo in shared memory
+        """
+        self.indptr_.share_memory_()
+        self.indices_.share_memory_()
+        if self.eid_ is not None:
+            self.eid_.share_memory_()
+        
+        if self.feature_order_ is not None:
+            self.feature_order_.share_memory_()
+
 
 
 def reindex_by_config(adj_csr: CSRTopo, graph_feature, gpu_portion):

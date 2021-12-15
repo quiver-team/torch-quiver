@@ -30,3 +30,5 @@ def reduce_pyg_sampler(sampler):
 def init_reductions():
     ForkingPickler.register(quiver.Feature, reduce_feature)
     ForkingPickler.register(quiver.pyg.GraphSageSampler, reduce_pyg_sampler)
+    ForkingPickler.register(quiver.pyg.MixedGraphSageSampler, reduce_pyg_sampler)
+

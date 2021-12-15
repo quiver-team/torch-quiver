@@ -11,7 +11,6 @@ import os.path as osp
 import quiver
 import torch.multiprocessing as mp
 from multiprocessing.reduction import ForkingPickler
-#from quiver.pyg import GraphSageSampler
 import torch
 from torch import Tensor
 from torch_sparse import SparseTensor
@@ -25,114 +24,9 @@ from torch import Tensor
 from torch_sparse import SparseTensor
 import torch_quiver as qv
 from typing import List, Optional, Tuple, NamedTuple, Union, Callable
-
-__all__ = ["GraphSageSampler", "GraphStructure"]
-
-
-class Adj(NamedTuple):
-    edge_index: torch.Tensor
-    e_id: torch.Tensor
-    size: Tuple[int, int]
-
-    def to(self, *args, **kwargs):
-        return Adj(self.edge_index.to(*args, **kwargs),
-                   self.e_id.to(*args, **kwargs), self.size)
-
-
-class GraphSageSampler:
-    r"""
-    The graphsage sampler from the `"Inductive Representation Learning on
-    Large Graphs" <https://arxiv.org/abs/1706.02216>`_ paper, which allows
-    for mini-batch training of GNNs on large-scale graphs where full-batch
-    training is not feasible.
-
-    Args:
-        csr_topo (quiver_utils.CSRTopo): A quiver_utils.CSRTopo
-        sizes ([int]): The number of neighbors to sample for each node in each
-            layer. If set to :obj:`sizes[l] = -1`, all neighbors are included
-            in layer :obj:`l`.
-        device (int): Device which sample kernel will be launched
-        num_nodes (int, optional): The number of nodes in the graph.
-            (default: :obj:`None`)
-        mode (str): Sample mode, choices are [UVA, GPU].
-            (default: :obj: `UVA`)
-    """
-    def __init__(self,
-                 csr_topo: quiver_utils.CSRTopo,
-                 sizes: List[int],
-                 device,
-                 mode="UVA"):
-
-        self.sizes = sizes
-
-        self.quiver = None
-        self.csr_topo = csr_topo
-
-        self.mode = mode
-        if device >= 0:
-            edge_id = torch.zeros(1, dtype=torch.long)
-            self.quiver = qv.new_quiver_from_csr_array(self.csr_topo.indptr,
-                                                       self.csr_topo.indices,
-                                                       edge_id, device,
-                                                       self.mode != "UVA")
-
-        self.device = device
-
-        self.ipc_handle_ = None
-
-    def sample_layer(self, batch, size):
-        self.lazy_init_quiver()
-        if not isinstance(batch, torch.Tensor):
-            batch = torch.tensor(batch)
-
-        batch_size: int = len(batch)
-        n_id = batch.to(torch.device(self.device))
-        n_id, count = self.quiver.sample_neighbor(0, n_id, size)
-        return n_id, count
-
-    def lazy_init_quiver(self):
-        if self.quiver is not None:
-            return
-        self.device = torch.cuda.current_device()
-        edge_id = torch.zeros(1, dtype=torch.long)
-        self.quiver = qv.new_quiver_from_csr_array(self.csr_topo.indptr,
-                                                   self.csr_topo.indices,
-                                                   edge_id, self.device,
-                                                   self.mode != "UVA")
-
-    def reindex(self, inputs, outputs, counts):
-        return qv.reindex_single(inputs, outputs, counts)
-
-    def sample(self, input_nodes):
-        self.lazy_init_quiver()
-        nodes = input_nodes.to(self.device)
-        adjs = []
-
-        batch_size = len(nodes)
-        for size in self.sizes:
-            out, cnt = self.sample_layer(nodes, size)
-            frontier, row_idx, col_idx = self.reindex(nodes, out, cnt)
-            row_idx, col_idx = col_idx, row_idx
-            edge_index = torch.stack([row_idx, col_idx], dim=0)
-
-            adj_size = torch.LongTensor([
-                frontier.size(0),
-                nodes.size(0),
-            ])
-            e_id = torch.tensor([])
-            adjs.append(Adj(edge_index, e_id, adj_size))
-            nodes = frontier
-
-        return nodes, batch_size, adjs[::-1]
-
-    def share_ipc(self):
-        return self.csr_topo, self.sizes, self.mode
-
-    @classmethod
-    def lazy_from_ipc_handle(cls, ipc_handle):
-        csr_topo, sizes, mode = ipc_handle
-        return cls(csr_topo, sizes, -1, mode)
-
+from dataclasses import dataclass
+from sampler import MixedGraphSageSampler, GraphSageSampler, SampleJob
+import random
 
 def test_GraphSageSampler():
     """
@@ -190,22 +84,23 @@ def child_process(rank, sage_sampler):
 
 
 def test_ipc():
-    root = "/data/products/"
+    root = "/home/dalong/data/products/"
     dataset = PygNodePropPredDataset('ogbn-products', root)
     torch.cuda.set_device(0)
     data = dataset[0]
     csr_topo = quiver.CSRTopo(data.edge_index)
-    sage_sampler = quiver.pyg.GraphSageSampler(csr_topo,
-                                               sizes=[15, 10, 5],
-                                               device=0,
-                                               mode="GPU")
+    sage_sampler = GraphSageSampler(csr_topo,
+                                    sizes=[15, 10, 5],
+                                    device=0,
+                                    mode="GPU")
 
-    mp.spawn(child_process, args=(sage_sampler), nprocs=1, join=True)
+    mp.spawn(child_process, args=(sage_sampler, ), nprocs=1, join=True)
 
 
 def rebuild_pyg_sampler(cls, ipc_handle):
     print("rebuild sampler")
     sampler = cls.lazy_from_ipc_handle(ipc_handle)
+    print("rebuild successfully")
     return sampler
 
 
@@ -219,12 +114,85 @@ def reduce_pyg_sampler(sampler):
 
 
 def init_reductions():
+    print("init reductions")
     ForkingPickler.register(GraphSageSampler, reduce_pyg_sampler)
+    ForkingPickler.register(MixedGraphSageSampler, reduce_pyg_sampler)
 
+def test_cpu_mode():
+    print(f"{'*' * 10} TEST WITH REAL GRAPH {'*' * 10}")
+
+    root = "/home/dalong/data/products/"
+    dataset = PygNodePropPredDataset('ogbn-products', root)
+    data = dataset[0]
+
+    seeds_size = 128 * 15 * 10
+    neighbor_size = 5
+
+    seeds = np.arange(2000000)
+    np.random.shuffle(seeds)
+    seeds = seeds[:seeds_size]
+    seeds = torch.from_numpy(seeds).type(torch.long)
+
+    csr_topo = quiver.CSRTopo(data.edge_index)
+
+    sage_sampler = GraphSageSampler(csr_topo, sizes=[neighbor_size], device=-1, mode="CPU")
+    print(csr_topo.indices[csr_topo.indptr[seeds[0]]: csr_topo.indptr[seeds[0] + 1]])
+    res = sage_sampler.sample(seeds)
+    print(res)
+
+class MySampleJob(SampleJob):
+    def __init__(self, seeds, batch_size):
+        self.seeds = seeds
+        self.batch_size = batch_size
+    
+    def __getitem__(self, index):
+        start = self.batch_size * index
+        return self.seeds[start: start + self.batch_size]
+    
+    def shuffle(self):
+        random.shuffle(self.seeds)
+    
+    def __len__(self):
+        return self.seeds.shape[0] // self.batch_size
+
+def test_mixed_mode():
+    root = "/home/dalong/data/products/"
+    dataset = PygNodePropPredDataset('ogbn-products', root)
+    train_idx = dataset.get_idx_split()['train']
+    sample_job = MySampleJob(train_idx, 64)
+
+    data = dataset[0]
+    csr_topo = quiver.CSRTopo(data.edge_index)
+    sage_sampler = MixedGraphSageSampler(sample_job, 5, csr_topo, sizes=[15, 10, 5], device=0, mode="UVA_CPU_MIXED")
+    for epoch in range(10):
+        for res in sage_sampler:
+            pass
+        print("epoch finished")
+
+def mixed_child_process(rank, sage_sampler):
+    for epoch in range(2):
+        for res in sage_sampler:
+            pass
+        print("epoch finished")
+
+def test_mixed_mode_ipc():
+    root = "/home/dalong/data/products/"
+    dataset = PygNodePropPredDataset('ogbn-products', root)
+    train_idx = dataset.get_idx_split()['train']
+    sample_job = MySampleJob(train_idx, 256)
+
+    data = dataset[0]
+    csr_topo = quiver.CSRTopo(data.edge_index)
+    sage_sampler = quiver.pyg.MixedGraphSageSampler(sample_job, 5, csr_topo, sizes=[15, 10, 5], device=0, mode="UVA_CPU_MIXED")
+
+    mp.spawn(mixed_child_process, args=(sage_sampler, ), nprocs=1, join=True)
 
 if __name__ == "__main__":
     mp.set_start_method("spawn")
-    init_reductions()
+    #init_reductions()
 
     #test_GraphSageSampler()
-    test_ipc()
+    #test_ipc()
+    #test_cpu_mode()
+    #test_mixed_mode()
+    test_mixed_mode_ipc()

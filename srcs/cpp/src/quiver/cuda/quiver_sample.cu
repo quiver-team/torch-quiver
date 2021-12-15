@@ -97,6 +97,19 @@ class TorchQuiver
         return sample_sub_with_stream(0, vertices, k);
     }
 
+    void cal_neighbor_prob(int stream_num, const torch::Tensor last_prob,
+                           torch::Tensor cur_prob, int k)
+    {
+        cudaStream_t stream = 0;
+        auto p = quiver_.csr();
+        const T *indptr = p.first;
+        const T *indices = p.second;
+        size_t block = (last_prob.size(0) + 127) / 128;
+        cal_next<<<block, 128, 0, stream>>>(
+            last_prob.data_ptr<float>(), cur_prob.data_ptr<float>(),
+            cur_prob.size(0), k, indptr, indices);
+    }
+
     std::tuple<torch::Tensor, torch::Tensor>
     sample_neighbor(int stream_num, const torch::Tensor &vertices, int k)
     {
@@ -493,6 +506,6 @@ void register_cuda_quiver_sample(pybind11::module &m)
              py::call_guard<py::gil_scoped_release>())
         .def("sample_neighbor", &quiver::TorchQuiver::sample_neighbor,
              py::call_guard<py::gil_scoped_release>())
-        .def("reindex_single", &quiver::TorchQuiver::reindex_single,
-            py::call_guard<py::gil_scoped_release>());
+        .def("cal_neighbor_prob", &quiver::TorchQuiver::cal_neighbor_prob,
+             py::call_guard<py::gil_scoped_release>());
 }

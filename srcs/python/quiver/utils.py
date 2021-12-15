@@ -38,7 +38,10 @@ def color_mat(access_book, device_list):
     clique2device = {}
     clique_res = []
     all_nodes = list(range(len(device_list)))
-    find_cliques(access_book, clique_res, all_nodes, [], [])
+    if len(device_list) == 8:
+        clique_res = [[0,1,2,3],[4,5,6,7]]
+    else:
+        find_cliques(access_book, clique_res, all_nodes, [], [])
     for index, clique in enumerate(clique_res):
         clique2device[index] = []
         for device_idx in clique:

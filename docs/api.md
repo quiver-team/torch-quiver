@@ -1,14 +1,37 @@
-# Documentation for `quiver.Feature`
+# Documentation for `torch-quiver`
 
 ::: quiver.Feature
     handler: python
     selection:
       members:
         - from_cpu_tensor
+        - from_mmap
+        - set_local_order
         - size
         - share_ipc
         - new_from_ipc_handle
         - dim
+    rendering:
+      show_source: true
+      show_root_heading: true
+
+::: quiver.DistFeature
+    handler: python
+    rendering:
+      show_source: true
+      show_root_heading: true
+
+::: quiver.NcclComm
+    handler: python
+    selection:
+      members:
+        - exchange
+    rendering:
+      show_source: true
+      show_root_heading: true
+
+::: quiver.PartitionInfo
+    handler: python
     rendering:
       show_source: true
       show_root_heading: true
@@ -55,5 +78,20 @@
       show_source: true
       show_root_heading: true
 
+::: quiver.partition.partition_with_replication
+    handler: python
+    rendering:
+      show_source: true
+      show_root_heading: true
 
+::: quiver.partition.partition_without_replication
+    handler: python
+    rendering:
+      show_source: true
+      show_root_heading: true
 
+::: quiver.partition.partition_free
+    handler: python
+    rendering:
+      show_source: true
+      show_root_heading: true

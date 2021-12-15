@@ -366,6 +366,17 @@ class quiver<T, CUDA>
         }
     }
 
+    std::pair<const T *, const T *> csr()
+    {
+        if (quiver_mode == DMA) {
+            return std::make_pair(
+                (const T *)thrust::raw_pointer_cast(row_ptr_.data()),
+                (const T *)thrust::raw_pointer_cast(col_idx_.data()));
+        } else {
+            return std::make_pair(row_ptr_mapped_, col_idx_mapped_);
+        }
+    }
+
     void new_sample(const cudaStream_t stream, int k, T *input_begin,
                     int input_size, T *output_ptr_begin, T *output_count_begin,
                     T *output_begin, T *output_idx) const

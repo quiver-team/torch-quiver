@@ -196,17 +196,18 @@ def cpu_sampler_worker_loop(rank, quiver_sampler, task_queue, result_queue):
 
 class MixedGraphSageSampler:
     r"""
-    Quiver's MixedGraphSageSampler behaves just like `GraphSageSampler` but trying to utilize both GPUs and CPUs to sample graphs.
-    It can work in one of [`GPU_CPU_MIXED`, `UVA_CPU_MIXED`, `UVA_ONLY`, `GPU_ONLY`] modes. 
+    Quiver's GraphSageSampler behaves just like Pyg's `NeighborSampler` but with much higher performance.
+    It can work in `UVA` mode or `GPU` mode. You can set `mode=GPU` if you have enough GPU memory to place graph's topology data which will offer the best sample performance.
+    When your graph is too big for GPU memory, you can set `mode=UVA` to still use GPU to perform sample but place the data in host memory. `UVA` mode suffers 30%-40% performance loss compared to `GPU` mode
+    but is much faster than CPU sampling(normally 16x~20x) and it consumes much less GPU memory compared to `GPU` mode.
+
     Args:
-        sample_job (SampleJob): A quiver.SampleJob for describing sample tasks
-        num_workers (int): Decide parallelism for CPU sampler.
         csr_topo (quiver.CSRTopo): A quiver.CSRTopo for graph topology
         sizes ([int]): The number of neighbors to sample for each node in each
             layer. If set to `sizes[l] = -1`, all neighbors are included
             in layer `l`.
         device (int): Device which sample kernel will be launched
-        mode (str): Sample mode, choices are [`GPU_CPU_MIXED`, `UVA_CPU_MIXED`, `UVA_ONLY`, `GPU_ONLY`], default is `UVA_CPU_MIXED`.
+        mode (str): Sample mode, choices are [`GPU_CPU_MIXED`, `UVA_CPU_MIXED`], default is `UVA_CPU_MIXED`.
     """
     def __init__(self,
                  sample_job: SampleJob,
@@ -216,7 +217,7 @@ class MixedGraphSageSampler:
                  device = 0,
                  mode="UVA_CPU_MIXED"):
 
-        assert mode in ["UVA_CPU_MIXED", "GPU_CPU_MIXED", "UVA_ONLY", "GPU_ONLY"], f"mode should be one of {['UVA_CPU_MIXED', 'GPU_CPU_MIXED', 'UVA_ONLY', 'GPU_ONLY']}"
+        assert mode in ["UVA_CPU_MIXED", "GPU_CPU_MIXED"], f"mode should be one of {['UVA_CPU_MIXED', 'GPU_CPU_MIXED']}"
         
         self.csr_topo = csr_topo
         self.csr_topo.share_memory_()
@@ -240,39 +241,30 @@ class MixedGraphSageSampler:
         self.device_sample_total = 0
         self.cpu_sample_total = 0
 
+        
         self.worker_ids = itertools.cycle(range(self.num_workers))
     
         self.inited = False
-        self.epoch = 0
     
     def __iter__(self):
         self.sample_job.shuffle()
-        if self.epoch <= 1:
-            self.device_task_remain = None
-            self.cpu_task_remain = None
-            self.device_sample_time = 0
-            self.cpu_sample_time = 0
-            self.device_sample_total = 0
-            self.cpu_sample_total = 0
-        
+        self.device_task_remain = None
+        self.cpu_task_remain = None
         self.current_task_id = 0
-        self.epoch += 1
+        self.device_sample_time = 0
+        self.cpu_sample_time = 0
+        self.device_sample_total = 0
+        self.cpu_sample_total = 0
+        
         return self.iter_sampler()
 
     def decide_task_num(self):
         if self.device_task_remain is None:
-            self.device_task_remain = max(20, self.num_workers * 2)
-            if self.mode in ["GPU_ONLY", "UVA_ONLY"]:
-                self.cpu_task_remain = 0
-            else:
-                self.cpu_task_remain = self.num_workers
+            self.device_task_remain = self.num_workers * 2
+            self.cpu_task_remain = self.num_workers
         else:
-            self.device_task_remain = max(20, self.num_workers * 2)
-            if self.mode in ["GPU_ONLY", "UVA_ONLY"]:
-                self.cpu_task_remain = 0
-            else:
-                self.cpu_task_remain = max(1, int(self.device_sample_time * self.device_task_remain  / self.cpu_sample_time / 2))
-
+            self.device_task_remain = self.num_workers * 2
+            self.cpu_task_remain = max(1, int(self.device_sample_time * self.device_task_remain  / self.cpu_sample_time / 2))
 
         print(f"Device average sample time: {self.device_sample_time}\tCPU average sample time: {self.cpu_sample_time}")
         print(f"Assign {self.device_task_remain} tasks to Device, Assign {self.cpu_task_remain} to CPU")

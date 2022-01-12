@@ -19,6 +19,9 @@ from quiver.shard_tensor import ShardTensorConfig
 from ogb.lsc import MAG240MDataset
 from scipy.sparse import csc_matrix
 
+FEATURE_DIM = 768
+ROOT = '/data/mag'
+
 
 class SAGE(nn.Module):
     def __init__(self, in_feats, n_hidden, n_classes, n_layers, activation,
@@ -131,12 +134,12 @@ def load_reddit():
 
 
 def load_240m():
-    dataset = MAG240MDataset('/home/ubuntu/temp/mag')
+    dataset = MAG240MDataset(ROOT)
     train_idx = th.from_numpy(dataset.get_idx_split('train'))
-    indptr = th.load(
-        '/home/ubuntu/temp/mag/mag240m_kddcup2021/csr/indptr.pt').share_memory_()
-    indices = th.load(
-        '/home/ubuntu/temp/mag/mag240m_kddcup2021/csr/indices.pt').share_memory_()
+    indptr = th.load(osp.join(
+        ROOT, 'mag240m_kddcup2021/csr/indptr.pt')).share_memory_()
+    indices = th.load(osp.join(
+        ROOT, 'mag240m_kddcup2021/csr/indices.pt')).share_memory_()
 
     return (indptr, indices), train_idx, th.from_numpy(
         dataset.paper_label), dataset.num_classes
@@ -211,10 +214,28 @@ def load_subtensor(nfeat, labels, seeds, input_nodes, dev_id, n_gpus, host,
     """
     Extracts features and labels for a subset of nodes.
     """
-    per_host_nodes = nfeat.size(0)
-    res = []
-    for src in range(host_size):
-        for dst in range(host_size):
+    steps = []
+    cont = True
+    traversed_pair = set()
+    while cont:
+        step = []
+        traversed_host = set()
+        for src in range(host):
+            if src in traversed_host:
+                continue
+            for dst in range(host):
+                if dst in traversed_host:
+                    continue
+                if (src, dst) in traversed_pair:
+                    continue
+                traversed_pair.add((src, dst))
+                step.append((src, dst))
+        if len(step) == 0:
+            cont = False
+        else:
+            steps.append(step)
+    for step in steps:
+        for src, dst in step:
             if src == dst:
                 continue
             if src == host:
@@ -259,7 +280,7 @@ def run(proc_id, n_gpus, args, devices, data):
                      shape=[nodes, nodes])
     train_g = dgl.from_scipy(csc)
 
-    in_feats = 768
+    in_feats = FEATURE_DIM
 
     # Create PyTorch DataLoader for constructing blocks
     sampler = dgl.dataloading.MultiLayerNeighborSampler(
@@ -292,7 +313,7 @@ def run(proc_id, n_gpus, args, devices, data):
     for size in sizes:
         comm_sizes *= size
     comm_sizes = comm_sizes // 2 * (args.host_size - 1) // args.host_size
-    temp = th.zeros((comm_sizes, 768), dtype=th.float16)
+    temp = th.zeros((comm_sizes, FEATURE_DIM))
     for epoch in range(args.num_epochs):
         # if n_gpus > 1:
         #     dataloader.set_epoch(epoch)
@@ -389,8 +410,8 @@ if __name__ == '__main__':
 
     nodes = indptr.size(0) - 1
     per_host_nodes = (nodes + args.host_size - 1) // args.host_size
-    train_nfeat = th.zeros((per_host_nodes, 768 * args.host_size),
-                           dtype=th.float16).share_memory_()
+    train_nfeat = th.zeros(
+        (per_host_nodes, FEATURE_DIM * args.host_size)).share_memory_()
 
     if args.inductive:
         train_g, val_g, test_g = inductive_split(g)

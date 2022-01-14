@@ -38,7 +38,7 @@ train_loader = torch.utils.data.DataLoader(train_idx,
 
 csr_topo = quiver.CSRTopo(data.edge_index)
 
-quiver_sampler = GraphSageSampler(csr_topo, sizes=[15, 10, 5], device=0)
+quiver_sampler = GraphSageSampler(csr_topo, sizes=[15, 10, 5], device=0, mode='GPU')
 
 
 subgraph_loader = NeighborSampler(data.edge_index, node_idx=None, sizes=[-1],
@@ -115,7 +115,7 @@ model = model.to(device)
 ####################
 # x = data.x.to(device)
 
-x = quiver.Feature(rank=0, device_list=[0], device_cache_size="200M", cache_policy="device_replicate", csr_topo=csr_topo)
+x = quiver.Feature(rank=0, device_list=[0], device_cache_size="4G", cache_policy="device_replicate", csr_topo=csr_topo)
 feature = torch.zeros(data.x.shape)
 feature[:] = data.x
 x.from_cpu_tensor(feature)

@@ -26,7 +26,7 @@ train_loader = torch.utils.data.DataLoader(train_idx,
                                            shuffle=True,
                                            drop_last=True) # Quiver
 csr_topo = quiver.CSRTopo(data.edge_index) # Quiver
-quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, sizes=[25, 10], device=0) # Quiver
+quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo, sizes=[25, 10], device=0, mode='GPU') # Quiver
 
 
 subgraph_loader = NeighborSampler(data.edge_index, node_idx=None, sizes=[-1],
@@ -96,7 +96,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 # Step 2: Using Quiver's Feature
 ################################
 # x = data.x.to(device) # Original PyG Code
-x = quiver.Feature(rank=0, device_list=[0], device_cache_size="110M", cache_policy="device_replicate", csr_topo=csr_topo) # Quiver
+x = quiver.Feature(rank=0, device_list=[0], device_cache_size="4G", cache_policy="device_replicate", csr_topo=csr_topo) # Quiver
 x.from_cpu_tensor(data.x) # Quiver
 
 y = data.y.squeeze().to(device)

@@ -30,16 +30,16 @@ from ogb.lsc import MAG240MDataset, MAG240MEvaluator
 
 import quiver
 from quiver.feature import DeviceConfig, Feature, DistFeature
-import gc
+# import gc
 
 ROOT = '/data/mag'
 CPU_CACHE_GB = 200
 GPU_CACHE_GB = 8
 FEATURE_DIM = 768
 NUM_CLASS = 153
-LOCAL_ADDR = '104.171.200.118'
-MASTER_ADDR = '104.171.200.118'
-MASTER_PORT = 19216
+LOCAL_ADDR = '127.0.0.1'
+MASTER_ADDR = '127.0.0.1'
+MASTER_PORT = 13579
 
 
 class Batch(NamedTuple):
@@ -118,6 +118,7 @@ class MAG240M(LightningDataModule):
             cpu_size = CPU_CACHE_GB * 1024 * 1024 * 1024 // (FEATURE_DIM * 4)
             host = self.host
             t0 = time.time()
+            # TODO: load data
             cpu_part = torch.zeros((cpu_size, FEATURE_DIM)).share_memory_()
             gpu_parts = []
             for i in range(self.local_size):
@@ -313,27 +314,13 @@ def run(rank, args, quiver_sampler, quiver_feature, label, train_idx,
                                         replicate)
     comm = quiver.comm.NcclComm(global_rank, global_size, id, host_size,
                                 local_size)
-    print('comm')
+
     quiver_feature.lazy_init_from_ipc_handle()
     local_order = torch.load(
         osp.join(ROOT, f'{host_size}h/local_order{host}.pt'))
     quiver_feature.set_local_order(local_order)
     dist_feature = DistFeature(quiver_feature, info, comm)
-    # prev_order = torch.load(
-    #     osp.join('/data/mag/mag240m_kddcup2021', 'processed', 'paper',
-    #              'prev_order2.pt'))
-    # disk_map = torch.zeros(prev_order.size(0), device=rank,
-    #                        dtype=torch.int64) - 1
-    # mem_range = torch.arange(end=cpu_size + 2 * gpu_size,
-    #                          device=rank,
-    #                          dtype=torch.int64)
-    # disk_map[prev_order[:2 * gpu_size + cpu_size]] = mem_range
-    # print(f'{rank} disk map')
-    # quiver_feature.set_mmap_file(
-    #     osp.join('/data/mag/mag240m_kddcup2021', 'processed', 'paper',
-    #              'node_feat.npy'), disk_map)
-    # print(f'{rank} mmap file')
-    torch.cuda.empty_cache()
+
     for epoch in range(1, args.epochs + 1):
         model.train()
 
@@ -358,7 +345,6 @@ def run(rank, args, quiver_sampler, quiver_feature, label, train_idx,
             sample_time.append(t1 - t0)
             feat_time.append(t2 - t1)
             train_time.append(t3 - t2)
-            torch.cuda.empty_cache()
 
             if rank == 0 and cnt % 20 == 10:
                 print(f'sample {sample_time[-1]}')
@@ -368,7 +354,6 @@ def run(rank, args, quiver_sampler, quiver_feature, label, train_idx,
         dist.barrier()
 
         if rank == 0:
-            # remove 10% minium values and 10% maximum values
             print(
                 f'Epoch: {epoch:03d}, Loss: {loss:.4f}, Epoch Time: {time.time() - epoch_beg}'
             )
@@ -436,8 +421,8 @@ if __name__ == '__main__':
         quiver.init_p2p(l)
 
         del datamodule
-        gc.collect()
-        os.system('sudo sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"')
+        # gc.collect()
+        # os.system('sudo sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"')
 
         print('Let\'s use', local_size, 'GPUs!')
 

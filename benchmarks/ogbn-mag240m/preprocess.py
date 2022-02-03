@@ -179,6 +179,7 @@ def preprocess(data_path, host, host_size, p2p_group, p2p_size):
                    osp.join(data_path, f'{host_size}h/local_order{host}.pt'))
         t4 = time.time()
         print(f'order {t4 - t3}')
+    # TODO: save feature
 
 
 # def preprocess_unbalance(host, host_size, p2p_group, p2p_size):

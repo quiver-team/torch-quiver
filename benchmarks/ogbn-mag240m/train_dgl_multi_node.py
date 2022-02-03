@@ -261,7 +261,7 @@ def run(proc_id, n_gpus, args, devices, data):
     print('ready')
     if n_gpus > 1:
         dist_init_method = 'tcp://{master_ip}:{master_port}'.format(
-            master_ip='104.171.200.118', master_port='12975')
+            master_ip='127.0.0.1', master_port='13579')
         world_size = n_gpus * args.host_size
         th.distributed.init_process_group(backend="gloo",
                                           init_method=dist_init_method,

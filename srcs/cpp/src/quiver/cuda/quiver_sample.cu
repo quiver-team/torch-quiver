@@ -507,5 +507,7 @@ void register_cuda_quiver_sample(pybind11::module &m)
         .def("sample_neighbor", &quiver::TorchQuiver::sample_neighbor,
              py::call_guard<py::gil_scoped_release>())
         .def("cal_neighbor_prob", &quiver::TorchQuiver::cal_neighbor_prob,
+             py::call_guard<py::gil_scoped_release>())
+        .def("reindex_single", &quiver::TorchQuiver::reindex_single,
              py::call_guard<py::gil_scoped_release>());
 }

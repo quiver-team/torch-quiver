@@ -1,16 +1,21 @@
-import imp
-
-
 import torch
 from torch import nn
 
+import torch_quiver as torch_qv
 from quiver import Embedding
 
 
+device_list = [0, 1]
+n_embedding = 4
+d_embedding = 16
+batch_size = 16
+
+
 class Model(nn.Module):
-  def __init__(self, rank) -> None:
+  def __init__(self, n_emb, d_emb, rank, device_list) -> None:
     super().__init__()
-    self.emb = Embedding(4, 16, rank, [0, 1])
+    self.emb = Embedding(n_emb, d_emb, rank, device_list)
+    self.mlp = nn.Linear(d_emb, 1).to(rank)
 
   def forward(self, idx):
     embs = self.emb(idx)
@@ -18,9 +23,10 @@ class Model(nn.Module):
 
 
 if __name__ == '__main__':
+  torch_qv.init_p2p([0, 1])
   rank = 0
-  x = torch.tensor([2], dtype=torch.long, requires_grad=False)
-  model = Model(rank)
+  model = Model(n_embedding, d_embedding, rank, device_list)
   with torch.no_grad():
+    x = torch.randint(0, n_embedding, (batch_size,), dtype=torch.long)
     y_ = model(x)
     print(y_)

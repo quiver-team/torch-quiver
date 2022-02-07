@@ -20,15 +20,16 @@ class Embedding(nn.Module):
 
         n_shards = len(device_list)+1
         items_per_shard = (n_embeddings+n_shards-1)//n_shards
-        for idx, device in self.device_list:
+        for device in self.device_list:
             embedding_weight = torch.randn(items_per_shard, d_embeddings)
             self.shard_tensor.append(embedding_weight, device)
             del embedding_weight
 
         items_remained = n_embeddings-(n_shards-1)*items_per_shard
-        embedding_weight = torch.randn(items_remained, d_embeddings)
-        self.shard_tensor.append(embedding_weight, -1)
-        del embedding_weight
+        if items_remained>0:
+            embedding_weight = torch.randn(items_remained, d_embeddings)
+            self.shard_tensor.append(embedding_weight, -1)
+            del embedding_weight
 
     def forward(self, index):
         return self.shard_tensor[index]

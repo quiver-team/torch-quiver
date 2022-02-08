@@ -27,8 +27,18 @@ def reduce_pyg_sampler(sampler):
     ))
 
 
+def rebuild_embedding(ipc_handle):
+    embedding = quiver.Embedding.lazy_from_ipc_handle(ipc_handle)
+    return embedding
+
+
+def reduce_embedding(embedding):
+    ipc_handle = embedding.share_ipc()
+    return (rebuild_embedding, (ipc_handle, ))
+
+
 def init_reductions():
     ForkingPickler.register(quiver.Feature, reduce_feature)
     ForkingPickler.register(quiver.pyg.GraphSageSampler, reduce_pyg_sampler)
     ForkingPickler.register(quiver.pyg.MixedGraphSageSampler, reduce_pyg_sampler)
-
+    ForkingPickler.register(quiver.Embedding, reduce_embedding)

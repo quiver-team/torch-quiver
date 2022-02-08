@@ -47,7 +47,7 @@ def simple_test():
 
 def simple_bp_test():
   """
-  Test basic embedding lookup
+  Test embedding lookup with backpropagation
   """
   rank = 0
   device = torch.device('cuda', rank) if torch.cuda.is_available() else 'cpu'
@@ -63,14 +63,6 @@ def simple_bp_test():
     loss = criterion(y_, y)
     loss.backward()
     optimizer.step()
-
-
-def mp_test_emb(rank: int, embedding):
-  torch.cuda.set_device(rank)
-  # x = torch.randint(0, n_embedding, (batch_size,), dtype=torch.long)
-  x = torch.arange(n_embedding, dtype=torch.long)
-  print(rank, embedding(x))
-  # print(rank, embedding.rank, embedding.n_embeddings)
 
 
 def mp_test(rank: int, world_size: int, embedding: Embedding):
@@ -105,6 +97,5 @@ if __name__ == '__main__':
 
   embedding = Embedding(n_embedding, d_embedding, 0, device_list)
   # simple_test()
-  # mp.spawn(mp_test_emb, (embedding,), n_devices)
-  # mp.spawn(mp_test, (n_devices, embedding), n_devices)
-  simple_bp_test()
+  mp.spawn(mp_test, (n_devices, embedding), n_devices)
+  # simple_bp_test()

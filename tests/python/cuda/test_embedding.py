@@ -2,7 +2,7 @@ import os
 from tkinter.messagebox import NO
 
 import torch
-from torch import device, nn
+from torch import device, nn, optim
 from torch.nn.parallel import DistributedDataParallel
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -45,6 +45,26 @@ def simple_test():
     print(y_)
 
 
+def simple_bp_test():
+  """
+  Test basic embedding lookup
+  """
+  rank = 0
+  device = torch.device('cuda', rank) if torch.cuda.is_available() else 'cpu'
+  model = Model(n_embedding, d_embedding, rank, device_list).to(device)
+  optimizer = optim.Adam(model.parameters())
+  criterion = nn.MSELoss()
+  with torch.no_grad():
+    x = torch.randint(0, n_embedding, (batch_size,), dtype=torch.long)
+    y = torch.randn((batch_size,),).to(device)
+    y_ = model(x)
+    print(y_)
+    optimizer.zero_grad()
+    loss = criterion(y_, y)
+    loss.backward()
+    optimizer.step()
+
+
 def mp_test_emb(rank: int, embedding):
   torch.cuda.set_device(rank)
   # x = torch.randint(0, n_embedding, (batch_size,), dtype=torch.long)
@@ -57,12 +77,13 @@ def mp_test(rank: int, world_size: int, embedding: Embedding):
   """
   Test embedding lookup with multiprocess
   """
-  torch.cuda.set_device(rank)  
+  torch.cuda.set_device(rank)
   dist.init_process_group(backend='nccl', world_size=world_size, rank=rank)
 
   device = torch.device('cuda', rank) if torch.cuda.is_available() else 'cpu'
 
-  model = Model(n_embedding, d_embedding, rank, device_list, embedding).to(device)
+  model = Model(n_embedding, d_embedding, rank,
+                device_list, embedding).to(device)
   model = DistributedDataParallel(model, device_ids=[rank])
 
   with torch.no_grad():
@@ -85,4 +106,5 @@ if __name__ == '__main__':
   embedding = Embedding(n_embedding, d_embedding, 0, device_list)
   # simple_test()
   # mp.spawn(mp_test_emb, (embedding,), n_devices)
-  mp.spawn(mp_test, (n_devices, embedding), n_devices)
+  # mp.spawn(mp_test, (n_devices, embedding), n_devices)
+  simple_bp_test()

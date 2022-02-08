@@ -34,6 +34,7 @@ class Embedding(nn.Module):
             del embedding_weight
 
     def forward(self, index):
+        self.lazy_init_from_ipc_handle()
         return self.shard_tensor[index]
 
     @property
@@ -76,10 +77,9 @@ class Embedding(nn.Module):
 
     @classmethod
     def lazy_from_ipc_handle(cls, ipc_handle):
-        # META data
         gpu_ipc_handle, n_embeddings, d_embeddings, rank, device_list = ipc_handle
         feature = cls(n_embeddings, d_embeddings, rank, device_list)
-        feature.ipc_handle = ipc_handle
+        feature.ipc_handle = gpu_ipc_handle
         return feature
 
     def lazy_init_from_ipc_handle(self):
@@ -87,7 +87,7 @@ class Embedding(nn.Module):
             return
 
         self.rank = torch.cuda.current_device()
-        gpu_ipc_handle, n_embeddings, d_embeddings, rank, device_list = self.ipc_handle
+        gpu_ipc_handle = self.ipc_handle
         self.from_gpu_ipc_handle_dict(gpu_ipc_handle)
 
         self.ipc_handle = None

@@ -1,4 +1,5 @@
 import os
+from tkinter.messagebox import NO
 
 import torch
 from torch import device, nn
@@ -17,9 +18,12 @@ batch_size = 8
 
 
 class Model(nn.Module):
-  def __init__(self, n_emb, d_emb, rank, device_list) -> None:
+  def __init__(self, n_emb, d_emb, rank, device_list, embedding=None) -> None:
     super().__init__()
-    self.emb = Embedding(n_emb, d_emb, rank, device_list)
+    if embedding is None:
+      self.emb = Embedding(n_emb, d_emb, rank, device_list)
+    else:
+      self.emb = embedding
     self.mlp = nn.Linear(d_emb, 1)
 
   def forward(self, idx):
@@ -42,24 +46,28 @@ def simple_test():
 
 
 def mp_test_emb(rank: int, embedding):
-  x = torch.randint(0, n_embedding, (batch_size,), dtype=torch.long)
-  # print(rank, embedding(x))
-  print(rank, embedding.rank, embedding.n_embeddings)
+  torch.cuda.set_device(rank)
+  # x = torch.randint(0, n_embedding, (batch_size,), dtype=torch.long)
+  x = torch.arange(n_embedding, dtype=torch.long)
+  print(rank, embedding(x))
+  # print(rank, embedding.rank, embedding.n_embeddings)
 
 
-def mp_test(rank: int, world_size: int):
+def mp_test(rank: int, world_size: int, embedding: Embedding):
   """
   Test embedding lookup with multiprocess
   """
+  torch.cuda.set_device(rank)  
   dist.init_process_group(backend='nccl', world_size=world_size, rank=rank)
 
   device = torch.device('cuda', rank) if torch.cuda.is_available() else 'cpu'
 
-  model = Model(n_embedding, d_embedding, rank, device_list).to(device)
+  model = Model(n_embedding, d_embedding, rank, device_list, embedding).to(device)
   model = DistributedDataParallel(model, device_ids=[rank])
 
   with torch.no_grad():
-    x = torch.randint(0, n_embedding, (batch_size,), dtype=torch.long)
+    # x = torch.randint(0, n_embedding, (batch_size,), dtype=torch.long)
+    x = torch.arange(n_embedding, dtype=torch.long)
     y_ = model(x)
     print(y_)
 
@@ -73,7 +81,8 @@ if __name__ == '__main__':
   os.environ['MASTER_PORT'] = '39871'
 
   n_devices = len(device_list)
-  # simple_test()
-  # mp.spawn(mp_test, (n_devices,), n_devices)
+
   embedding = Embedding(n_embedding, d_embedding, 0, device_list)
-  mp.spawn(mp_test_emb, (embedding,), n_devices)
+  # simple_test()
+  # mp.spawn(mp_test_emb, (embedding,), n_devices)
+  mp.spawn(mp_test, (n_devices, embedding), n_devices)

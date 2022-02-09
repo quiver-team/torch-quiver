@@ -1,11 +1,9 @@
-from tkinter.messagebox import NO
 import torch
 from torch import nn
-from torch.nn.parameter import Parameter
 import torch.nn.functional as F
 
-from quiver.shard_tensor import ShardTensor, ShardTensorConfig, Topo
-from quiver.utils import reindex_feature, CSRTopo
+from quiver.shard_tensor import ShardTensor, ShardTensorConfig
+from quiver.parameter import Parameter
 from typing import List
 
 
@@ -18,10 +16,9 @@ class Embedding(nn.Module):
         self.rank = rank
         self.device_list = device_list
         self.ipc_handle_ = None
-        self.last_input = None
 
-        self.weight = Parameter()  # Placeholder
         self.shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
+        self.weight = Parameter(self.shard_tensor)  # Placeholder
 
         n_shards = len(device_list)+1
         items_per_shard = (n_embeddings+n_shards-1)//n_shards
@@ -35,14 +32,9 @@ class Embedding(nn.Module):
     def forward(self, input):
         self.lazy_init_from_ipc_handle()
         self.weight.data = self.shard_tensor[input]
-        self.last_input = input
+        self.weight.last_input = input
         idx = torch.arange(0, len(input)).to(self.rank)
         return F.embedding(idx, self.weight)
-
-    def write_back(self):
-        if self.last_input is not None:
-            self.shard_tensor[self.last_input] = self.weight.data
-        self.last_input = None
 
     def _append(self, n_items, device):
         if n_items > 0:

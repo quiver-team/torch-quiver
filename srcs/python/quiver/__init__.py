@@ -1,5 +1,6 @@
 
 from .feature import Feature, DistFeature, PartitionInfo
+from .parameter import Parameter
 from .embedding import Embedding
 from .optimizer import Optimizer
 from .pyg import GraphSageSampler, MixedGraphSageSampler, SampleJob
@@ -14,6 +15,7 @@ __all__ = [
     "MixedGraphSageSampler",
     "SampleJob",
     "p2pCliqueTopo", "init_p2p", "getNcclId", "NcclComm",
+    "Parameter",
     "Embedding",
     "Optimizer",
 ]

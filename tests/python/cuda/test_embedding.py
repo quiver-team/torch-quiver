@@ -1,3 +1,4 @@
+from lib2to3.pgen2.token import OP
 import os
 from tkinter.messagebox import NO
 
@@ -53,21 +54,20 @@ def simple_bp_test():
   device = torch.device('cuda', rank) if torch.cuda.is_available() else 'cpu'
   model = Model(n_embedding, d_embedding, rank, device_list).to(device)
   optimizer = optim.Adam(model.parameters())
+  from quiver import Optimizer
+  optimizer = Optimizer(optimizer)  # Wrap optimizer
   criterion = nn.MSELoss()
   for i in range(2):
     print("-"*32)
     print("Epoch", i)
-    # x = torch.randint(0, n_embedding, (batch_size,), dtype=torch.long)
+
     x = torch.arange(0, n_embedding, dtype=torch.long)
     y = torch.randn((n_embedding,),).to(device)
     y_ = model(x).squeeze()
-    # print(y_)
+
     optimizer.zero_grad()
     loss = criterion(y_, y)
     loss.backward()
-    for p in model.parameters():
-      print(p)
-      print(p.grad)
     optimizer.step()
 
 

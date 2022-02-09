@@ -16,29 +16,32 @@ class Embedding(nn.Module):
         self.d_embeddings = d_embeddings
         self.rank = rank
         self.device_list = device_list
-        self.topo = Topo(self.device_list)
         self.ipc_handle_ = None
 
+        self.weight = Parameter()  # Placeholder
         self.shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
 
         n_shards = len(device_list)+1
         items_per_shard = (n_embeddings+n_shards-1)//n_shards
         for device in self.device_list:
-            embedding_weight = torch.randn(items_per_shard, d_embeddings)
-            self.shard_tensor.append(embedding_weight, device)
-            del embedding_weight
+            self._append(items_per_shard, device)
 
         items_remained = n_embeddings-(n_shards-1)*items_per_shard
         if items_remained > 0:
-            embedding_weight = torch.randn(items_remained, d_embeddings)
-            self.shard_tensor.append(embedding_weight, -1)
-            del embedding_weight
+            self._append(items_remained, -1)
 
     def forward(self, input):
         self.lazy_init_from_ipc_handle()
-        self.weights = Parameter(self.shard_tensor[input])
-        return F.embedding(
-            torch.arange(0, len(input)).to(self.rank), self.weights)
+        # Modify the ptr of self.weight to fetched data
+        self.shard_tensor.get(input, self.weight)
+        idx = torch.arange(0, len(input)).to(self.rank)
+        return F.embedding(idx, self.weight)
+
+    def _append(self, n_items, device):
+        if n_items > 0:
+            embedding_weight = torch.randn(n_items, self.d_embeddings)
+            self.shard_tensor.append(embedding_weight, device)
+            del embedding_weight
 
     @property
     def ipc_handle(self):

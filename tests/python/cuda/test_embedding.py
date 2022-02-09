@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional, Callable
 from quiver.utils import reindex_feature, CSRTopo
 from quiver.shard_tensor import ShardTensor, ShardTensorConfig, Topo
 import torch.nn.functional as F
@@ -24,6 +24,12 @@ n_embedding = 4
 d_embedding = 4
 batch_size = 8
 
+class Optimizer(torch.optim.Optimizer):
+    def __init__(self, parameters, optimizer: torch.optim.Optimizer) -> None:
+        super(Optimizer, self).__init__(parameters, optimizer.defaults)
+
+    def step(self, closure: Optional[Callable[[], float]] = ...) -> Optional[float]:
+        return super(Optimizer, self).step(closure)
 
 class Embedding(nn.Module):
     def __init__(self, n_embeddings: int, d_embeddings: int, rank: int,
@@ -159,8 +165,8 @@ def simple_bp_test():
   model = Model(n_embedding, d_embedding, rank, device_list).to(device)
   optimizer = optim.Adam(model.parameters())
 
-  from quiver import Optimizer
-  optimizer = Optimizer(model, optimizer)  # Wrap optimizer
+  # from quiver import Optimizer
+  # optimizer = Optimizer(model.parameters(), optimizer)  # Wrap optimizer
 
   criterion = nn.MSELoss()
   for i in range(2):

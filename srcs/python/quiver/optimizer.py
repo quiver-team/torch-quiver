@@ -3,7 +3,7 @@ import torch
 
 class Optimizer(torch.optim.Optimizer):
   def __init__(self, model, optimizer) -> None:
-      super().__init__()
+      super().__init__(None, None)
       self.optimizer_ = optimizer
       self.model_ = model
 

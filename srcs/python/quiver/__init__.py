@@ -1,6 +1,7 @@
 
 from .feature import Feature, DistFeature, PartitionInfo
 from .embedding import Embedding
+from .optimizer import Optimizer
 from .pyg import GraphSageSampler, MixedGraphSageSampler, SampleJob
 from . import multiprocessing
 from .utils import CSRTopo
@@ -14,4 +15,5 @@ __all__ = [
     "SampleJob",
     "p2pCliqueTopo", "init_p2p", "getNcclId", "NcclComm",
     "Embedding",
+    "Optimizer",
 ]

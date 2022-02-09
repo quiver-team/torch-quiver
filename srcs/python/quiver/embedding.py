@@ -1,3 +1,4 @@
+from tkinter.messagebox import NO
 import torch
 from torch import nn
 from torch.nn.parameter import Parameter
@@ -17,6 +18,7 @@ class Embedding(nn.Module):
         self.rank = rank
         self.device_list = device_list
         self.ipc_handle_ = None
+        self.last_input = None
 
         self.weight = Parameter()  # Placeholder
         self.shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
@@ -32,10 +34,15 @@ class Embedding(nn.Module):
 
     def forward(self, input):
         self.lazy_init_from_ipc_handle()
-        # Modify the ptr of self.weight to fetched data
-        self.shard_tensor.get(input, self.weight)
+        self.weight.data = self.shard_tensor[input]
+        self.last_input = input
         idx = torch.arange(0, len(input)).to(self.rank)
         return F.embedding(idx, self.weight)
+
+    def write_back(self):
+        if self.last_input is not None:
+            self.shard_tensor[self.last_input] = self.weight.data
+        self.last_input = None
 
     def _append(self, n_items, device):
         if n_items > 0:

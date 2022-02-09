@@ -13,7 +13,7 @@ from quiver import Embedding
 
 device_list = [0, 1]
 n_embedding = 4
-d_embedding = 16
+d_embedding = 4
 batch_size = 8
 
 
@@ -54,14 +54,20 @@ def simple_bp_test():
   model = Model(n_embedding, d_embedding, rank, device_list).to(device)
   optimizer = optim.Adam(model.parameters())
   criterion = nn.MSELoss()
-  with torch.no_grad():
-    x = torch.randint(0, n_embedding, (batch_size,), dtype=torch.long)
-    y = torch.randn((batch_size,),).to(device)
-    y_ = model(x)
-    print(y_)
+  for i in range(2):
+    print("-"*32)
+    print("Epoch", i)
+    # x = torch.randint(0, n_embedding, (batch_size,), dtype=torch.long)
+    x = torch.arange(0, n_embedding, dtype=torch.long)
+    y = torch.randn((n_embedding,),).to(device)
+    y_ = model(x).squeeze()
+    # print(y_)
     optimizer.zero_grad()
     loss = criterion(y_, y)
     loss.backward()
+    for p in model.parameters():
+      print(p)
+      print(p.grad)
     optimizer.step()
 
 
@@ -97,5 +103,5 @@ if __name__ == '__main__':
 
   embedding = Embedding(n_embedding, d_embedding, 0, device_list)
   # simple_test()
-  mp.spawn(mp_test, (n_devices, embedding), n_devices)
-  # simple_bp_test()
+  # mp.spawn(mp_test, (n_devices, embedding), n_devices)
+  simple_bp_test()

@@ -1,11 +1,11 @@
 import torch
 from torch import nn
+from torch.nn.parameter import Parameter
+import torch.nn.functional as F
 
 from quiver.shard_tensor import ShardTensor, ShardTensorConfig, Topo
 from quiver.utils import reindex_feature, CSRTopo
 from typing import List
-import numpy as np
-from torch._C import device
 
 
 class Embedding(nn.Module):
@@ -17,6 +17,7 @@ class Embedding(nn.Module):
         self.rank = rank
         self.device_list = device_list
         self.topo = Topo(self.device_list)
+        self.ipc_handle_ = None
 
         self.shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
 
@@ -33,9 +34,11 @@ class Embedding(nn.Module):
             self.shard_tensor.append(embedding_weight, -1)
             del embedding_weight
 
-    def forward(self, index):
+    def forward(self, input):
         self.lazy_init_from_ipc_handle()
-        return self.shard_tensor[index]
+        self.weights = Parameter(self.shard_tensor[input])
+        return F.embedding(
+            torch.arange(0, len(input)).to(self.rank), self.weights)
 
     @property
     def ipc_handle(self):

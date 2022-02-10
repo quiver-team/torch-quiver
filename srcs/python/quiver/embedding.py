@@ -21,14 +21,7 @@ class Embedding(nn.Module):
         self.weight = Parameter()  # Placeholder
         self.weight.shard_tensor = self.shard_tensor
 
-        n_shards = len(device_list) + 1
-        items_per_shard = (n_embeddings + n_shards - 1) // n_shards
-        for device in self.device_list:
-            self._append(items_per_shard, device)
-
-        items_remained = n_embeddings - (n_shards - 1) * items_per_shard
-        if items_remained > 0:
-            self._append(items_remained, -1)
+        self._init_data_placement()
 
     def forward(self, input):
         self.lazy_init_from_ipc_handle()
@@ -38,6 +31,17 @@ class Embedding(nn.Module):
 
         idx = torch.arange(0, len(input)).to(self.rank)
         return F.embedding(idx, self.weight)
+
+    def _init_data_placement(self):
+        # Even distribution
+        n_shards = len(self.device_list) + 1
+        items_per_shard = (self.n_embeddings + n_shards - 1) // n_shards
+        for device in self.device_list:
+            self._append(items_per_shard, device)
+
+        items_remained = self.n_embeddings - (n_shards - 1) * items_per_shard
+        if items_remained > 0:
+            self._append(items_remained, -1)
 
     def _append(self, n_items, device):
         if n_items > 0:

@@ -2,7 +2,7 @@
 from .feature import Feature, DistFeature, PartitionInfo
 from .parameter import Parameter
 from .embedding import Embedding
-from .optimizer import Optimizer
+from .optimizer import SynchronousOptimizer
 from .pyg import GraphSageSampler, MixedGraphSageSampler, SampleJob
 from . import multiprocessing
 from .utils import CSRTopo
@@ -17,5 +17,5 @@ __all__ = [
     "p2pCliqueTopo", "init_p2p", "getNcclId", "NcclComm",
     "Parameter",
     "Embedding",
-    "Optimizer",
+    "SynchronousOptimizer",
 ]

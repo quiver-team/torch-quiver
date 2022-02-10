@@ -1,13 +1,4 @@
-from typing import List, Optional, Callable
-from quiver.utils import reindex_feature, CSRTopo
-from quiver.shard_tensor import ShardTensor, ShardTensorConfig, Topo
-import torch.nn.functional as F
-from torch.nn.parameter import Parameter
-from torch import nn
-from lib2to3.pgen2.token import OP
-from operator import mod
 import os
-from tkinter.messagebox import NO
 
 import torch
 from torch import device, nn, optim
@@ -16,117 +7,13 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 
 import torch_quiver as torch_qv
-# from quiver import Embedding
+from quiver import Embedding
 
 
 device_list = [0, 1]
 n_embedding = 4
 d_embedding = 4
 batch_size = 8
-
-class Optimizer(torch.optim.Optimizer):
-    def __init__(self, parameters, optimizer: torch.optim.Optimizer) -> None:
-        super(Optimizer, self).__init__(parameters, optimizer.defaults)
-
-    def step(self, closure: Optional[Callable[[], float]] = ...) -> Optional[float]:
-        return super(Optimizer, self).step(closure)
-
-class Embedding(nn.Module):
-    def __init__(self, n_embeddings: int, d_embeddings: int, rank: int,
-                 device_list: List[int]):
-        super().__init__()
-        self.n_embeddings = n_embeddings
-        self.d_embeddings = d_embeddings
-        self.rank = rank
-        self.device_list = device_list
-        self.ipc_handle_ = None
-        self.last_input = None
-
-        self.weight = Parameter()  # Placeholder
-        self.shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))
-
-        n_shards = len(device_list)+1
-        items_per_shard = (n_embeddings+n_shards-1)//n_shards
-        for device in self.device_list:
-            self._append(items_per_shard, device)
-
-        items_remained = n_embeddings-(n_shards-1)*items_per_shard
-        if items_remained > 0:
-            self._append(items_remained, -1)
-
-    def forward(self, input):
-        self.lazy_init_from_ipc_handle()
-        self.weight.data = self.shard_tensor[input]
-        self.last_input = input
-        idx = torch.arange(0, len(input)).to(self.rank)
-        return F.embedding(idx, self.weight)
-
-    def write_back(self):
-        if self.last_input is not None:
-            self.shard_tensor[self.last_input] = self.weight.data
-        self.last_input = None
-
-    def _append(self, n_items, device):
-        if n_items > 0:
-            embedding_weight = torch.randn(n_items, self.d_embeddings)
-            self.shard_tensor.append(embedding_weight, device)
-            del embedding_weight
-
-    @property
-    def ipc_handle(self):
-        return self.ipc_handle_
-
-    @ipc_handle.setter
-    def ipc_handle(self, ipc_handle):
-        self.ipc_handle_ = ipc_handle
-
-    def share_ipc(self):
-        """Get ipc handle for multiprocessing
-
-        Returns:
-            tuples: ipc handles for ShardTensor and 
-        """
-        return self.shard_tensor.share_ipc()[0], self.n_embeddings, self.d_embeddings, self.rank, self.device_list
-
-    def from_gpu_ipc_handle_dict(self, gpu_ipc_handle):
-        ipc_handle = gpu_ipc_handle, None, ShardTensorConfig({})
-        self.shard_tensor = ShardTensor.new_from_share_ipc(
-            ipc_handle, self.rank)
-
-    @classmethod
-    def new_from_ipc_handle(cls, rank, ipc_handle):
-        """Create from ipc handle
-
-        Args:
-            rank (int): device rank for embedding collection kernels to launch
-            ipc_handle (tuple): ipc handle create from `share_ipc`
-
-        Returns:
-            [quiver.Embedding]: created quiver.Embedding
-        """
-        gpu_ipc_handle, n_embeddings, d_embeddings, rank, device_list = ipc_handle
-        feature = cls(n_embeddings, d_embeddings, rank, device_list)
-        feature.from_gpu_ipc_handle_dict(gpu_ipc_handle)
-
-        return feature
-
-    @classmethod
-    def lazy_from_ipc_handle(cls, ipc_handle):
-        gpu_ipc_handle, n_embeddings, d_embeddings, rank, device_list = ipc_handle
-        feature = cls(n_embeddings, d_embeddings, rank, device_list)
-        feature.ipc_handle = gpu_ipc_handle
-        return feature
-
-    def lazy_init_from_ipc_handle(self):
-        if self.ipc_handle is None:
-            return
-
-        self.rank = torch.cuda.current_device()
-        gpu_ipc_handle = self.ipc_handle
-        self.from_gpu_ipc_handle_dict(gpu_ipc_handle)
-
-        self.ipc_handle = None
-
 
 class Model(nn.Module):
   def __init__(self, n_emb, d_emb, rank, device_list, embedding=None) -> None:
@@ -165,8 +52,8 @@ def simple_bp_test():
   model = Model(n_embedding, d_embedding, rank, device_list).to(device)
   optimizer = optim.Adam(model.parameters())
 
-  # from quiver import Optimizer
-  # optimizer = Optimizer(model.parameters(), optimizer)  # Wrap optimizer
+  from quiver import SynchronousOptimizer
+  optimizer = SynchronousOptimizer(model.parameters(), optimizer)  # Wrap optimizer
 
   criterion = nn.MSELoss()
   for i in range(2):
@@ -183,6 +70,7 @@ def simple_bp_test():
     loss = criterion(y_, y)
     loss.backward()
     optimizer.step()
+    # model.emb.shard_tensor[x]#=model.emb.weight.data
     print("After training")
     print(model.emb.weight)
 

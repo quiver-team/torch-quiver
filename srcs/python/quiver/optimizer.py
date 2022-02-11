@@ -1,5 +1,3 @@
-from typing import Optional, Callable
-
 import torch
 
 import quiver.parameter

@@ -11,5 +11,6 @@ class Parameter(torch.nn.parameter.Parameter):
         assert self.shard_tensor is not None, "Shard tensor is not initialized"
 
         if self.last_input is not None:
-            self.shard_tensor[self.last_input] #= self.data
+            self.shard_tensor.update(self.last_input, self.data)
+            # self.shard_tensor[self.last_input] #= self.data
         self.last_input = None

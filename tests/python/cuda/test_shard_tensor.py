@@ -323,7 +323,7 @@ def test_delete():
     print(f"papers100M took {end - beg}")
     print("test complete")
 
-def test_update():
+def test_write():
     NUM_ELEMENT = 1000000
     SAMPLE_SIZE = 80000
     FEATURE_DIM = 600
@@ -340,7 +340,7 @@ def test_update():
     host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
     indices = torch.from_numpy(host_indice).type(torch.long)
     indices = indices.to(0)
-    shard_tensor_config = ShardTensorConfig({0: "2G"})
+    shard_tensor_config = ShardTensorConfig({0: "10G"})
     shard_tensor = PyShardTensor(0, shard_tensor_config)
     shard_tensor.from_cpu_tensor(tensor)
 
@@ -361,7 +361,47 @@ def test_update():
     feature = shard_tensor[indices].cpu()
     assert torch.equal(feature_gt, feature)
     print(
-        f"TEST SUCCEED!, With Write Memory Bandwidth = {feature.numpy().size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s"
+        f"TEST SUCCEED!, With Quiver Write Memory Bandwidth = {feature.numpy().size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s"
+    )
+
+def test_pytorch_write():
+    NUM_ELEMENT = 1000000
+    SAMPLE_SIZE = 80000
+    FEATURE_DIM = 600
+    #########################
+    # Init With Numpy
+    ########################
+
+    device = 0
+
+    torch.cuda.set_device(device)
+
+    host_tensor = np.random.randint(0,
+                                    high=10,
+                                    size=(NUM_ELEMENT, FEATURE_DIM))
+    tensor = torch.from_numpy(host_tensor).type(torch.float32)
+
+    host_indice = np.random.randint(0, NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
+    indices = torch.from_numpy(host_indice).type(torch.long)
+
+    indices_device = indices.to(device)
+    tensor_device = tensor.to(device)
+
+    # warm up
+    data = tensor_device[indices_device]
+    update_data = tensor[indices].to(0)
+    torch.cuda.synchronize(device)
+
+    # test
+
+    start = time.time()
+    tensor_device[indices_device] = update_data
+    torch.cuda.synchronize(device)
+    consumed_time = time.time() - start
+
+    feature = data.cpu().numpy()
+    print(
+        f"TEST SUCCEED!, With Pytorch Write Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s"
     )
 
     
@@ -375,7 +415,8 @@ if __name__ == "__main__":
     #test_normal_feature_collection()
     #basic_test()
     #test_products()
-    test_update()
+    #test_write()
+    test_pytorch_write()
     #test_py_shard_tensor_ipc()
     #test_torch_shard_tensor()
     # test_py_shard_tensor_basic()

@@ -292,6 +292,33 @@ class ShardTensor
         return res;
     }
 
+    void update(torch::Tensor& indices, torch::Tensor& data){
+        int current_device = 0;
+        cudaGetDevice(&current_device);
+        auto stream = at::cuda::getCurrentCUDAStream();
+
+        float **buffers_device;
+        int64_t *offset_device;
+        int *access_book_device;
+
+        auto val = get_device_pointers(current_device);
+        buffers_device = std::get<0>(val);
+        offset_device = std::get<1>(val);
+        access_book_device = std::get<2>(val);
+
+        int blockSize = 0;
+        int numBlocks = 0;
+        cudaOccupancyMaxPotentialBlockSize(&numBlocks, &blockSize,
+                                           quiver_tensor_update);
+        int ignore_access_book = 0;
+        if (current_device != device_) { ignore_access_book = 1; }
+        quiver_tensor_update<<<numBlocks, blockSize, 0, stream>>>(
+            buffers_device, offset_device, offset_list_.size(),
+            indices.data_ptr<int64_t>(), indices.numel(), data.data_ptr<float>(),
+            stride(0), access_book_device, ignore_access_book);
+        cudaCheckError();
+    }
+
     std::vector<int64_t> shape() const { return shape_; }
 
     int device() const { return device_; }
@@ -430,6 +457,8 @@ void register_cuda_quiver_feature(pybind11::module &m)
         //.def(py::init<std::vector<torch::Tensor>, int>())
         .def(py::init<int>())
         .def("__getitem__", &quiver::ShardTensor::operator[],
+             py::call_guard<py::gil_scoped_release>())
+        .def("update", &quiver::ShardTensor::update,
              py::call_guard<py::gil_scoped_release>())
         .def("unregister", &quiver::ShardTensor::unregister,
              py::call_guard<py::gil_scoped_release>())

@@ -10,7 +10,7 @@ import gc
 
 from quiver.shard_tensor import ShardTensor as PyShardTensor
 from quiver.shard_tensor import ShardTensorConfig
-from quiver.async_feature import TorchShardTensor
+#from quiver.async_feature import TorchShardTensor
 
 
 def test_normal_feature_collection():
@@ -143,18 +143,7 @@ def test_py_shard_tensor_ipc():
 
 
 def torch_child_proc(rank, ws, cpu_tensor, gpu_tensors, range_list, indices):
-    shard_tensor = TorchShardTensor(rank, ws, cpu_tensor, gpu_tensors,
-                                    range_list)
-    feature = shard_tensor.collect(indices)
-    torch.cuda.synchronize(0)
-    start = time.time()
-    feature = shard_tensor.collect(indices)
-    torch.cuda.synchronize(0)
-    consumed_time = time.time() - start
-    feature = feature.cpu().numpy()
-    print(
-        f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s"
-    )
+    pass
 
 
 def test_products():
@@ -334,15 +323,59 @@ def test_delete():
     print(f"papers100M took {end - beg}")
     print("test complete")
 
+def test_update():
+    NUM_ELEMENT = 1000000
+    SAMPLE_SIZE = 80000
+    FEATURE_DIM = 600
+    gc.disable()
+    #########################
+    # Init With Numpy
+    ########################
+    torch.cuda.set_device(0)
+
+    host_tensor = np.random.randint(0,
+                                    high=10,
+                                    size=(2 * NUM_ELEMENT, FEATURE_DIM))
+    tensor = torch.from_numpy(host_tensor).type(torch.float32)
+    host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
+    indices = torch.from_numpy(host_indice).type(torch.long)
+    indices = indices.to(0)
+    shard_tensor_config = ShardTensorConfig({0: "2G"})
+    shard_tensor = PyShardTensor(0, shard_tensor_config)
+    shard_tensor.from_cpu_tensor(tensor)
+
+    host_tensor[host_indice] = -1
+    feature_gt = torch.from_numpy(host_tensor[host_indice]).type(torch.float32)
+    feature_gt_device = feature_gt.to(0)
+
+
+    # warmup
+    _ = shard_tensor[indices]
+    torch.cuda.synchronize()
+
+
+    start = time.time()
+    shard_tensor.update(indices, feature_gt_device)
+    torch.cuda.synchronize()
+    consumed_time = time.time() - start
+    feature = shard_tensor[indices].cpu()
+    assert torch.equal(feature_gt, feature)
+    print(
+        f"TEST SUCCEED!, With Write Memory Bandwidth = {feature.numpy().size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s"
+    )
+
+    
+
 
 if __name__ == "__main__":
     mp.set_start_method("spawn")
-    qv.init_p2p()
+    qv.init_p2p([0, 1])
     #test_delete()
     #test_py_shard_tensor_basic()
     #test_normal_feature_collection()
     #basic_test()
-    test_products()
+    #test_products()
+    test_update()
     #test_py_shard_tensor_ipc()
     #test_torch_shard_tensor()
     # test_py_shard_tensor_basic()

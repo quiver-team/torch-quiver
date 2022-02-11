@@ -207,6 +207,43 @@ class ShardTensor:
 
         return feature
 
+    def update_data(self, data, input_orders, nodes, inter_device, wait_results):
+
+        request_nodes_mask = (
+            nodes >=
+            self.shard_tensor_config.tensor_offset_device[inter_device].start
+        ) & (nodes <
+            self.shard_tensor_config.tensor_offset_device[inter_device].end)
+        request_nodes = torch.masked_select(nodes, request_nodes_mask)
+        part_orders = torch.masked_select(input_orders, request_nodes_mask)
+        request_nodes = request_nodes.to(inter_device)
+
+        with torch.cuda.device(inter_device):
+            self.shard_tensor.update(request_nodes, data[part_orders].to(inter_device))
+        
+    
+    def update(self, nodes, data):
+        self.init_topo()
+        nodes = nodes.to(self.current_device)
+
+        self.shard_tensor.update(nodes, data)
+
+        input_orders = torch.arange(nodes.size(0),
+                                    dtype=torch.long,
+                                    device=self.current_device)
+
+        # call inter request, we unfold for loop
+        inter_clique_devices = self.topo.p2pClique2Device.get(
+            1 - self.current_clique, [])
+
+        wait_results = []
+
+        for inter_device in inter_clique_devices:
+            if self.shard_tensor_config.tensor_offset_device.get(
+                    inter_device, None) is not None:
+                self.update_data(input_orders, nodes, inter_device, wait_results)
+
+
     @property
     def shape(self):
         return self.shard_tensor.shape()

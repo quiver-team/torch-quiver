@@ -7,7 +7,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 
 import torch_quiver as torch_qv
-from quiver import Embedding
+from quiver import Embedding, EmbeddingBag
 
 device_list = [0, 1]
 n_embedding = 4
@@ -26,6 +26,21 @@ class Model(nn.Module):
 
     def forward(self, idx):
         embs = self.emb(idx)
+        y = self.mlp(embs)
+        return y
+
+
+class ModelBag(nn.Module):
+    def __init__(self, n_emb, d_emb, mode, rank, device_list, embedding_bag=None) -> None:
+        super().__init__()
+        if embedding_bag is None:
+            self.emb = EmbeddingBag(n_emb, d_emb, mode, rank, device_list)
+        else:
+            self.emb = embedding_bag
+        self.mlp = nn.Linear(d_emb, 1)
+
+    def forward(self, index, offset):
+        embs = self.emb(index, offset)
         y = self.mlp(embs)
         return y
 
@@ -63,6 +78,54 @@ def simple_bp_test():
         x = torch.arange(0, n_embedding, dtype=torch.long)
         y = torch.randn((n_embedding,), ).to(device)
         y_ = model(x).squeeze()
+
+        optimizer.zero_grad()
+        print("Before training")
+        print(model.emb.weight)
+        loss = criterion(y_, y)
+        loss.backward()
+        optimizer.step()
+        # model.emb.shard_tensor[x]#=model.emb.weight.data
+        print("After training")
+        print(model.emb.weight)
+
+
+def simple_bag_test():
+    rank = 0
+    idx = torch.arange(n_embedding)
+    offset = torch.tensor([0, 2]).to(rank)
+    embb = EmbeddingBag(n_embedding, d_embedding, "sum", rank, [0, 1])
+    weight = embb.shard_tensor[idx]
+    print("Embedding weight:")
+    print(weight)
+    print("Manual embedding bag")
+    print(weight[:2].sum(0))
+    print(weight[2:].sum(0))
+    print("Auto embedding bag")
+    print(embb(idx, offset))
+
+
+def simple_bp_bag_test():
+    """
+    Test embedding bag lookup with backpropagation
+    """
+    rank = 0
+    device = torch.device('cuda', rank) if torch.cuda.is_available() else 'cpu'
+    model = ModelBag(n_embedding, d_embedding, "sum", rank, device_list).to(device)
+    optimizer = optim.Adam(model.parameters())
+
+    from quiver import SynchronousOptimizer
+    optimizer = SynchronousOptimizer(model.parameters(), optimizer)  # Wrap optimizer
+
+    criterion = nn.MSELoss()
+    for i in range(2):
+        print("-" * 32)
+        print("Epoch", i)
+
+        x = torch.arange(0, n_embedding, dtype=torch.long)
+        o = torch.tensor([0, 2]).to(device)
+        y = torch.randn((len(o),), ).to(device)
+        y_ = model(x, o).squeeze()
 
         optimizer.zero_grad()
         print("Before training")

@@ -21,11 +21,11 @@ class Embedding(nn.Module):
         self.weight = Parameter()  # Placeholder
         self.weight.shard_tensor = self.shard_tensor
 
-        if weight is None:
-            ...
+        if weight is not None:
+            assert self.n_embeddings == len(weight), "numbers of embeddings are not same"
+            self._init_data_placement(weight)
         else:
-            ...
-        self._init_data_placement()
+            self._init_create_data_placement()
 
     def forward(self, input):
         self.lazy_init_from_ipc_handle()
@@ -36,7 +36,18 @@ class Embedding(nn.Module):
         idx = torch.arange(0, len(input)).to(self.rank)
         return F.embedding(idx, self.weight)
 
-    def _init_data_placement(self):
+    def _init_data_placement(self, weight):
+        # Even distribution
+        n_shards = len(self.device_list) + 1
+        items_per_shard = (self.n_embeddings + n_shards - 1) // n_shards
+        for i, device in enumerate(self.device_list):
+            self.shard_tensor.append(weight[i * items_per_shard:(i + 1) * items_per_shard], device)
+
+        items_remained = self.n_embeddings - (n_shards - 1) * items_per_shard
+        if items_remained > 0:
+            self.shard_tensor.append(weight[-items_remained:], -1)
+
+    def _init_create_data_placement(self):
         # Even distribution
         n_shards = len(self.device_list) + 1
         items_per_shard = (self.n_embeddings + n_shards - 1) // n_shards
@@ -124,11 +135,11 @@ class EmbeddingBag(nn.Module):
         self.weight = Parameter()  # Placeholder
         self.weight.shard_tensor = self.shard_tensor
 
-        if weight is None:
-            ...
+        if weight is not None:
+            assert self.n_embeddings == len(weight), "numbers of embeddings are not same"
+            self._init_data_placement(weight)
         else:
-            ...
-        self._init_data_placement()
+            self._init_create_data_placement()
 
     def forward(self, input, offset):
         self.lazy_init_from_ipc_handle()
@@ -139,7 +150,18 @@ class EmbeddingBag(nn.Module):
         idx = torch.arange(0, len(input)).to(self.rank)
         return F.embedding_bag(idx, self.weight, offset, mode=self.mode)
 
-    def _init_data_placement(self):
+    def _init_data_placement(self, weight):
+        # Even distribution
+        n_shards = len(self.device_list) + 1
+        items_per_shard = (self.n_embeddings + n_shards - 1) // n_shards
+        for i, device in enumerate(self.device_list):
+            self.shard_tensor.append(weight[i * items_per_shard:(i + 1) * items_per_shard], device)
+
+        items_remained = self.n_embeddings - (n_shards - 1) * items_per_shard
+        if items_remained > 0:
+            self.shard_tensor.append(weight[-items_remained:], -1)
+
+    def _init_create_data_placement(self):
         # Even distribution
         n_shards = len(self.device_list) + 1
         items_per_shard = (self.n_embeddings + n_shards - 1) // n_shards

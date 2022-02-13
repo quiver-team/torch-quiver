@@ -1,10 +1,10 @@
 import torch
-from torch import nn
+from torch import nn, Tensor
 import torch.nn.functional as F
 
 from quiver.shard_tensor import ShardTensor, ShardTensorConfig
 from quiver.parameter import Parameter
-from typing import List
+from typing import List, Optional
 
 
 class Embedding(nn.Module):
@@ -141,14 +141,14 @@ class EmbeddingBag(nn.Module):
         else:
             self._init_create_data_placement()
 
-    def forward(self, input, offset):
+    def forward(self, input, offset, per_sample_weights: Optional[Tensor] = None):
         self.lazy_init_from_ipc_handle()
 
         self.weight.data = self.shard_tensor[input]
         self.weight.last_input = input
 
         idx = torch.arange(0, len(input)).to(self.rank)
-        return F.embedding_bag(idx, self.weight, offset, mode=self.mode)
+        return F.embedding_bag(idx, self.weight, offset, mode=self.mode, per_sample_weights=per_sample_weights)
 
     def _init_data_placement(self, weight):
         # Even distribution

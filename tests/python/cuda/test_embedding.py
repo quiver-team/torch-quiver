@@ -1,7 +1,7 @@
 import os
 
 import torch
-from torch import device, nn, optim
+from torch import nn, optim
 from torch.nn.parallel import DistributedDataParallel
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -51,11 +51,16 @@ def simple_test():
     """
     rank = 1
     device = torch.device('cuda', rank) if torch.cuda.is_available() else 'cpu'
-    model = Model(n_embedding, d_embedding, rank, device_list).to(device)
-    with torch.no_grad():
-        x = torch.randint(0, n_embedding, (batch_size,), dtype=torch.long)
-        y_ = model(x)
-        print(y_)
+
+    weight = torch.randn(n_embedding, d_embedding)
+    quiver_emb = Embedding(n_embedding, d_embedding, rank, device_list, weight).to(device)
+    torch_emb = nn.Embedding(n_embedding, d_embedding, _weight=weight).to(device)
+
+    x = torch.randint(n_embedding, (batch_size,), dtype=torch.long)
+    print("Torch embedding")
+    print(torch_emb(x.to(device)))
+    print("Quiver embedding")
+    print(quiver_emb(x))
 
 
 def simple_bp_test():
@@ -92,17 +97,20 @@ def simple_bp_test():
 
 def simple_bag_test():
     rank = 0
-    idx = torch.arange(n_embedding)
-    offset = torch.tensor([0, 2]).to(rank)
-    embb = EmbeddingBag(n_embedding, d_embedding, "sum", rank, [0, 1])
-    weight = embb.shard_tensor[idx]
-    print("Embedding weight:")
-    print(weight)
-    print("Manual embedding bag")
-    print(weight[:2].sum(0))
-    print(weight[2:].sum(0))
-    print("Auto embedding bag")
-    print(embb(idx, offset))
+    mode = "sum"
+    device = torch.device('cuda', rank) if torch.cuda.is_available() else 'cpu'
+
+    idx = torch.randint(n_embedding, (batch_size,), dtype=torch.long)
+    offset = torch.tensor([0, batch_size // 2]).to(rank)
+    weight = torch.randn(n_embedding, d_embedding)
+
+    torch_embb = nn.EmbeddingBag(n_embedding, d_embedding, mode=mode, _weight=weight).to(device)
+    quiver_embb = EmbeddingBag(n_embedding, d_embedding, mode, rank, device_list, weight).to(device)
+
+    print("Torch embedding bag")
+    print(torch_embb(idx.to(device), offset.to(device)))
+    print("Quiver embedding bag")
+    print(quiver_embb(idx, offset))
 
 
 def simple_bp_bag_test():

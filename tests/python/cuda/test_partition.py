@@ -145,7 +145,6 @@ def test_prob():
     # gpu_size = 20 * 1024 * 1024 * 1024 // (768 * 4)
     # cpu_size = 40 * 1024 * 1024 * 1024 // (768 * 4)
     # selected = prev_order[:gpu_size * 2]
-    # res = partition_without_replication(0, [prob0, prob1], selected)
     # selected0 = res[0]
     # selected1 = res[1]
     # prev_order[:gpu_size * 2] = torch.cat((selected0, selected1))

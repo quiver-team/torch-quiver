@@ -84,7 +84,7 @@
       show_source: true
       show_root_heading: true
 
-::: quiver.partition.partition_without_replication
+::: quiver.partition.partition_by_prob
     handler: python
     rendering:
       show_source: true

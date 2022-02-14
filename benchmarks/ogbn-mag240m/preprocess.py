@@ -7,7 +7,7 @@ import os.path as osp
 from torch_sparse import SparseTensor
 import time
 import numpy as np
-from quiver.partition import partition_with_replication, partition_without_replication, select_nodes
+from quiver.partition import parititon_by_prob, select_nodes
 
 SCALE = 1
 GPU_CACHE_GB = 8
@@ -134,7 +134,7 @@ def preprocess(data_path, host, host_size, p2p_group, p2p_size):
     gpu_size = GPU_CACHE_GB * 1024 * 1024 * 1024 // (FEATURE_DIM * SCALE * 4)
     cpu_size = CPU_CACHE_GB * 1024 * 1024 * 1024 // (FEATURE_DIM * SCALE * 4)
     _, nz = select_nodes(0, host_probs_sum, None)
-    res = partition_without_replication(0, host_probs_sum, nz.squeeze())
+    res = parititon_by_prob(0, host_probs_sum, nz.squeeze())
     global2host = torch.zeros(nodes, dtype=torch.int32, device=0) - 1
     t1 = time.time()
     print(f'prob {t1 - t0}')
@@ -169,7 +169,7 @@ def preprocess(data_path, host, host_size, p2p_group, p2p_size):
         local_gpu_order = local_prev_order[:gpu_size * p2p_size]
         local_cpu_order = local_prev_order[gpu_size * p2p_size:]
         local_p2p_probs = [prob[local_all] for prob in local_p2p_probs]
-        local_res = partition_without_replication(0, local_p2p_probs,
+        local_res = parititon_by_prob(0, local_p2p_probs,
                                                   local_gpu_order)
         local_cpu_ids = local_all[local_cpu_order]
         local_gpu_orders = torch.cat(local_res)
@@ -223,7 +223,7 @@ def preprocess(data_path, host, host_size, p2p_group, p2p_size):
 #     gpu_idle_size = GPU_IDLE_CACHE_GB * 1024 * 1024 * 1024 // (768 * SCALE * 4)
 #     cpu_size = CPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * SCALE * 4)
 #     _, nz = select_nodes(0, host_probs_sum, None)
-#     res = partition_without_replication(0, host_probs_sum, nz.squeeze())
+#     res = parititon_by_prob(0, host_probs_sum, nz.squeeze())
 #     global2host = torch.zeros(nodes, dtype=torch.int32, device=0) - 1
 #     t1 = time.time()
 #     print(f'prob {t1 - t0}')

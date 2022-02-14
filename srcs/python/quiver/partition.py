@@ -3,7 +3,7 @@ import torch
 CHUNK_NUM = 32
 
 
-def partition_without_replication(device, probs, ids):
+def parititon_by_prob(device, probs, ids):
     """Partition node with given node IDs and node access distribution.
     The result will cause no replication between each parititon.
     We assume node IDs can be placed in the given device.
@@ -75,7 +75,7 @@ def partition_with_replication(device, probs, ids, per_rank_size):
     The result will cause replication between each parititon,
     but the size of each partition will not exceed per_rank_size.
     """
-    partition_res = partition_without_replication(device, probs, ids)
+    partition_res = parititon_by_prob(device, probs, ids)
     if ids is not None:
         ids = ids.to(device)
     ranks = len(probs)
@@ -123,5 +123,5 @@ def partition_free(device, probs, ids, per_rank_size):
     else:
         _, prev_order = torch.sort(prob_sum, descending=True)
         limit_ids = prev_order[:limit]
-        return partition_without_replication(device, probs,
+        return parititon_by_prob(device, probs,
                                              node_ids), limit_ids

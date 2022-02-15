@@ -1,4 +1,5 @@
 import os
+import time
 
 import torch
 from torch import nn, optim
@@ -10,8 +11,8 @@ import torch_quiver as torch_qv
 from quiver import Embedding, EmbeddingBag
 
 device_list = [0, 1]
-n_embedding = 4
-d_embedding = 4
+n_embedding = 6
+d_embedding = 2
 batch_size = 8
 
 
@@ -35,6 +36,21 @@ class ModelBag(nn.Module):
         super().__init__()
         if embedding_bag is None:
             self.emb = EmbeddingBag(n_emb, d_emb, mode, rank, device_list)
+        else:
+            self.emb = embedding_bag
+        self.mlp = nn.Linear(d_emb, 1)
+
+    def forward(self, index, offset):
+        embs = self.emb(index, offset)
+        y = self.mlp(embs)
+        return y
+
+
+class ModelPtBag(nn.Module):
+    def __init__(self, n_emb, d_emb, mode, embedding_bag=None) -> None:
+        super().__init__()
+        if embedding_bag is None:
+            self.emb = nn.EmbeddingBag(n_emb, d_emb, mode=mode, sparse=True)
         else:
             self.emb = embedding_bag
         self.mlp = nn.Linear(d_emb, 1)
@@ -120,7 +136,10 @@ def simple_bp_bag_test():
     rank = 0
     device = torch.device('cuda', rank) if torch.cuda.is_available() else 'cpu'
     model = ModelBag(n_embedding, d_embedding, "sum", rank, device_list).to(device)
-    optimizer = optim.Adam(model.parameters())
+    pt_model = ModelPtBag(n_embedding, d_embedding, "sum").to(device)
+    # pt_model.mlp.weight.data=model.mlp.weight.data
+    optimizer = optim.SGD(model.parameters(), lr=0.1)
+    pt_optimizer = optim.SGD(pt_model.parameters(), lr=0.1)
 
     from quiver import SynchronousOptimizer
     optimizer = SynchronousOptimizer(model.parameters(), optimizer)  # Wrap optimizer
@@ -130,20 +149,55 @@ def simple_bp_bag_test():
         print("-" * 32)
         print("Epoch", i)
 
-        x = torch.arange(0, n_embedding, dtype=torch.long)
-        o = torch.tensor([0, 2]).to(device)
+        if i == 0:
+            x = torch.tensor([0, 2, 1, 3, 2, 3, 4, 5], dtype=torch.long).to(device)
+        else:
+            x = torch.tensor([0, 2, 1, 3, 5], dtype=torch.long).to(device)
+        o = torch.tensor([0, 4]).to(device)
         y = torch.randn((len(o),), ).to(device)
         y_ = model(x, o).squeeze()
+        # pt_y_ = pt_model(x, o).squeeze()
 
         optimizer.zero_grad()
+        pt_optimizer.zero_grad()
         print("Before training")
         print(model.emb.weight)
         loss = criterion(y_, y)
+        # pt_loss = criterion(pt_y_, y)
         loss.backward()
+        # pt_loss.backward()
         optimizer.step()
+        # pt_optimizer.step()
         # model.emb.shard_tensor[x]#=model.emb.weight.data
         print("After training")
         print(model.emb.weight)
+
+
+def pt_dynamic_bag_test():
+    rank = 0
+    device = torch.device('cuda', rank) if torch.cuda.is_available() else 'cpu'
+    pt_model = ModelPtBag(n_embedding, d_embedding, "sum").to(device)
+    pt_optimizer = optim.SGD(pt_model.parameters(), lr=0.1)
+    criterion = nn.MSELoss()
+
+    x = torch.tensor([0, 1, 2, 3, 4], dtype=torch.long).to(device)
+    o = torch.tensor([0, 2]).to(device)
+    y = torch.randn((len(o),), ).to(device)
+    pt_y_ = pt_model(x, o).squeeze()
+
+    pt_optimizer.zero_grad()
+    pt_loss = criterion(pt_y_, y)
+    pt_loss.backward()
+    pt_optimizer.step()
+
+    x = torch.tensor([0, 1, 2], dtype=torch.long).to(device)
+    pt_model.emb.weight.data = torch.randn(4, d_embedding, requires_grad=True).to(device)
+    pt_y_ = pt_model(x, o).squeeze()
+
+    pt_optimizer.zero_grad()
+    pt_loss = criterion(pt_y_, y)
+    pt_loss.backward()
+    pt_optimizer.step()
 
 
 def mp_test(rank: int, world_size: int, embedding: Embedding):
@@ -179,4 +233,5 @@ if __name__ == '__main__':
     embedding = Embedding(n_embedding, d_embedding, 0, device_list)
     # simple_test()
     # mp.spawn(mp_test, (n_devices, embedding), n_devices)
-    simple_bp_test()
+    # simple_bp_test()
+    simple_bp_bag_test()

@@ -23,7 +23,6 @@ round_targets = "True"
 lr = 0.1
 m_batch_size = 128
 test_m_batch_size = 16384
-test_n_workers = 0
 print_freq = 1024
 test_freq = 1024
 
@@ -46,9 +45,9 @@ args = f"  --arch-sparse-feature-dimension={sparse_size}" \
        f" --num-batches={nbatches}" \
        f" --test-freq={test_freq}" \
        f" --test-mini-batch-size={test_m_batch_size}" \
-       f" --test-num-workers={test_n_workers}" \
        f" --print-freq={print_freq}" \
-       f" --use-gpu"
+       f" --use-gpu" \
+       f" --use-quiver"
 
 
 def output(file, message):
@@ -59,12 +58,8 @@ def output(file, message):
 
 def run(gpu: int, ts: str, args: str):
     output_dir = output_path / ts
-    backup_dir = Path("./results") / ts
-
-    assert not os.path.exists(backup_dir)
 
     output_dir.mkdir(parents=True)
-    backup_dir.mkdir(parents=True)
 
     log_file = output_dir / "dlrm_kaggle.log"
     readme_file = output_dir / "README.txt"
@@ -76,7 +71,6 @@ def run(gpu: int, ts: str, args: str):
     output(readme_file, cmd)
     os.system(cmd)
 
-    os.system(f"rsync -r {output_dir / '*'} {backup_dir}")
     output(readme_file, f"Done at {datetime.datetime.now()}")
 
 

@@ -142,24 +142,35 @@ class EmbeddingBag(nn.Module):
             self._init_create_data_placement()
 
     def forward(self, input, offset, per_sample_weights: Optional[Tensor] = None):
+        # print(len(input), input)
+        # unique_input, idx = input.unique(return_inverse=True)
+        # print(unique_input.size(), idx.size(), offset.size())
+        # print(idx)
+        # print(len(offset), offset)
+        unique_input = input
         self.lazy_init_from_ipc_handle()
 
-        self.weight.data = self.shard_tensor[input]
-        self.weight.last_input = input
+        # self.weight = nn.Parameter(self.shard_tensor[unique_input])
+        self.weight.data = self.shard_tensor[unique_input].requires_grad_()
+        self.weight.last_input = unique_input
 
         idx = torch.arange(0, len(input)).to(self.rank)
-        return F.embedding_bag(idx, self.weight, offset, mode=self.mode, per_sample_weights=per_sample_weights)
+        return F.embedding_bag(idx, self.weight, offset, mode=self.mode, sparse=True,
+                               per_sample_weights=per_sample_weights)
 
     def _init_data_placement(self, weight):
         # Even distribution
-        n_shards = len(self.device_list) + 1
-        items_per_shard = (self.n_embeddings + n_shards - 1) // n_shards
-        for i, device in enumerate(self.device_list):
-            self.shard_tensor.append(weight[i * items_per_shard:(i + 1) * items_per_shard], device)
+        # n_shards = len(self.device_list) + 1
+        # items_per_shard = (self.n_embeddings + n_shards - 1) // n_shards
+        # for i, device in enumerate(self.device_list):
+        #     self.shard_tensor.append(weight[i * items_per_shard:(i + 1) * items_per_shard], device)
+        #
+        # items_remained = self.n_embeddings - (n_shards - 1) * items_per_shard
+        # if items_remained > 0:
+        #     self.shard_tensor.append(weight[-items_remained:], -1)
 
-        items_remained = self.n_embeddings - (n_shards - 1) * items_per_shard
-        if items_remained > 0:
-            self.shard_tensor.append(weight[-items_remained:], -1)
+        # Non-distribution
+        self.shard_tensor.append(weight, self.rank)
 
     def _init_create_data_placement(self):
         # Even distribution

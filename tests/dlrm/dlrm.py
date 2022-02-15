@@ -71,9 +71,12 @@ from torch.nn.parameter import Parameter
 from torch.optim.lr_scheduler import _LRScheduler
 
 ### define dlrm in PyTorch ###
-from typing import List
+from typing import List, Optional
 
 from data import make_criteo_data_and_loaders, make_random_data_and_loader
+
+from quiver import EmbeddingBag
+from quiver import SynchronousOptimizer
 
 
 class LRPolicyScheduler(_LRScheduler):
@@ -179,9 +182,31 @@ class DLRM_Net(nn.Module):
             emb_l.append(EE)
         return emb_l, v_W_l
 
+    def create_quiver_emb(self, m, ln, rank, device_list, weighted_pooling=None):
+        emb_l = nn.ModuleList()
+        v_W_l = []
+        for i in range(0, len(ln)):
+            n = ln[i]
+
+            W = torch.tensor(np.random.uniform(
+                low=-np.sqrt(1 / n), high=np.sqrt(1 / n), size=(n, m)
+            ), dtype=torch.float32)
+
+            print("Creating Quiver EmbeddingBag {} * {}".format(n, m))
+            EE = EmbeddingBag(n, m, "sum", rank, device_list, W)
+
+            if weighted_pooling is None:
+                v_W_l.append(None)
+            else:
+                v_W_l.append(torch.ones(n, dtype=torch.float32))
+            emb_l.append(EE)
+        return emb_l, v_W_l
+
     def __init__(
             self,
             args: argparse.Namespace,
+            rank: int,
+            device_list: list,
             m_spa: int,
             ln_emb: List[int],
             ln_bot: List[int],
@@ -193,8 +218,9 @@ class DLRM_Net(nn.Module):
             sync_dense_params: bool = True,
             loss_threshold: float = 0.0,
             ndevices: int = -1,
-            weighted_pooling: str | None = None,
-            loss_function: str = "bce"
+            weighted_pooling: Optional[str] = None,
+            loss_function: str = "bce",
+            use_quiver: bool = False
     ):
         """
         :param args: arguments
@@ -232,7 +258,10 @@ class DLRM_Net(nn.Module):
 
         # create operators
         if ndevices <= 1:
-            self.emb_l, w_list = self.create_emb(m_spa, ln_emb, weighted_pooling)
+            if use_quiver:
+                self.emb_l, w_list = self.create_quiver_emb(m_spa, ln_emb, rank, device_list, weighted_pooling)
+            else:
+                self.emb_l, w_list = self.create_emb(m_spa, ln_emb, weighted_pooling)
             if self.weighted_pooling == "learned":
                 self.v_W_l = nn.ParameterList()
                 for w in w_list:
@@ -273,6 +302,7 @@ class DLRM_Net(nn.Module):
         # 2. for each embedding the lookups are further organized into a batch
         # 3. for a list of embedding tables there is a list of batched lookups
 
+        print(len(lS_i))
         ly = []
         for k, sparse_index_group_batch in enumerate(lS_i):
             sparse_offset_group_batch = lS_o[k]
@@ -294,6 +324,8 @@ class DLRM_Net(nn.Module):
                 sparse_offset_group_batch,
                 per_sample_weights=per_sample_weights,
             )
+
+            print(V.size())
 
             ly.append(V)
 
@@ -696,11 +728,15 @@ def get_args():
     parser.add_argument("--lr-num-warmup-steps", type=int, default=0)
     parser.add_argument("--lr-decay-start-step", type=int, default=0)
     parser.add_argument("--lr-num-decay-steps", type=int, default=0)
+    # Quiver Embedding
+    parser.add_argument("--use-quiver", action="store_true", default=False)
 
     return parser.parse_args()
 
 
 def run():
+    rank = 0
+    device_list = [0, 1]
     args = get_args()
 
     ### some basic setup ###
@@ -777,9 +813,11 @@ def run():
             + " is not supported"
         )
 
-    # print(m_spa, ln_emb, ln_bot, ln_top, arch_interaction_op, arch_interaction_itself)
+    print(ndevices, m_spa, ln_emb, ln_bot, ln_top, arch_interaction_op, arch_interaction_itself)
 
     model = DLRM_Net(args,
+                     rank,
+                     device_list,
                      m_spa,
                      ln_emb,
                      ln_bot,
@@ -791,7 +829,8 @@ def run():
                      loss_threshold=args.loss_threshold,
                      ndevices=ndevices,
                      weighted_pooling=args.weighted_pooling,
-                     loss_function=args.loss_function
+                     loss_function=args.loss_function,
+                     use_quiver=args.use_quiver
                      )
 
     if use_gpu:
@@ -819,6 +858,8 @@ def run():
 
         parameters = model.parameters()
         optimizer = opts[args.optimizer](parameters, lr=args.learning_rate)
+        if args.use_quiver:
+            optimizer = SynchronousOptimizer(model.parameters(), optimizer)
         lr_scheduler = LRPolicyScheduler(
             optimizer,
             args.lr_num_warmup_steps,
@@ -838,6 +879,7 @@ def run():
         for i in range(args.nepochs):
             t1 = time_wrap(use_gpu)
             for j, inputBatch in enumerate(train_ld):
+                print(j)
                 model.train()
                 X, lS_o, lS_i, T, W, CBPP = unpack_batch(inputBatch)
 
@@ -978,15 +1020,14 @@ def run():
                 t1 = time_wrap(use_gpu)
     else:
         print("Testing for inference only")
-        # inference(
-        #     args,
-        #     dlrm,
-        #     best_acc_test,
-        #     best_auc_test,
-        #     test_ld,
-        #     device,
-        #     use_gpu,
-        # )
+        acc_test = inference(
+            model,
+            val_ld,
+            device,
+            use_gpu,
+            ndevices
+        )
+        print("accuracy {:3.3f} %".format(acc_test * 100), flush=True)
 
 
 if __name__ == '__main__':

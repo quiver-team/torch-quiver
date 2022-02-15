@@ -142,19 +142,14 @@ class EmbeddingBag(nn.Module):
             self._init_create_data_placement()
 
     def forward(self, input, offset, per_sample_weights: Optional[Tensor] = None):
-        # print(len(input), input)
-        # unique_input, idx = input.unique(return_inverse=True)
-        # print(unique_input.size(), idx.size(), offset.size())
-        # print(idx)
-        # print(len(offset), offset)
-        unique_input = input
+        unique_input, idx = input.unique(return_inverse=True)
         self.lazy_init_from_ipc_handle()
 
-        # self.weight = nn.Parameter(self.shard_tensor[unique_input])
         self.weight.data = self.shard_tensor[unique_input].requires_grad_()
+        self.weight.grad = None
+        self.weight._grad = None
         self.weight.last_input = unique_input
 
-        idx = torch.arange(0, len(input)).to(self.rank)
         return F.embedding_bag(idx, self.weight, offset, mode=self.mode, sparse=True,
                                per_sample_weights=per_sample_weights)
 

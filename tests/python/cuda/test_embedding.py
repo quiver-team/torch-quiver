@@ -169,6 +169,11 @@ def simple_bp_bag_test():
         optimizer.step()
         # pt_optimizer.step()
         # model.emb.shard_tensor[x]#=model.emb.weight.data
+        del y_
+        del loss
+        import gc
+        gc.collect()
+
         print("After training")
         print(model.emb.weight)
 

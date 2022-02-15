@@ -302,7 +302,6 @@ class DLRM_Net(nn.Module):
         # 2. for each embedding the lookups are further organized into a batch
         # 3. for a list of embedding tables there is a list of batched lookups
 
-        print(len(lS_i))
         ly = []
         for k, sparse_index_group_batch in enumerate(lS_i):
             sparse_offset_group_batch = lS_o[k]
@@ -324,8 +323,6 @@ class DLRM_Net(nn.Module):
                 sparse_offset_group_batch,
                 per_sample_weights=per_sample_weights,
             )
-
-            print(V.size())
 
             ly.append(V)
 
@@ -879,7 +876,6 @@ def run():
         for i in range(args.nepochs):
             t1 = time_wrap(use_gpu)
             for j, inputBatch in enumerate(train_ld):
-                print(j)
                 model.train()
                 X, lS_o, lS_i, T, W, CBPP = unpack_batch(inputBatch)
 
@@ -927,6 +923,11 @@ def run():
                 # optimizer
                 optimizer.step()
                 lr_scheduler.step()
+
+                del E
+                del Z
+                import gc
+                gc.collect()
 
                 t2 = time_wrap(use_gpu)
                 total_time += t2 - t1

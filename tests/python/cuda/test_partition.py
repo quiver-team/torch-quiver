@@ -239,7 +239,7 @@ def test_cdf():
     plt.savefig("lj_30_cdf.png")
 
 
-def test_random_partiton():
+def test_random_partiton_without_replication():
     print(f"{'=' * 30 } Random Partition {'=' * 30 }")
     train_idx, csr_topo, quiver_sampler = load_products()
     
@@ -320,12 +320,10 @@ def test_random_partition_with_hot_replicate():
     plt.plot(x, y)
 
 
-def test_quiver_partition():
+def test_quiver_partition_without_replication():
     print(f"{'=' * 30 } Quiver Partition {'=' * 30 }")
     train_idx, csr_topo, quiver_sampler = load_reddit()
     torch.cuda.set_device(0)
-    cache_rate = 0.2
-
     x = []
     y = []
     
@@ -379,13 +377,13 @@ def test_load_partition():
 #test_cdf()
 
 # Uncomment to test random partition
-#test_random_partiton()
+#test_random_partiton_without_replication()
 
 # Uncomment to test random partition with degree based replication
 #test_random_partition_with_hot_replicate()
 
 # Uncomment to test quiver partition algorithm
-test_quiver_partition()
+test_quiver_partition_without_replication()
 
 # Uncomment to test partition loading
 test_load_partition()

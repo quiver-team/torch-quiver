@@ -257,26 +257,26 @@ def init_p2p(device_list: List[int]):
     torch_qv.init_p2p(device_list)
 
 
-def cal_memory_budget_to_bytes(memory_budget):
-        if isinstance(memory_budget, int):
-            return memory_budget
-        elif isinstance(memory_budget, float):
-            memory_budget = int(memory_budget)
-        elif isinstance(memory_budget, str):
-            if memory_budget.upper().endswith(
-                    "M") or memory_budget.upper().endswith("MB"):
-                end = -1 if memory_budget.upper().endswith("M") else -2
-                memory_budget = int(float(memory_budget[:end]) * 1024 * 1024)
-            elif memory_budget.upper().endswith(
-                    "G") or memory_budget.upper().endswith("GB"):
-                end = -1 if memory_budget.upper().endswith("G") else -2
-                memory_budget = int(
-                    float(memory_budget[:end]) * 1024 * 1024 * 1024)
-            elif memory_budget.upper().endswith(
-                    "K") or memory_budget.upper().endswith("KB"):
-                end = -1 if memory_budget.upper().endswith("K") else -2
-                memory_budget = int(
-                    float(memory_budget[:end]) * 1024) 
-        else:
-            raise Exception("memory budget input is not valid")
-        return memory_budget
+UNITS = {
+    "B": 1,
+    #
+    "K": 2**10,
+    "M": 2**20,
+    "G": 2**30,
+    #
+    "KB": 2**10,
+    "MB": 2**20,
+    "GB": 2**30,
+}
+
+
+def parse_size(sz) -> int:
+    if isinstance(sz, int):
+        return sz
+    elif isinstance(sz, float):
+        return int(sz)
+    elif isinstance(sz, str):
+        for suf, u in sorted(UNITS.items()):
+            if sz.endswith(suf):
+                return int(float(sz[:-len(suf)]) * u)
+    raise Exception("invalid size: {}".format(sz))

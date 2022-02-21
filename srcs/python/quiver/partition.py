@@ -1,13 +1,15 @@
 import torch
-from quiver.utils import cal_memory_budget_to_bytes
 import shutil
 import os
+from typing import List
+import quiver.utils as quiver_util
+
 
 
 __all__ = ["quiver_partition"]
 QUIVER_MAGIC_NUMBER = 64
 
-def partition_without_replication(probs):
+def partition_without_replication(probs: List[torch.Tensor]):
     """Partition node with node access distribution. 
     The result will cause no replication between each parititon.
 
@@ -66,7 +68,19 @@ def partition_without_replication(probs):
 
 def quiver_partition(probs:torch.Tensor, result_path: str, cache_memory_budget=0, per_feature_size=0):
     """
-    Partition graph topology based on access probability
+    Partition graph topology based on access probability and generate result folder. The final result folder will be like:
+    
+    -result_path
+        -partition_0
+            -partition_res.pth
+            -cache_res.pth
+        -partition_1
+            -partition_res.pth
+            -cache_res.pth
+        -partition_2
+            -partition_res.pth
+            -cache_res.pth
+        ...
 
     Args:
         probs:
@@ -96,8 +110,8 @@ def quiver_partition(probs:torch.Tensor, result_path: str, cache_memory_budget=0
         os.makedirs(os.path.join(result_path, f"partition_{partition_idx}"))
     
     # calculate cached feature count
-    cache_memory_budget_bytes = cal_memory_budget_to_bytes(cache_memory_budget)
-    per_feature_size_bytes = cal_memory_budget_to_bytes(per_feature_size)
+    cache_memory_budget_bytes = quiver_util.parse_size(cache_memory_budget)
+    per_feature_size_bytes = quiver_util.parse_size(per_feature_size)
     cache_count = int(cache_memory_budget_bytes / (per_feature_size_bytes + 1e-6))
     per_partition_cache_count = cache_count // partition_num
 

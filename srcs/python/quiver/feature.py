@@ -1,6 +1,6 @@
 import torch
 from quiver.shard_tensor import ShardTensor, ShardTensorConfig, Topo
-from quiver.utils import reindex_feature, CSRTopo, cal_memory_budget_to_bytes
+from quiver.utils import reindex_feature, CSRTopo, parse_size
 from typing import List
 import numpy as np
 from torch._C import device
@@ -198,10 +198,10 @@ class Feature(object):
             cpu_tensor (torch.FloatTensor): input cpu tensor
         """
         if self.cache_policy == "device_replicate":
-            cache_memory_budget = cal_memory_budget_to_bytes(self.device_cache_size)
+            cache_memory_budget = parse_size(self.device_cache_size)
             shuffle_ratio = 0.0
         else:
-            cache_memory_budget = cal_memory_budget_to_bytes(self.device_cache_size) * len(self.topo.p2pClique2Device[0])
+            cache_memory_budget = parse_size(self.device_cache_size) * len(self.topo.p2pClique2Device[0])
             shuffle_ratio = self.cal_size(
                 cpu_tensor, cache_memory_budget) / cpu_tensor.size(0)
 

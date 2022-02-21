@@ -146,12 +146,12 @@ class GraphSageSampler:
 
         return nodes, batch_size, adjs[::-1]
 
-    def sample_prob(self, train_idx, nodes):
+    def sample_prob(self, train_idx, total_node_count):
         self.lazy_init_quiver()
-        last_prob = torch.zeros(nodes, device=self.device)
+        last_prob = torch.zeros(total_node_count, device=self.device)
         last_prob[train_idx] = 1
         for size in self.sizes:
-            cur_prob = torch.zeros(nodes, device=self.device)
+            cur_prob = torch.zeros(total_node_count, device=self.device)
             self.quiver.cal_neighbor_prob(0, last_prob, cur_prob, size)
             last_prob = cur_prob
         return last_prob

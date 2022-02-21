@@ -1,72 +1,67 @@
 import torch
+from quiver.utils import cal_memory_budget_to_bytes
 
-CHUNK_NUM = 32
+QUIVER_MAGIC_NUMBER = 128
 
-
-def partition_without_replication(device, probs, ids):
-    """Partition node with given node IDs and node access distribution.
+def partition_without_replication(probs):
+    """Partition node with node access distribution. 
     The result will cause no replication between each parititon.
-    We assume node IDs can be placed in the given device.
 
     Args:
-        device (int): device which computes the partitioning strategy
         probs (torch.Tensor): node access distribution
-        ids (Optional[torch.Tensor]): specified node IDs
 
     Returns:
         [torch.Tensor]: list of IDs for each partition
 
     """
-    ranks = len(probs)
-    if ids is not None:
-        ids = ids.to(device)
-    probs = [
-        prob[ids].to(device) if ids is not None else prob.to(device)
-        for prob in probs
-    ]
-    total_size = ids.size(0) if ids is not None else probs[0].size(0)
-    res = [None] * ranks
-    for rank in range(ranks):
+
+    device = torch.cuda.current_device()
+    partitioned_num = len(probs)
+
+    probs = [prob.to(device) for prob in probs]
+    total_node_num = probs[0].size(0)
+
+    res = [None] * partitioned_num
+    for rank in range(partitioned_num):
         res[rank] = []
-    CHUNK_SIZE = (total_size + CHUNK_NUM - 1) // CHUNK_NUM
-    chunk_beg = 0
-    beg_rank = 0
-    for i in range(CHUNK_NUM):
-        chunk_end = min(total_size, chunk_beg + CHUNK_SIZE)
-        chunk_size = chunk_end - chunk_beg
-        chunk = torch.arange(chunk_beg,
-                             chunk_end,
+
+    chunk_size = QUIVER_MAGIC_NUMBER * partitioned_num
+    chunk_num = (total_node_num + chunk_size - 1) // chunk_size
+
+    current_chunk_start_pos = 0
+    current_partition_idx = 0
+    for i in range(chunk_num):
+        current_chunk_end_pos = min(total_node_num, current_chunk_start_pos + chunk_size)
+        current_chunk_size = current_chunk_end_pos - current_chunk_start_pos
+        chunk = torch.arange(current_chunk_start_pos,
+                             current_chunk_end_pos,
                              dtype=torch.int64,
                              device=device)
         probs_sum_chunk = [
-            torch.zeros(chunk_size, device=device) + 1e-6 for i in range(ranks)
+            torch.zeros(current_chunk_size, device=device) + 1e-6 for i in range(partitioned_num)
         ]
-        for rank in range(ranks):
-            for dst_rank in range(ranks):
-                if dst_rank == rank:
-                    probs_sum_chunk[rank] += probs[dst_rank][chunk] * ranks
+        for src_rank in range(partitioned_num):
+            for dst_rank in range(partitioned_num):
+                if dst_rank == src_rank:
+                    probs_sum_chunk[src_rank] += probs[dst_rank][chunk] * partitioned_num
                 else:
-                    probs_sum_chunk[rank] -= probs[dst_rank][chunk]
-        acc_size = 0
-        rank_size = (chunk_size + ranks - 1) // ranks
-        picked_chunk_parts = torch.LongTensor([]).to(device)
-        for rank_ in range(beg_rank, beg_rank + ranks):
-            rank = rank_ % ranks
-            probs_sum_chunk[rank][picked_chunk_parts] -= 1e6
-            rank_size = min(rank_size, chunk_size - acc_size)
-            _, rank_order = torch.sort(probs_sum_chunk[rank], descending=True)
-            pick_chunk_part = rank_order[:rank_size]
+                    probs_sum_chunk[src_rank] -= probs[dst_rank][chunk]
+        assigned_node_size = 0
+        per_partition_size = QUIVER_MAGIC_NUMBER
+        for partition_idx in range(current_partition_idx, current_partition_idx + partitioned_num):
+            partition_idx = partition_idx % partitioned_num
+            actual_per_partition_size = min(per_partition_size, current_chunk_size - assigned_node_size)
+            _, sorted_res_order = torch.sort(probs_sum_chunk[partition_idx], descending=True)
+            pick_chunk_part = sorted_res_order[:actual_per_partition_size]
             pick_ids = chunk[pick_chunk_part]
-            picked_chunk_parts = torch.cat(
-                (picked_chunk_parts, pick_chunk_part))
             res[rank].append(pick_ids)
-            acc_size += rank_size
-        beg_rank += 1
-        chunk_beg += chunk_size
-    for rank in range(ranks):
-        res[rank] = torch.cat(res[rank])
-        if ids is not None:
-            res[rank] = ids[res[rank]]
+            probs_sum_chunk[partition_idx][pick_chunk_part] = -1
+            assigned_node_size += actual_per_partition_size
+        current_partition_idx += 1
+        current_chunk_start_pos += current_chunk_size
+
+    for partition_idx in range(partitioned_num):
+        res[partition_idx] = torch.cat(res[partition_idx])
     return res
 
 
@@ -125,3 +120,23 @@ def partition_free(device, probs, ids, per_rank_size):
         limit_ids = prev_order[:limit]
         return partition_without_replication(device, probs,
                                              node_ids), limit_ids
+
+
+def partition(probs, result_path, cache_memory_budget=0, per_feature_size=0):
+    """
+    Partition graph topology based on access probability
+
+    Args:
+        result_path (str): path for partition result
+        cache_memory_budget (Union[str, int, float]): user-specified memory budget for caching hot feature
+        per_feature_size (Union[str, int, float]): per-feature size for user's feature
+    
+    Returns:
+        None
+    """
+    cache_memory_budget_bytes = cal_memory_budget_to_bytes(cache_memory_budget)
+    per_feature_size_bytes = cal_memory_budget_to_bytes(per_feature_size)
+
+    current_device = torch.cuda.current_device()
+
+

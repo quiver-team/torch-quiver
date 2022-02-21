@@ -6,15 +6,18 @@ import quiver.utils as quiver_util
 
 
 
-__all__ = ["quiver_partition"]
+__all__ = ["quiver_partition", "load_quiver_partition"]
+
+
 QUIVER_MAGIC_NUMBER = 64
 
-def partition_without_replication(probs: List[torch.Tensor]):
+def partition_without_replication(probs: List[torch.Tensor], chunk_size: int):
     """Partition node with node access distribution. 
     The result will cause no replication between each parititon.
 
     Args:
         probs (torch.Tensor): node access distribution
+        chunk_size (int): chunk_size 
 
     Returns:
         [torch.Tensor]: list of IDs for each partition
@@ -29,13 +32,13 @@ def partition_without_replication(probs: List[torch.Tensor]):
 
     res = [[] for _ in range(partitioned_num)]
 
-    chunk_size = QUIVER_MAGIC_NUMBER * partitioned_num
+    blob_size = chunk_size * partitioned_num
     chunk_num = (total_node_num + chunk_size - 1) // chunk_size
 
     current_chunk_start_pos = 0
     current_partition_idx = 0
     for _ in range(chunk_num):
-        current_chunk_end_pos = min(total_node_num, current_chunk_start_pos + chunk_size)
+        current_chunk_end_pos = min(total_node_num, current_chunk_start_pos + blob_size)
         current_chunk_size = current_chunk_end_pos - current_chunk_start_pos
         chunk = torch.arange(current_chunk_start_pos, current_chunk_end_pos, device=device)
         probs_sum_chunk = [
@@ -48,7 +51,7 @@ def partition_without_replication(probs: List[torch.Tensor]):
                 else:
                     probs_sum_chunk[src_rank] -= probs[dst_rank][chunk]
         assigned_node_size = 0
-        per_partition_size = QUIVER_MAGIC_NUMBER
+        per_partition_size = chunk_size
         for partition_idx in range(current_partition_idx, current_partition_idx + partitioned_num):
             partition_idx = partition_idx % partitioned_num
             actual_per_partition_size = min(per_partition_size, current_chunk_size - assigned_node_size)
@@ -66,7 +69,7 @@ def partition_without_replication(probs: List[torch.Tensor]):
     return res, probs
 
 
-def quiver_partition(probs:torch.Tensor, result_path: str, cache_memory_budget=0, per_feature_size=0):
+def quiver_partition(probs:torch.Tensor, result_path: str, cache_memory_budget=0, per_feature_size=0, chunk_size=QUIVER_MAGIC_NUMBER):
     """
     Partition graph topology based on access probability and generate result folder. The final result folder will be like:
     
@@ -115,7 +118,7 @@ def quiver_partition(probs:torch.Tensor, result_path: str, cache_memory_budget=0
     cache_count = int(cache_memory_budget_bytes / (per_feature_size_bytes + 1e-6))
     per_partition_cache_count = cache_count // partition_num
 
-    partition_res, changed_probs = partition_without_replication(probs)
+    partition_res, changed_probs = partition_without_replication(probs, chunk_size)
     cache_res = [None] * partition_num
 
     if cache_count > 0:

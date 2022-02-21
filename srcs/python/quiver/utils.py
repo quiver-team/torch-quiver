@@ -258,15 +258,14 @@ def init_p2p(device_list: List[int]):
 
 
 UNITS = {
-    "B": 1,
-    #
-    "K": 2**10,
-    "M": 2**20,
-    "G": 2**30,
     #
     "KB": 2**10,
     "MB": 2**20,
     "GB": 2**30,
+    #
+    "K": 2**10,
+    "M": 2**20,
+    "G": 2**30,
 }
 
 
@@ -277,6 +276,6 @@ def parse_size(sz) -> int:
         return int(sz)
     elif isinstance(sz, str):
         for suf, u in sorted(UNITS.items()):
-            if sz.endswith(suf):
+            if sz.upper().endswith(suf):
                 return int(float(sz[:-len(suf)]) * u)
     raise Exception("invalid size: {}".format(sz))

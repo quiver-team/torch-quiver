@@ -6,12 +6,12 @@ import quiver.utils as quiver_util
 
 
 
-__all__ = ["quiver_partition", "load_quiver_partition"]
+__all__ = ["quiver_partition_feature", "load_quiver_feature_partition"]
 
 
-QUIVER_MAGIC_NUMBER = 64
+QUIVER_MAGIC_NUMBER = 256
 
-def partition_without_replication(probs: List[torch.Tensor], chunk_size: int):
+def partition_feature_without_replication(probs: List[torch.Tensor], chunk_size: int):
     """Partition node with node access distribution. 
     The result will cause no replication between each parititon.
 
@@ -59,7 +59,8 @@ def partition_without_replication(probs: List[torch.Tensor], chunk_size: int):
             pick_chunk_part = sorted_res_order[:actual_per_partition_size]
             pick_ids = chunk[pick_chunk_part]
             res[partition_idx].append(pick_ids)
-            probs_sum_chunk[partition_idx][pick_chunk_part] = -1
+            for idx in range(partitioned_num):
+                probs_sum_chunk[idx][pick_chunk_part] = -1
             assigned_node_size += actual_per_partition_size
         current_partition_idx += 1
         current_chunk_start_pos += current_chunk_size
@@ -69,9 +70,9 @@ def partition_without_replication(probs: List[torch.Tensor], chunk_size: int):
     return res, probs
 
 
-def quiver_partition(probs:torch.Tensor, result_path: str, cache_memory_budget=0, per_feature_size=0, chunk_size=QUIVER_MAGIC_NUMBER):
+def quiver_partition_feature(probs:torch.Tensor, result_path: str, cache_memory_budget=0, per_feature_size=0, chunk_size=QUIVER_MAGIC_NUMBER):
     """
-    Partition graph topology based on access probability and generate result folder. The final result folder will be like:
+    Partition graph feature based on access probability and generate result folder. The final result folder will be like:
     
     -result_path
         -partition_0
@@ -92,8 +93,9 @@ def quiver_partition(probs:torch.Tensor, result_path: str, cache_memory_budget=0
         per_feature_size (Union[str, int, float]): per-feature size for user's feature
     
     Returns:
-        partition_res (torch.Tensor): partitioned result
-        cache_res (torch.Tensor): cached result
+        partition_book (torch.Tensor): Indicates which partition_idx a node belongs to
+        feature_partition_res (torch.Tensor): partitioned feature result
+        feature_cache_res (torch.Tensor): cached feature result
     """
 
     if os.path.exists(result_path):
@@ -110,7 +112,7 @@ def quiver_partition(probs:torch.Tensor, result_path: str, cache_memory_budget=0
     
     # create result folder
     for partition_idx in range(partition_num):
-        os.makedirs(os.path.join(result_path, f"partition_{partition_idx}"))
+        os.makedirs(os.path.join(result_path, f"feature_partition_{partition_idx}"))
     
     # calculate cached feature count
     cache_memory_budget_bytes = quiver_util.parse_size(cache_memory_budget)
@@ -118,7 +120,9 @@ def quiver_partition(probs:torch.Tensor, result_path: str, cache_memory_budget=0
     cache_count = int(cache_memory_budget_bytes / (per_feature_size_bytes + 1e-6))
     per_partition_cache_count = cache_count // partition_num
 
-    partition_res, changed_probs = partition_without_replication(probs, chunk_size)
+    partition_book = torch.zeros(probs[0].shape, dtype=torch.int64, device=torch.cuda.current_device())
+    partition_res, changed_probs = partition_feature_without_replication(probs, chunk_size)
+    
     cache_res = [None] * partition_num
 
     if cache_count > 0:
@@ -127,30 +131,43 @@ def quiver_partition(probs:torch.Tensor, result_path: str, cache_memory_budget=0
             cache_res[partition_idx] = prev_order[: per_partition_cache_count]
     
     for partition_idx in range(partition_num):
-        partition_result_path = os.path.join(result_path, f"partition_{partition_idx}", "partition_res.pth")
-        cache_result_path = os.path.join(result_path, f"partition_{partition_idx}", "cache_res.pth")
+        partition_result_path = os.path.join(result_path, f"feature_partition_{partition_idx}", "partition_res.pth")
+        cache_result_path = os.path.join(result_path, f"feature_partition_{partition_idx}", "cache_res.pth")
+        partition_book[partition_res[partition_idx]] = partition_idx
         torch.save(partition_res[partition_idx], partition_result_path)
         torch.save(cache_res[partition_idx], cache_result_path)
+    
+    partition_book_path = os.path.join(result_path, f"feature_partition_book.pth")
+    torch.save(partition_book, partition_book_path)
 
-    return partition_res, cache_res
+    return partition_book, partition_res, cache_res
 
 
-def load_quiver_partition(partition_idx: int, result_path:str):
+def load_quiver_feature_partition(partition_idx: int, result_path:str):
     """
     Load partition result for partition ${partition_idx}
 
     Args:
         partition_idx (int): Partition idx
         partition_result_path (str): partition result path
+    
+    Returns:
+        partition_book (torch.Tensor): partition_book indicates which partition_idx a node belongs to
+        partition_res (torch.Tensor): node indexes belong to this partition
+        cache_res (torch.Tensor): cached node indexes belong to this partition
+
     """
 
     if not os.path.exists(result_path):
         raise Exception("Result path not exists")
     
-    partition_result_path = os.path.join(result_path, f"partition_{partition_idx}", "partition_res.pth")
-    cache_result_path = os.path.join(result_path, f"partition_{partition_idx}", "cache_res.pth")
+    partition_result_path = os.path.join(result_path, f"feature_partition_{partition_idx}", "partition_res.pth")
+    cache_result_path = os.path.join(result_path, f"feature_partition_{partition_idx}", "cache_res.pth")
+    partition_book_path = os.path.join(result_path, f"feature_partition_book.pth")
+    
 
+    partition_book = torch.load(partition_book_path)
     partition_res = torch.load(partition_result_path)
     cache_res = torch.load(cache_result_path)
 
-    return partition_res, cache_res
+    return partition_book, partition_res, cache_res

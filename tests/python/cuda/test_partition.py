@@ -31,7 +31,7 @@ def load_paper100M():
     return train_idx, csr_topo, quiver_sampler
 
 def load_products():
-    root = "/home/dalong/data/products/"
+    root = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'products')
     dataset = PygNodePropPredDataset('ogbn-products', root)
     data = dataset[0]
     csr_topo = quiver.CSRTopo(data.edge_index)

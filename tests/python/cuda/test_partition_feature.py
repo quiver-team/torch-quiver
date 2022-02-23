@@ -442,16 +442,7 @@ def test_quiver_partition_without_replication():
                 partition_train_idx = train_idx[(idx_len // partition_num) * partition: ]
             else:
                 partition_train_idx = train_idx[(idx_len // partition_num) * partition: (idx_len // partition_num) * (partition+1)]
-            #prob = quiver_sampler.sample_prob(partition_train_idx, csr_topo.node_count)
-            prob = torch.zeros(csr_topo.node_count)
-            train_loader = torch.utils.data.DataLoader(partition_train_idx,
-                                                    batch_size=1024,
-                                                    pin_memory=True,
-                                                    shuffle=True)
-            for seeds in train_loader:
-                n_id, _, _ = quiver_sampler.sample(seeds)
-                prob[n_id] += 1
-                                        
+            prob = quiver_sampler.sample_prob(partition_train_idx, csr_topo.node_count)             
             probs.append(prob)
 
         prob_sums = [torch.sum(probs[idx]) for idx in range(partition_num)]

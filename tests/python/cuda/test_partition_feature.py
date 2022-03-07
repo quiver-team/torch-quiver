@@ -427,21 +427,23 @@ def test_random_partition_with_hot_replicate():
 
 def test_quiver_partition_without_replication():
     print(f"{'=' * 30 } Quiver Partition {'=' * 30 }")
-    train_idx, csr_topo, quiver_sampler = load_com_lj()
+    train_idx, csr_topo, quiver_sampler = load_reddit()
     torch.cuda.set_device(0)
 
     cache_rate = 0.0
     
 
-    for partition_num in range(2, 3, 1):
+    for partition_num in range(4, 5, 1):
         idx_len = train_idx.size(0)
-        random.shuffle(train_idx)
+        shuffled_train_idx = train_idx[torch.randperm(idx_len)]
+        partition_train_idx_list = []
         probs = []
         for partition in range(partition_num):
             if partition == partition_num - 1:
-                partition_train_idx = train_idx[(idx_len // partition_num) * partition: ]
+                partition_train_idx = shuffled_train_idx[(idx_len // partition_num) * partition: ]
             else:
-                partition_train_idx = train_idx[(idx_len // partition_num) * partition: (idx_len // partition_num) * (partition+1)]
+                partition_train_idx = shuffled_train_idx[(idx_len // partition_num) * partition: (idx_len // partition_num) * (partition + 1)]
+            partition_train_idx_list.append(partition_train_idx)
             prob = quiver_sampler.sample_prob(partition_train_idx, csr_topo.node_count)             
             probs.append(prob)
 
@@ -462,7 +464,7 @@ def test_quiver_partition_without_replication():
             else:
                 local_train_idx = train_idx[(idx_len // partition_num) * partition: (idx_len // partition_num) * (partition+1)]
 
-            train_loader = torch.utils.data.DataLoader(local_train_idx,
+            train_loader = torch.utils.data.DataLoader(partition_train_idx_list[partition],
                                                     batch_size=1024,
                                                     pin_memory=True,
                                                     shuffle=True)

@@ -346,43 +346,43 @@ def test_cdf():
     plt.savefig("lj_30_cdf.png")
 
 
-def test_random_partiton_without_replication():
-    print(f"{'=' * 30 } Random Partition {'=' * 30 }")
-    train_idx, csr_topo, quiver_sampler = load_products()
+# def test_random_partiton_without_replication():
+#     print(f"{'=' * 30 } Random Partition {'=' * 30 }")
+#     train_idx, csr_topo, quiver_sampler = load_products()
     
-    hit_rate_results = []
-    for partition_num in range(4, 5, 1):
-        idx_len = train_idx.size(0)
-        # random.shuffle(train_idx)
-        train_idx = train_idx[torch.randperm(idx_len)]
-        global_partition_book = torch.randint(0, partition_num, size = (csr_topo.node_count, ))
+#     hit_rate_results = []
+#     for partition_num in range(4, 5, 1):
+#         idx_len = train_idx.size(0)
+#         # random.shuffle(train_idx)
+#         train_idx = train_idx[torch.randperm(idx_len)]
+#         global_partition_book = torch.randint(0, partition_num, size = (csr_topo.node_count, ))
 
 
-        local_partition_books = []
-        for partition in range(partition_num):
-            local_partition_book = global_partition_book.clone()
-            if partition == partition_num:
-                local_partition_book[train_idx[(idx_len // partition_num) * partition:]] = partition
-            else:
-                local_partition_book[train_idx[(idx_len // partition_num) * partition: (idx_len // partition_num) * (partition+1)]] = partition
-            local_partition_books.append(local_partition_book)
+#         local_partition_books = []
+#         for partition in range(partition_num):
+#             local_partition_book = global_partition_book.clone()
+#             if partition == partition_num:
+#                 local_partition_book[train_idx[(idx_len // partition_num) * partition:]] = partition
+#             else:
+#                 local_partition_book[train_idx[(idx_len // partition_num) * partition: (idx_len // partition_num) * (partition+1)]] = partition
+#             local_partition_books.append(local_partition_book)
 
-            local_train_idx = train_idx[:idx_len // partition_num]
+#             local_train_idx = train_idx[:idx_len // partition_num]
 
-            train_loader = torch.utils.data.DataLoader(local_train_idx,
-                                                    batch_size=1024,
-                                                    pin_memory=True,
-                                                    shuffle=True)
-            total_count = 0
-            total_hit = 0
-            for _ in range(2):
-                for seeds in train_loader:
-                    n_id, _, _ = quiver_sampler.sample(seeds)
-                    hit_count = ((local_partition_books[partition][n_id] == partition).nonzero()).shape[0]
-                    total_hit += hit_count
-                    total_count += n_id.shape[0]
-            print(f"Partition = {partition_num}, Local hit rate = {total_hit / total_count}")
-            hit_rate_results.append(total_hit / total_count)
+#             train_loader = torch.utils.data.DataLoader(local_train_idx,
+#                                                     batch_size=1024,
+#                                                     pin_memory=True,
+#                                                     shuffle=True)
+#             total_count = 0
+#             total_hit = 0
+#             for _ in range(2):
+#                 for seeds in train_loader:
+#                     n_id, _, _ = quiver_sampler.sample(seeds)
+#                     hit_count = ((local_partition_books[partition][n_id] == partition).nonzero()).shape[0]
+#                     total_hit += hit_count
+#                     total_count += n_id.shape[0]
+#             print(f"Partition = {partition_num}, Local hit rate = {total_hit / total_count}")
+#             hit_rate_results.append(total_hit / total_count)
     # return hit_rate_results
 
 

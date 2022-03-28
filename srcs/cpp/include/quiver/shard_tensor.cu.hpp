@@ -7,6 +7,9 @@
 __device__ int find(const int64_t *offsets, const int device_count,
                     const int64_t index)
 {
+    if(index < 0){
+    	return -1;
+    }
     int i = 1;
     for (i = 1; i <= device_count; i++) {
         if (index < offsets[i]) { return i - 1; }

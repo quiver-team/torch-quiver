@@ -7,7 +7,14 @@ from torch.utils import cpp_extension
 
 def find_cuda():
     # TODO: find cuda
-    return '/usr/local/cuda'
+    home = os.getenv("CUDA_HOME")
+    path = os.getenv("CUDA_PATH")
+    if home is not None:
+        return home
+    elif path is not None:
+        return path
+    else:
+        return '/usr/local/cuda'
 
 
 def have_cuda():

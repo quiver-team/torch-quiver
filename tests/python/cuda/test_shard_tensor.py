@@ -10,7 +10,6 @@ import gc
 
 from quiver.shard_tensor import ShardTensor as PyShardTensor
 from quiver.shard_tensor import ShardTensorConfig
-from quiver.async_feature import TorchShardTensor
 
 
 def test_normal_feature_collection():
@@ -337,7 +336,7 @@ def test_delete():
 
 if __name__ == "__main__":
     mp.set_start_method("spawn")
-    qv.init_p2p()
+    qv.init_p2p([0, 1])
     #test_delete()
     #test_py_shard_tensor_basic()
     #test_normal_feature_collection()

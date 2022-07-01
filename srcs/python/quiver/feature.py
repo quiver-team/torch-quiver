@@ -215,7 +215,7 @@ class Feature(object):
             self.feature_order = self.csr_topo.feature_order.to(self.rank)
         cache_part, self.cpu_part = self.partition(cpu_tensor,
                                                    cache_memory_budget)
-        self.cpu_part = self.cpu_part.clone()
+        #self.cpu_part = self.cpu_part.clone()
         if cache_part.shape[0] > 0 and self.cache_policy == "device_replicate":
             for device in self.device_list:
                 shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))

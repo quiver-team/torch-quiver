@@ -358,8 +358,9 @@ def child_proc(rank, world_size, host_tensor, feature):
         torch.cuda.synchronize()
         start = time.time()
         res = feature[device_indices]
+        torch.cuda.synchronize()
         consumed_time = time.time() - start
-        bandwidth.append(res.numel() * 4 / consumed_time / 1024 / 1024 / 1024)
+        bandwidth.append(res.numel() * res.element_size() / consumed_time / 1024 / 1024 / 1024)
         assert torch.equal(res, device_tensor[device_indices])
     print("Correctness check passed")
     print(
@@ -381,8 +382,10 @@ def test_ipc():
     host_tensor = np.random.randint(0,
                                     high=10,
                                     size=(2 * NUM_ELEMENT, FEATURE_DIM))
-    tensor = torch.from_numpy(host_tensor).type(torch.float32)
-    print("host data size", host_tensor.size * 4 // 1024 // 1024, "MB")
+    
+    host_tensor = host_tensor.astype(np.float16)
+    tensor = torch.from_numpy(host_tensor)
+    print("host data size", tensor.numel() * tensor.element_size() // 1024 // 1024, "MB")
 
     ############################
     # define a quiver.Feature
@@ -391,7 +394,7 @@ def test_ipc():
     feature = quiver.Feature(rank=rank,
                              device_list=[0, 1],
                              device_cache_size=0,
-                             cache_policy="numa_replicate")
+                             cache_policy="device_replicate")
     feature.from_cpu_tensor(tensor)
     world_size = 2
     mp.spawn(child_proc,
@@ -521,9 +524,9 @@ def test_paper100M():
 if __name__ == "__main__":
     mp.set_start_method("spawn")
     torch_qv.init_p2p([0, 1, 2, 3])
-    test_paper100M()
+    #test_paper100M()
     #init_reductions()
     #test_feature_basic()
-    #test_ipc()
+    test_ipc()
     #normal_test()
     #test_ipc_with_real_data()

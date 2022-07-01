@@ -54,22 +54,29 @@ def test_py_shard_tensor_basic():
     host_tensor = np.random.randint(0,
                                     high=10,
                                     size=(2 * NUM_ELEMENT, FEATURE_DIM))
-    tensor = torch.from_numpy(host_tensor).type(torch.float32)
+
+    host_tensor = host_tensor.astype(np.float16)
+    tensor = torch.from_numpy(host_tensor)
     host_indice = np.random.randint(0, 2 * NUM_ELEMENT - 1, (SAMPLE_SIZE, ))
     indices = torch.from_numpy(host_indice).type(torch.long)
     indices = indices.to(0)
-    shard_tensor_config = ShardTensorConfig({1: "200M"})
+    shard_tensor_config = ShardTensorConfig({0: "200M"})
     shard_tensor = PyShardTensor(0, shard_tensor_config)
     shard_tensor.from_cpu_tensor(tensor)
 
+    feature = shard_tensor[indices]
+    torch.cuda.synchronize()
+
     start = time.time()
     feature = shard_tensor[indices]
+    torch.cuda.synchronize()
     consumed_time = time.time() - start
     feature = feature.cpu().numpy()
     feature_gt = host_tensor[host_indice]
+
     assert np.array_equal(feature_gt, feature)
     print(
-        f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s"
+        f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * tensor.element_size() / consumed_time / 1024 / 1024 / 1024} GB/s"
     )
 
 
@@ -99,7 +106,7 @@ def pyshard_tensor_ipc_child_proc(rank, ipc_handle, tensor):
     print("Correctness Check : ", np.array_equal(feature, feature_gt))
 
     print(
-        f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * 4 / consumed_time / 1024 / 1024 / 1024} GB/s, consumed {consumed_time}s"
+        f"TEST SUCCEED!, With Memory Bandwidth = {feature.size * tensor.element_size() / consumed_time / 1024 / 1024 / 1024} GB/s, consumed {consumed_time}s"
     )
 
 
@@ -116,7 +123,9 @@ def test_py_shard_tensor_ipc():
     host_tensor = np.random.randint(0,
                                     high=10,
                                     size=(2 * NUM_ELEMENT, FEATURE_DIM))
-    tensor = torch.from_numpy(host_tensor).type(torch.float32)
+
+    host_tensor = host_tensor.astype(np.float16)
+    tensor = torch.from_numpy(host_tensor)
     tensor.share_memory_()
     # 所有数据均在CPU
     #shard_tensor_config = ShardTensorConfig({})
@@ -322,6 +331,7 @@ def test_delete():
                                     high=10,
                                     size=(2 * NUM_ELEMENT, FEATURE_DIM))
     tensor = torch.from_numpy(host_tensor).type(torch.float32)
+    
     shard_tensor_config = ShardTensorConfig({})
     shard_tensor = PyShardTensor(current_device, shard_tensor_config)
     shard_tensor.from_cpu_tensor(tensor)
@@ -341,8 +351,8 @@ if __name__ == "__main__":
     #test_py_shard_tensor_basic()
     #test_normal_feature_collection()
     #basic_test()
-    test_products()
-    #test_py_shard_tensor_ipc()
+    #test_products()
+    test_py_shard_tensor_ipc()
     #test_torch_shard_tensor()
     # test_py_shard_tensor_basic()
     #test_feature_collection_gpu_utlization()

@@ -72,7 +72,7 @@ class Feature(object):
         return False
   
     def cal_size(self, cpu_tensor: torch.Tensor, cache_memory_budget: int):
-        element_size = cpu_tensor.shape[1] * 4
+        element_size = cpu_tensor.shape[1] * cpu_tensor.element_size()
         cache_size = cache_memory_budget // element_size
         return cache_size
 
@@ -206,7 +206,7 @@ class Feature(object):
                 cpu_tensor, cache_memory_budget) / cpu_tensor.size(0)
 
         print(
-            f"LOG>>> {min(100, int(100 * cache_memory_budget / cpu_tensor.numel() / 4))}% data cached"
+            f"LOG>>> {min(100, int(100 * cache_memory_budget / cpu_tensor.numel() / cpu_tensor.element_size()))}% data cached"
         )
         if self.csr_topo is not None:
             if self.csr_topo.feature_order is None:
@@ -215,7 +215,7 @@ class Feature(object):
             self.feature_order = self.csr_topo.feature_order.to(self.rank)
         cache_part, self.cpu_part = self.partition(cpu_tensor,
                                                    cache_memory_budget)
-        #self.cpu_part = self.cpu_part.clone()
+        self.cpu_part = self.cpu_part.clone()
         if cache_part.shape[0] > 0 and self.cache_policy == "device_replicate":
             for device in self.device_list:
                 shard_tensor = ShardTensor(self.rank, ShardTensorConfig({}))

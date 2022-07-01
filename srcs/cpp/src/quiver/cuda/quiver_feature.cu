@@ -24,7 +24,7 @@ class ShardTensorItem
     cudaIpcMemHandle_t mem_handle;
     std::vector<int> shape;
     // for now we assume it is all float
-    int dtype;
+    int element_size;
     ShardTensorItem(int device_, cudaIpcMemHandle_t mem_handle_,
                     std::vector<int> shape_)
         : device(device_), mem_handle(mem_handle_), shape(shape_)
@@ -33,19 +33,20 @@ class ShardTensorItem
     ShardTensorItem(){
 
     };
-    std::tuple<int, py::bytes, std::vector<int>> share_ipc()
+    std::tuple<int, int, py::bytes, std::vector<int>> share_ipc()
     {
         auto _handle = PyBytes_FromStringAndSize((char *)&mem_handle,
                                                  CUDA_IPC_HANDLE_SIZE);
         auto bytes_obj = py::reinterpret_steal<py::object>((PyObject *)_handle);
-        return std::make_tuple(device, bytes_obj, shape);
+        return std::make_tuple(device, element_size, bytes_obj, shape);
     }
-    void from_ipc(std::tuple<int, std::string, std::vector<int>> ipc_data)
+    void from_ipc(std::tuple<int, int, std::string, std::vector<int>> ipc_data)
     {
 
         device = std::get<0>(ipc_data);
-        shape = std::get<2>(ipc_data);
-        auto handle = std::get<1>(ipc_data);
+        element_size = std::get<1>(ipc_data);
+        shape = std::get<3>(ipc_data);
+        auto handle = std::get<2>(ipc_data);
         auto ipc_handle =
             reinterpret_cast<const cudaIpcMemHandle_t *>(handle.c_str());
 
@@ -60,14 +61,13 @@ class ShardTensor
     {
 
         offset_list_.push_back(0);
-        element_size = 4;
     }
 
     size_t get_tensor_bytes(torch::Tensor tensor)
     {
         // assume it's float
         int dim = tensor.dim();
-        size_t total_bytes = 4;
+        size_t total_bytes = element_size;
         for (int index = 0; index < dim; index++) {
             total_bytes *= tensor.sizes()[index];
         }
@@ -135,7 +135,8 @@ class ShardTensor
         }
 
         //
-        dev_ptrs_.push_back((float *)ptr);
+        dev_ptrs_.push_back(ptr);
+        element_size = item.element_size;
         shape_[0] += item.shape[0];
         device_count_ += 1;
         cudaCheckError();
@@ -154,6 +155,7 @@ class ShardTensor
             }
             inited_ = true;
         }
+        element_size = tensor.element_size();
         tensor_shapes_.push_back(get_tensor_shape(tensor));
 
         offset_list_.push_back(offset_list_[offset_list_.size() - 1] +
@@ -168,7 +170,7 @@ class ShardTensor
             // target_device, data_size);
             cudaSetDevice(target_device);
             cudaMalloc(&ptr, data_size);
-            cudaMemcpy(ptr, tensor.data_ptr<float>(), data_size,
+            cudaMemcpy(ptr, tensor.data_ptr(), data_size,
                        cudaMemcpyHostToDevice);
             cudaSetDevice(device_);
 
@@ -190,14 +192,14 @@ class ShardTensor
         } else {
             cudaSetDevice(device_);
             // if target_device < 0, it means we use Zero-Copy
-            quiverRegister(tensor.data_ptr<float>(), data_size,
+            quiverRegister(tensor.data_ptr(), data_size,
                            cudaHostRegisterMapped);
-            cudaHostGetDevicePointer(&ptr, (void *)tensor.data_ptr<float>(), 0);
+            cudaHostGetDevicePointer(&ptr, (void *)tensor.data_ptr(), 0);
             access_book.push_back(1);
             // printf("%d <-> CPU support peer access \n", device_);
         }
 
-        dev_ptrs_.push_back((float *)ptr);
+        dev_ptrs_.push_back(ptr);
 
         shape_[0] += tensor.size(0);
         device_count_ += 1;
@@ -256,9 +258,15 @@ class ShardTensor
         std::vector<int64_t> res_shape(shape_);
         res_shape[0] = indices.numel();
         // decide Tensor
-        auto options = torch::TensorOptions()
-                           .dtype(at::kFloat)
-                           .device(torch::kCUDA, current_device);
+
+        auto options = torch::TensorOptions();
+        if(element_size == 2){
+            options = options.dtype(torch::kFloat16).device(torch::kCUDA, current_device);
+        }else if(element_size == 4){
+            options = options.dtype(torch::kFloat32).device(torch::kCUDA, current_device);
+        }
+
+                    
         auto res = torch::empty(res_shape, options);
         cudaCheckError();
 
@@ -333,6 +341,7 @@ class ShardTensor
                 ShardTensorItem *item = new ShardTensorItem();
                 item->device = tensor_devices_[index];
                 item->shape = tensor_shapes_[index];
+                item->element_size = element_size;
                 cudaIpcGetMemHandle(&(item->mem_handle), dev_ptrs_[index]);
                 res.push_back(*item);
             }
@@ -352,7 +361,7 @@ class ShardTensor
 
   private:
     std::vector<int64_t> offset_list_;
-    std::vector<float *> dev_ptrs_;
+    std::vector<void *> dev_ptrs_;
     std::vector<int> tensor_devices_;
     std::vector<int> access_book;
     std::vector<std::vector<int>> tensor_shapes_;

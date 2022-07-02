@@ -86,7 +86,7 @@ class ShardTensor:
                 self.shard_tensor.size(0),
                 self.shard_tensor.size(0) + cpu_tensor.shape[0])
             self.shard_tensor_config.device_memory_budget[
-                device] = cpu_tensor.numel() * 4
+                device] = cpu_tensor.numel() * cpu_tensor.element_size()
             print(
                 f"LOG >>> Memory Budge On {device} is {self.shard_tensor_config.device_memory_budget[device] // 1024 // 1024} MB"
             )
@@ -102,7 +102,7 @@ class ShardTensor:
             
         """
         # 暂时先假设为float tensor
-        element_size = tensor.shape[1] * 4
+        element_size = tensor.shape[1] * tensor.element_size()
         return memory_budget // element_size
 
     def from_cpu_tensor(self, tensor):

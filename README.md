@@ -11,6 +11,40 @@ Quiver is a distributed graph learning library for [PyTorch Geometric](https://g
 
 [![Documentation Status](https://readthedocs.org/projects/torch-quiver/badge/?version=latest)](https://torch-quiver.readthedocs.io/en/latest/?badge=latest)
 
+--------------------------------------------------------------------------------
+
+## Release 0.2.0 is out!
+
+In the latest release `torch-quiver==0.2.0`, we have added support for efficient GNN serving and faster feature collection.
+
+### High-throughput & Low-latency GNN Serving
+
+Quiver now supports efficient GNN serving. The serving API is simple and easy-to-use. For example, the following code snippet shows how to use Quiver to serve a GNN model:
+
+<!-- TODO: complete code -->
+
+```python
+import torch_quiver
+```
+
+A full example using Quiver to serve a GNN model with Reddit dataset on a single machine can be found [here](examples/pyg/reddit_quiver_serving.py).
+
+Quiver's key idea is to exploit **workload metrics** for predicting the irregular computation of GNN requests, and governing the use of GPUs for graph sampling and feature aggregation: (1) for graph sampling, Quiver calculates the **probabilistic sampled graph size**, a metric that predicts the degree of parallelism in graph sampling. Quiver uses this metric to assign sampling tasks to GPUs only when the performance gains surpass CPU-based sampling; and (2) for feature aggregation, Quiver relies on the **feature access probability** to decide which features to partition and replicate across a distributed GPU NUMA topology. Quiver achieves up to 35$\times$ lower latency with a 8$\times$ higher throughput compared to state-of-the-art GNN approaches (DGL and PyG).
+
+### Faster Feature Aggregation
+
+Feature aggregation is one of the performance bottleneck of GNN systems. Quiver enables faster feature aggregation with the following techniques:
+
+- Quiver uses the **feature access probability** metric to place popular features strategically on GPUs. A primary objective of feature placement is to
+enable GPUs to take advantage of low-latency connectivity,
+such as NVLink and InfiniBand, to their peer GPUs. This
+allows GPUs to achieve low-latency access to features when
+aggregating features.
+
+- Quiver uses GPU kernels that can leverage efficient one-sided
+reads to access remote features over NVLink/InfiniBand.
+
+More details of our feature aggregation techniques can be found in our repo [quiver-feature](https://github.com/quiver-team/quiver-feature).
 
 <!-- **Quiver** is a high-performance GNN training add-on which can fully utilize the hardware to achive the best GNN trainning performance. By integrating Quiver into your GNN training pipeline with **just serveral lines of code change**, you can enjoy **much better end-to-end performance** and **much better scalability with multi-gpus**, you can even achieve **super linear scalability** if your GPUs are connected with NVLink, Quiver will help you make full use of NVLink. -->
 
@@ -41,6 +75,8 @@ Below is a chart that describes a benchmark that evaluates the performance of Qu
 We will add multi-node result soon.
 
 For system design details, see Quiver's [design overview](docs/Introduction_en.md) (Chinese version: [设计简介](docs/Introduction_cn.md)).
+
+
 
 ## Install
 
@@ -184,7 +220,20 @@ Quiver is released under the Apache 2.0 license.  -->
 
 ## Community
 
-We welcome contributors to join the development of Quiver. Quiver is currently maintained by researchers from the [University of Edinburgh](https://www.ed.ac.uk/), [Imperial College London](https://www.imperial.ac.uk/), [Tsinghua University](https://www.tsinghua.edu.cn/en/index.htm) and [University of Waterloo](https://uwaterloo.ca/). The development of Quiver has received the support from [Alibaba](https://github.com/alibaba) and [Lambda Labs](https://lambdalabs.com/). 
+We welcome contributors to join the development of Quiver. Quiver is currently maintained by researchers from the [University of Edinburgh](https://www.ed.ac.uk/), [Imperial College London](https://www.imperial.ac.uk/), [Tsinghua University](https://www.tsinghua.edu.cn/en/index.htm) and [University of Waterloo](https://uwaterloo.ca/). The development of Quiver has received the support from [Alibaba](https://github.com/alibaba) and [Lambda Labs](https://lambdalabs.com/).
+
+## Citation
+
+<!--TODO: complete citation-->
+If you find the design of Quiver useful or use Quiver in your work, please cite Quiver with the bibtex below:
+```bibtex
+@misc{quiver2023,
+    author = {},
+    title = {},
+    journal={arXiv preprint arXiv:},
+    year = {2023}
+}
+```
 
 <!-- ## Architecture Overview
 Key reasons behind Quiver's high performance are that it provides two key components: `quiver.Feature` and `quiver.Sampler`.

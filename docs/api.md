@@ -95,3 +95,38 @@
     rendering:
       show_source: true
       show_root_heading: true
+
+::: quiver.AutoBatch
+    handler: python
+    selection:
+      members:
+        - get_batched_queue
+    rendering:
+      show_source: true
+      show_root_heading: true
+
+::: quiver.ServingSampler
+    handler: python
+    selection:
+      members:
+        - lazy_init
+        - get_sampled_queue
+    rendering:
+      show_source: true
+      show_root_heading: true
+
+::: quiver.ServerInference
+    handler: python
+    selection:
+      members:
+        - lazy_init
+        - get_inferenced_queue
+    rendering:
+      show_source: true
+      show_root_heading: true
+
+::: quiver.generate_neighbour_num
+    handler: python
+    rendering:
+      show_source: true
+      show_root_heading: true

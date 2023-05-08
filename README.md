@@ -24,10 +24,14 @@ Quiver now supports efficient GNN serving. The serving API is simple and easy-to
 <!-- TODO: complete code -->
 
 ```python
-import torch_quiver
+from quiver import ServingSampler, ServerInference
+
+sampler = ServingSampler(dataset, ...)
+inference = ServerInference(model, sampler, ...)
+inference.start()
 ```
 
-A full example using Quiver to serve a GNN model with Reddit dataset on a single machine can be found [here](examples/pyg/reddit_quiver_serving.py).
+A full example using Quiver to serve a GNN model with Reddit dataset on a single machine can be found [here](https://github.com/quiver-team/torch-quiver/examples/serving/reddit/reddit_serving.py).
 
 Quiver's key idea is to exploit **workload metrics** for predicting the irregular computation of GNN requests, and governing the use of GPUs for graph sampling and feature aggregation: (1) for graph sampling, Quiver calculates the **probabilistic sampled graph size**, a metric that predicts the degree of parallelism in graph sampling. Quiver uses this metric to assign sampling tasks to GPUs only when the performance gains surpass CPU-based sampling; and (2) for feature aggregation, Quiver relies on the **feature access probability** to decide which features to partition and replicate across a distributed GPU NUMA topology. Quiver achieves up to 35$\times$ lower latency with a 8$\times$ higher throughput compared to state-of-the-art GNN approaches (DGL and PyG).
 

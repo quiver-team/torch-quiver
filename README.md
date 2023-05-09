@@ -26,9 +26,15 @@ Quiver now supports efficient GNN serving. The serving API is simple and easy-to
 ```python
 from quiver import ServingSampler, ServerInference
 
+# Define dataset and sampler
+dataset = RedditDataset(...)
 sampler = ServingSampler(dataset, ...)
-inference = ServerInference(model, sampler, ...)
-inference.start()
+
+# Define the inference server
+inference = ServerInference(model_path, sampler, ...)
+
+# Start the inference server by listening to the requests on the given port
+inference.start(port, ...)
 ```
 
 A full example using Quiver to serve a GNN model with Reddit dataset on a single machine can be found [here](https://github.com/quiver-team/torch-quiver/examples/serving/reddit/reddit_serving.py).

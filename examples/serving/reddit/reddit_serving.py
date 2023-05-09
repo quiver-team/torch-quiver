@@ -131,7 +131,7 @@ if __name__ == "__main__":
                                  cpu_offset=cpu_offset)
         cpu_offset = cpu_offset + device_num*CPU_sampler_per_device
         sampler.lazy_init()
-        cpu_sampled_queue_list = sampler.get_result()
+        cpu_sampled_queue_list = sampler.get_sampled_queue()
         
     result_path = osp.join(sys.path[0], 'run_result')
     inference = ServerInference(cpu_sampled_queue_list=cpu_sampled_queue_list, 
@@ -152,4 +152,4 @@ if __name__ == "__main__":
             proc.daemon = True
             proc.start()
         
-    inference.lazy_init()
+    inference.start()

@@ -119,7 +119,7 @@
     handler: python
     selection:
       members:
-        - lazy_init
+        - start
         - get_inferenced_queue
     rendering:
       show_source: true

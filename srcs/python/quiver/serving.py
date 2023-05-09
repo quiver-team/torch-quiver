@@ -154,7 +154,7 @@ class ServerInference(object):
         
         self.output_queue_list = [mp.Manager().Queue() for i in range(self.num_proc)]
         
-    def lazy_init(self):
+    def start(self):
         
         mp.spawn(
             self.run,
@@ -241,7 +241,7 @@ class ServerInference_Debug(object):
         self.uva_gpu = uva_gpu
         self.cpu_offset = cpu_offset
         
-    def lazy_init(self):
+    def start(self):
         num_proc = len(self.device_list) * self.device_proc_per_device
 
         mp.spawn(
@@ -259,7 +259,7 @@ class ServerInference_Debug(object):
         model_path, feature, gpu_sample_task_queue_list, 
         sample_mode, csr_topo, sizes, res_path, exp_id,
         num_proc, uva_gpu, ignord_length):
-    # os.sched_setaffinity(0, [2*(cpu_offset+rank)])
+        # os.sched_setaffinity(0, [2*(cpu_offset+rank)])
         if sample_mode == 'Auto':
             if rank < num_proc//2:
                 self.gpu_sampler_inference_loop(rank, device_list, feature, gpu_sample_task_queue_list, model_path, csr_topo, sizes, res_path, exp_id, uva_gpu, ignord_length)        

@@ -25,7 +25,7 @@ Quiver now supports efficient GNN serving. The serving API is simple and easy-to
 
 ```python
 from torch_geometric.datasets import Reddit
-
+from torch.multiprocessing import Queue
 from quiver import AutoBatch, ServingSampler, ServerInference
 
 
@@ -33,17 +33,21 @@ from quiver import AutoBatch, ServingSampler, ServerInference
 dataset = Reddit(...)
 
 # Instantiate the auto batch component
-auto_batch = AutoBatch(stream_input_queue, ...)
-batched_queue = auto_batch.get_batched_queue()
+request_batcher = RequestBatcher(stream_input_queue, ...)
+# batched_request_queue_list = [cpu_batched_request_queue_list, gpu_batched_request_queue_list]
+batched_request_queue_list = request_batcher.batched_request_queue_list() 
 
 # Instantiate the sampler component
-sampler = ServingSampler(dataset, batched_queue, ...)
-sampled_queue = sampler.get_sampled_queue()
+hybrid_sampler = HybridSampler(dataset, batched_request_queue_list, ...)
+# sampled_request_queue_list = [cpu_sampled_request_queue_list, gpu_sampled_request_queue_list]
+sampled_request_queue_list = hybrid_sampler.sampled_request_queue_list()
+hybrid_sampler.start()
 
-# Instantiate the inference component
-inference = ServerInference(model_path, dataset, sampled_queue, ...)
-result_queue = inference.get_inferenced_queue()
-inference.start()
+# Instantiate the inference server component
+server = InferenceServer(model_path, dataset, sampled_request_queue_list, ...)
+# result_queue_list = [Queue, ..., Queue]
+result_queue_list = server.result_queue_list() 
+server.start()
 ```
 
 A full example using Quiver to serve a GNN model with Reddit dataset on a single machine can be found [here](https://github.com/quiver-team/torch-quiver/examples/serving/reddit/reddit_serving.py).

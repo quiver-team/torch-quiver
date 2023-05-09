@@ -96,31 +96,31 @@
       show_source: true
       show_root_heading: true
 
-::: quiver.AutoBatch
+::: quiver.RequestBatcher
     handler: python
     selection:
       members:
-        - get_batched_queue
+        - batched_request_queue_list
     rendering:
       show_source: true
       show_root_heading: true
 
-::: quiver.ServingSampler
-    handler: python
-    selection:
-      members:
-        - lazy_init
-        - get_sampled_queue
-    rendering:
-      show_source: true
-      show_root_heading: true
-
-::: quiver.ServerInference
+::: quiver.HybridSampler
     handler: python
     selection:
       members:
         - start
-        - get_inferenced_queue
+        - sampled_request_queue_list
+    rendering:
+      show_source: true
+      show_root_heading: true
+
+::: quiver.InferenceServer
+    handler: python
+    selection:
+      members:
+        - start
+        - result_queue_list
     rendering:
       show_source: true
       show_root_heading: true

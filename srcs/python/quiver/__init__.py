@@ -8,7 +8,7 @@ from .utils import init_p2p
 from .utils import generate_neighbour_num
 from .comm import NcclComm, getNcclId
 from .partition import quiver_partition_feature, load_quiver_feature_partition
-from .serving import AutoBatch, ServingSampler, ServerInference, ServerInference_Debug
+from .serving import RequestBatcher, HybridSampler, InferenceServer, InferenceServer_Debug
 
 __all__ = [
     "Feature", "DistFeature", "GraphSageSampler", "PartitionInfo", "CSRTopo",
@@ -16,6 +16,6 @@ __all__ = [
     "SampleJob",
     "quiver_partition_feature", "load_quiver_feature_partition"
     "p2pCliqueTopo", "init_p2p", "getNcclId", "NcclComm",
-    "AutoBatch", "ServingSampler", "ServerInference", "ServerInference_Debug",
+    "RequestBatcher", "HybridSampler", "InferenceServer", "InferenceServer_Debug",
     "generate_neighbour_num"
 ]

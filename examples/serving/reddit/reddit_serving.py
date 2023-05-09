@@ -11,14 +11,14 @@ sys.path.append(osp.abspath(osp.join(os.getcwd(),'../..'))) # For import src
 
 import time
 import numpy as np
-from quiver import AutoBatch, ServingSampler
-from quiver import ServerInference_Debug as ServerInference
+from quiver import RequestBatcher, HybridSampler
+from quiver import InferenceServer_Debug as InferenceServer
 import torch
 import quiver
 from quiver_feature import LocalTensorPGAS
 from model import SAGE
         
-def server_gate_local(rank, stream_queue, sizes, warmup_num):
+def test_request_from_local(rank, stream_queue, sizes, warmup_num):
     os.sched_setaffinity(0, [2*rank])
     np.random.seed(rank)
     time.sleep(10)
@@ -35,7 +35,7 @@ def server_gate_local(rank, stream_queue, sizes, warmup_num):
         batch = workload[i]
         stream_queue.put(torch.tensor(batch))
     
-def server_gate_local_preparation(rank, stream_queue, test_num, warmup_num):
+def test_request_from_local_preparation(rank, stream_queue, test_num, warmup_num):
     os.sched_setaffinity(0, [2*rank])
     np.random.seed(rank)
     time.sleep(10)      
@@ -55,7 +55,7 @@ if __name__ == "__main__":
     
     dataset_nm = 'reddit'
     device_list = [0, 1]
-    device_proc_per_device = 2
+    proc_num_per_device = 2
     input_proc_per_device = 4
     CPU_sampler_per_device = 4
     sizes = [25, 10]
@@ -84,7 +84,7 @@ if __name__ == "__main__":
     
     device_num = len(device_list)
     
-    ignord_length_per_proc = warmup_num * input_proc_per_device // device_proc_per_device
+    ignord_length_per_proc = warmup_num * input_proc_per_device // proc_num_per_device
     
     # if (request_mode == 'Preparation') or (exp_id == 'different_throughput'):
     #     ignord_length_per_proc = 0
@@ -114,42 +114,39 @@ if __name__ == "__main__":
     
     cpu_offset = device_num*input_proc_per_device 
     
-    stream_queue_list = [mp.Manager().Queue() for i in range(device_num*input_proc_per_device)]
-    auto_batch = AutoBatch(device_num=device_num, stream_queue_list=stream_queue_list, 
+    stream_input_queue_list = [mp.Manager().Queue() for i in range(device_num*input_proc_per_device)]
+    request_batcher = RequestBatcher(device_num=device_num, stream_queue_list=stream_input_queue_list, 
                            input_proc_per_device=input_proc_per_device, 
                            sample_mode=sample_mode, request_mode=request_mode, threshold=threshold, 
                            neighbour_path=neighbour_path, cpu_offset=cpu_offset)
-    cpu_batched_queue_list, gpu_batched_queue_list = auto_batch.get_batched_queue()
+    batched_queue_list = request_batcher.batched_request_queue_list()
     cpu_offset = cpu_offset + device_num*input_proc_per_device
     
-    cpu_sampled_queue_list = None
-    # if True:
-    if sample_mode != 'GPU':
-        sampler = ServingSampler(sizes=sizes, csr_topo=csr_topo, device_num=device_num, 
-                                 worker_num_per_device=CPU_sampler_per_device,
-                                 cpu_batched_queue_list=cpu_batched_queue_list,
-                                 cpu_offset=cpu_offset)
-        cpu_offset = cpu_offset + device_num*CPU_sampler_per_device
-        sampler.lazy_init()
-        cpu_sampled_queue_list = sampler.get_sampled_queue()
+
+    sampler = HybridSampler(sizes=sizes, csr_topo=csr_topo, device_num=device_num, 
+                             worker_num_per_device=CPU_sampler_per_device,
+                             batched_queue_list=batched_queue_list,
+                             cpu_offset=cpu_offset)
+    cpu_offset = cpu_offset + device_num*CPU_sampler_per_device
+    sampler.start()
+    sampled_queue_list = sampler.sampled_request_queue_list()
         
     result_path = osp.join(sys.path[0], 'run_result')
-    inference = ServerInference(cpu_sampled_queue_list=cpu_sampled_queue_list, 
-                                model_path=model_path, device_list=device_list, 
-                                x_feature=quiver_feature, gpu_task_queue_list=gpu_batched_queue_list, 
+    server = InferenceServer(model_path=model_path, device_list=device_list, 
+                                x_feature=quiver_feature, task_queue_list=sampled_queue_list, 
                                 sample_mode=sample_mode, csr_topo=csr_topo, sizes=sizes, uva_gpu=uva_gpu,
                                 result_path=result_path, exp_id=exp_id, ignord_length=ignord_length_per_proc,
-                                device_proc_per_device=device_proc_per_device, cpu_offset=cpu_offset)
+                                proc_num_per_device=proc_num_per_device, cpu_offset=cpu_offset)
     
     if request_mode == 'Preparation':
-        for idx in range(len(stream_queue_list)):
-            proc = mp.Process(target=server_gate_local_preparation, args=(idx, stream_queue_list[idx], test_num, warmup_num,))
+        for idx in range(len(stream_input_queue_list)):
+            proc = mp.Process(target=test_request_from_local_preparation, args=(idx, stream_input_queue_list[idx], test_num, warmup_num,))
             proc.daemon = True
             proc.start()
     else:
-        for idx in range(len(stream_queue_list)):
-            proc = mp.Process(target=server_gate_local, args=(idx, stream_queue_list[idx], sizes, warmup_num))
+        for idx in range(len(stream_input_queue_list)):
+            proc = mp.Process(target=test_request_from_local, args=(idx, stream_input_queue_list[idx], sizes, warmup_num))
             proc.daemon = True
             proc.start()
         
-    inference.start()
+    server.start()

@@ -5,9 +5,9 @@ import os
 import torch_quiver as qv
 import time
 
-__all__ = ["AutoBatch", "ServingSampler", "ServerInference", "ServerInference_Debug"]
+__all__ = ["RequestBatcher", "HybridSampler", "InferenceServer", "InferenceServer_Debug"]
 
-class AutoBatch(object):
+class RequestBatcher(object):
     def __init__(self, device_num, stream_queue_list,
                  input_proc_per_device, sample_mode='GPU', request_mode='CPU',
                  threshold=800, batch_time_limit=10, fixed_batch_size=512,
@@ -28,14 +28,14 @@ class AutoBatch(object):
                 
         if sample_mode == 'Auto':
             for i in range(input_proc_per_device * device_num):
-                child_process = mp.Process(target=self.auto_sampler, args=(i, ))
+                child_process = mp.Process(target=self.auto_despatch, args=(i, ))
                 child_process.start()
         else:
             for i in range(input_proc_per_device * device_num):
-                child_process = mp.Process(target=self.fixed_sampler, args=(i, ))
+                child_process = mp.Process(target=self.fixed_despatch, args=(i, ))
                 child_process.start()
             
-    def fixed_sampler(self, idx):
+    def fixed_despatch(self, idx):
         os.sched_setaffinity(0, [2*(self.cpu_offset+idx)])
         stream_queue = self.stream_queue_list[idx]
         if self.sample_mode == 'CPU':
@@ -63,7 +63,7 @@ class AutoBatch(object):
     #         else:
     #             batched_queue.put(item) 
         
-    def auto_sampler(self, idx):
+    def auto_despatch(self, idx):
         os.sched_setaffinity(0, [2*(self.cpu_offset+idx)])
         stream_queue = self.stream_queue_list[idx]
         gpu_batched_queue = self.gpu_batched_queue_list[idx % self.device_num]
@@ -84,29 +84,17 @@ class AutoBatch(object):
                 else:
                     cpu_batched_queue.put(item)
         
-    def get_batched_queue(self):
-        return self.cpu_batched_queue_list, self.gpu_batched_queue_list
+    def batched_request_queue_list(self):
+        return [self.cpu_batched_queue_list, self.gpu_batched_queue_list]
     
-    
-def cpu_sampler_worker_loop(rank, sample_task_queue_list, result_queue_list, device_num, sizes, csr_topo, cpu_offset):
-    os.sched_setaffinity(0, [2*(cpu_offset+rank)])
-    cpu_sampler = qv.pyg.GraphSageSampler(csr_topo, sizes, device='cpu', mode='CPU')
-    print(f"CPU Sampler {rank} Start")   
-    task_queue = sample_task_queue_list[rank % device_num]
-    result_queue = result_queue_list[rank % device_num]
-    while 1:
-        start = time.perf_counter()
-        tmp = task_queue.get()
-        res = cpu_sampler.sample(tmp)
-        result_queue.put((res, time.perf_counter()-start))
 
-class ServingSampler(object):
+class HybridSampler(object):
     def __init__(self,
                  csr_topo,
                  sizes,
                  device_num,
                  worker_num_per_device,
-                 cpu_batched_queue_list,
+                 batched_queue_list,
                  cpu_offset=0):
         
         self.csr_topo = csr_topo
@@ -115,42 +103,56 @@ class ServingSampler(object):
         self.device_num = device_num
         self.cpu_num_workers = device_num * worker_num_per_device
         self.sizes = sizes
-        self.cpu_batched_queue_list = cpu_batched_queue_list
-        self.sample_result_queue_list = [mp.Manager().Queue() for i in range(device_num)]
+        self.cpu_batched_queue_list = batched_queue_list[0]
+        self.gpu_batched_queue_list = batched_queue_list[1]
         
-    def lazy_init(self):
+        self.cpu_sampled_queue_list = [mp.Manager().Queue() for i in range(device_num)]
+        
+    def start(self):
         
         for i in range(self.cpu_num_workers):
-            child_process = mp.Process(target=cpu_sampler_worker_loop, 
-                                       args=(i, self.cpu_batched_queue_list, self.sample_result_queue_list, self.device_num, self.sizes, self.csr_topo, self.cpu_offset))
+            child_process = mp.Process(target=self.cpu_sampler_worker_loop, 
+                                       args=(i, self.cpu_batched_queue_list, self.cpu_sampled_queue_list, self.device_num, self.sizes, self.csr_topo, self.cpu_offset))
             child_process.daemon = True
             child_process.start()
+            
+    def cpu_sampler_worker_loop(self, rank, sample_task_queue_list, result_queue_list, device_num, sizes, csr_topo, cpu_offset):
+        os.sched_setaffinity(0, [2*(cpu_offset+rank)])
+        cpu_sampler = qv.pyg.GraphSageSampler(csr_topo, sizes, device='cpu', mode='CPU')
+        print(f"CPU Sampler {rank} Start")   
+        task_queue = sample_task_queue_list[rank % device_num]
+        result_queue = result_queue_list[rank % device_num]
+        while 1:
+            start = time.perf_counter()
+            tmp = task_queue.get()
+            res = cpu_sampler.sample(tmp)
+            result_queue.put((res, time.perf_counter()-start))
         
         
-    def get_sampled_queue(self):
-        return self.sample_result_queue_list
+    def sampled_request_queue_list(self):
+        return [self.cpu_sampled_queue_list, self.gpu_batched_queue_list]
     
         
-class ServerInference(object):
-    def __init__(self, cpu_sampled_queue_list, model_path, 
-                 device_list, x_feature, gpu_task_queue_list, 
+class InferenceServer(object):
+    def __init__(self, model_path, 
+                 device_list, x_feature, task_queue_list, 
                  sample_mode, csr_topo, sizes, ignord_length=100,
-                 result_path=None, exp_id=0, device_proc_per_device=0, 
+                 result_path=None, exp_id=0, proc_num_per_device=0, 
                  uva_gpu='GPU') -> None:
-        self.cpu_sampled_queue_list = cpu_sampled_queue_list
+        self.cpu_sampled_queue_list = task_queue_list[0]
         self.model_path = model_path
         self.device_list = device_list
         self.x_feature = x_feature
-        self.gpu_task_queue_list = gpu_task_queue_list
+        self.gpu_task_queue_list = task_queue_list[1]
         self.sample_mode = sample_mode
         self.csr_topo = csr_topo
         self.sizes = sizes
         self.result_path = result_path
         self.exp_id = exp_id
         self.ignord_length = ignord_length
-        self.device_proc_per_device = device_proc_per_device
+        self.proc_num_per_device = proc_num_per_device
         self.uva_gpu = uva_gpu
-        self.num_proc = len(self.device_list) * self.device_proc_per_device
+        self.num_proc = len(self.device_list) * self.proc_num_per_device
         
         self.output_queue_list = [mp.Manager().Queue() for i in range(self.num_proc)]
         
@@ -216,33 +218,33 @@ class ServerInference(object):
                 out = model(x_input, adjs)
                 output_queue.put(out)
         
-    def get_inferenced_queue(self):
+    def result_queue_list(self):
         return self.output_queue_list
     
 
-class ServerInference_Debug(object):
-    def __init__(self, cpu_sampled_queue_list, model_path, 
-                 device_list, x_feature, gpu_task_queue_list, 
+class InferenceServer_Debug(object):
+    def __init__(self, model_path, 
+                 device_list, x_feature, task_queue_list, 
                  sample_mode, csr_topo, sizes, ignord_length=100,
-                 result_path=None, exp_id=0, device_proc_per_device=0, 
+                 result_path=None, exp_id=0, proc_num_per_device=0, 
                  uva_gpu='GPU', cpu_offset=0) -> None:
-        self.cpu_sampled_queue_list = cpu_sampled_queue_list
+        self.cpu_sampled_queue_list = task_queue_list[0]
         self.model_path = model_path
         self.device_list = device_list
         self.x_feature = x_feature
-        self.gpu_task_queue_list = gpu_task_queue_list
+        self.gpu_task_queue_list = task_queue_list[1]
         self.sample_mode = sample_mode
         self.csr_topo = csr_topo
         self.sizes = sizes
         self.result_path = result_path
         self.exp_id = exp_id
         self.ignord_length = ignord_length
-        self.device_proc_per_device = device_proc_per_device
+        self.proc_num_per_device = proc_num_per_device
         self.uva_gpu = uva_gpu
         self.cpu_offset = cpu_offset
         
     def start(self):
-        num_proc = len(self.device_list) * self.device_proc_per_device
+        num_proc = len(self.device_list) * self.proc_num_per_device
 
         mp.spawn(
             self.run,

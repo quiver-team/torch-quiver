@@ -24,10 +24,11 @@ Quiver now supports efficient GNN serving. The serving API is simple and easy-to
 <!-- TODO: complete code -->
 
 ```python
+from torch_geometric.datasets import Reddit
 from quiver import ServingSampler, ServerInference
 
 # Define dataset and sampler
-dataset = RedditDataset(...)
+dataset = Reddit(...)
 sampler = ServingSampler(dataset, ...)
 
 # Define the inference server

@@ -1,7 +1,7 @@
 from scipy.sparse import csr_matrix
 import numpy as np
 import torch
-import torch_quiver as torch_qv
+import quiver as torch_qv
 from typing import List
 import os
 import torch.multiprocessing as mp
@@ -283,7 +283,8 @@ def parse_size(sz) -> int:
                 return int(float(sz[:-len(suf)]) * u)
     raise Exception("invalid size: {}".format(sz))
 
-def generate_neighbour_num(node_num, edge_index, sizes, resultl_path, parallel=False, mode='CPU', num_proc=1, reverse=False, sample=False):
+def generate_neighbour_num(node_num, edge_index, sizes, resultl_path, device_list, parallel=False, mode='CPU', num_proc=1, reverse=False, sample=False):
+    
     if not parallel:
         neighbour_num = np.ascontiguousarray(np.zeros(node_num, dtype=np.int32))
         csr_topo = torch_qv.CSRTopo(edge_index)
@@ -299,17 +300,21 @@ def generate_neighbour_num(node_num, edge_index, sizes, resultl_path, parallel=F
         np.save(f'{resultl_path}{sizes[0]}_{sizes[1]}_neighbour_num_{reverse}.npy', neighbour_num)
     else:
         if  mode == 'GPU':
-            parallel_generate_neighbour_num_GPU(node_num, edge_index, sizes, resultl_path, num_proc, reverse, sample)
+            parallel_generate_neighbour_num_GPU(node_num, edge_index, sizes, resultl_path, device_list, num_proc, reverse, sample)
         else:
             # divice == 'CPU'
-            parallel_generate_neighbour_num_CPU(node_num, edge_index, sizes, resultl_path, num_proc, reverse, sample)
+            parallel_generate_neighbour_num_CPU(node_num, edge_index, sizes, resultl_path, device_list, num_proc, reverse, sample)
     
-def single_generate_neighbour_num(rank, node_num, csr_topo, num_proc, sizes, mode, resultl_path, sample):
+def single_generate_neighbour_num(rank, node_num, csr_topo, num_proc, sizes, mode, resultl_path, device_list, sample):
     start = rank * (node_num // num_proc)
     end = (rank+1) * (node_num // num_proc)
     if rank == num_proc - 1:
         end = node_num+1
-    sampler = torch_qv.pyg.GraphSageSampler(csr_topo, sizes, device=rank, mode=mode)
+    if mode == 'GPU':
+        device = rank%len(device_list)
+    else:
+        device = 'CPU'
+    sampler = torch_qv.pyg.GraphSageSampler(csr_topo, sizes, device=device, mode=mode)
     print(f'Process {rank} has started')
     
     if sample:
@@ -329,13 +334,13 @@ def single_generate_neighbour_num(rank, node_num, csr_topo, num_proc, sizes, mod
     np.save(f'{resultl_path}{sizes[0]}_{sizes[1]}_neighbour_num_{rank}.npy', neighbour_num)
     print(f'Process {rank} has finished')
     
-def parallel_generate_neighbour_num_GPU(node_num, edge_index, sizes, resultl_path, num_proc, reverse=False, sample=False):
+def parallel_generate_neighbour_num_GPU(node_num, edge_index, sizes, resultl_path, device_list, num_proc, reverse=False, sample=False):
     neighbour_num = []
     csr_topo = torch_qv.CSRTopo(edge_index)
     csr_topo.share_memory_()
     mp.spawn(
         single_generate_neighbour_num,
-        args=(node_num, csr_topo, num_proc, sizes, 'GPU', resultl_path, sample),
+        args=(node_num, csr_topo, num_proc, sizes, 'GPU', resultl_path, device_list, sample),
         nprocs=num_proc,
         join=True
     )
@@ -346,13 +351,13 @@ def parallel_generate_neighbour_num_GPU(node_num, edge_index, sizes, resultl_pat
     neighbour_num = np.concatenate(neighbour_num, axis=0)
     np.save(f'{resultl_path}{sizes[0]}_{sizes[1]}_neighbour_num_{reverse}.npy', neighbour_num)
     
-def parallel_generate_neighbour_num_CPU(node_num, edge_index, sizes, resultl_path, num_proc, reverse=False, sample=False):
+def parallel_generate_neighbour_num_CPU(node_num, edge_index, sizes, resultl_path, device_list, num_proc, reverse=False, sample=False):
     neighbour_num = []
     csr_topo = torch_qv.CSRTopo(edge_index)
     csr_topo.share_memory_()
     pros = []
     for i in range(num_proc):
-        p = cmp.Process(target=single_generate_neighbour_num, args=(i, node_num, csr_topo, num_proc, sizes, 'CPU', resultl_path, sample))
+        p = cmp.Process(target=single_generate_neighbour_num, args=(i, node_num, csr_topo, num_proc, sizes, 'CPU', resultl_path, device_list, sample))
         p.start()
         pros.append(p)
         

@@ -15,7 +15,6 @@ from quiver import RequestBatcher, HybridSampler
 from quiver import InferenceServer_Debug as InferenceServer
 import torch
 import quiver
-from quiver_feature import LocalTensorPGAS
 from model import SAGE
         
 def test_request_from_local(rank, stream_queue, sizes, warmup_num):

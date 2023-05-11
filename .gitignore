@@ -11,6 +11,8 @@ CTestTestfile.cmake
 Testing/
 _deps
 generated
+__pycache__
+data/
 
 # Mac
 .DS_Store

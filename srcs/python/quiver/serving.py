@@ -2,7 +2,7 @@ import torch.multiprocessing as mp
 import torch
 import numpy as np 
 import os
-import torch_quiver as qv
+from .pyg import GraphSageSampler
 import time
 
 __all__ = ["RequestBatcher", "HybridSampler", "InferenceServer", "InferenceServer_Debug"]
@@ -118,7 +118,7 @@ class HybridSampler(object):
             
     def cpu_sampler_worker_loop(self, rank, sample_task_queue_list, result_queue_list, device_num, sizes, csr_topo, cpu_offset):
         os.sched_setaffinity(0, [2*(cpu_offset+rank)])
-        cpu_sampler = qv.pyg.GraphSageSampler(csr_topo, sizes, device='cpu', mode='CPU')
+        cpu_sampler = GraphSageSampler(csr_topo, sizes, device='cpu', mode='CPU')
         print(f"CPU Sampler {rank} Start")   
         task_queue = sample_task_queue_list[rank % device_num]
         result_queue = result_queue_list[rank % device_num]
@@ -188,7 +188,7 @@ class InferenceServer(object):
         rank_id = rank%len(device_list)
         device = f"cuda:{device_list[rank_id]}"
         gpu_sample_task_queue = gpu_sample_task_queue_list[rank_id]
-        gpu_sampler = qv.pyg.GraphSageSampler(csr_topo, sizes, device=device_list[rank_id], mode=sample_mode)
+        gpu_sampler = GraphSageSampler(csr_topo, sizes, device=device_list[rank_id], mode=sample_mode)
         print(f"GPU Sampler {rank} Start")
         model = torch.load(model_path).to(device)
         model.eval()
@@ -278,7 +278,7 @@ class InferenceServer_Debug(object):
         rank_id = rank%len(device_list)
         device = f"cuda:{device_list[rank_id]}"
         gpu_sample_task_queue = gpu_sample_task_queue_list[rank_id]
-        gpu_sampler = qv.pyg.GraphSageSampler(csr_topo, sizes, device=device_list[rank_id], mode=sample_mode)
+        gpu_sampler = GraphSageSampler(csr_topo, sizes, device=device_list[rank_id], mode=sample_mode)
         print(f"GPU Sampler {rank} Start")
         model = torch.load(model_path).to(device)
         model.eval()

@@ -1,8 +1,11 @@
 import numpy as np
+import os
 import torch
 from tqdm import tqdm
 from .utils import CSRTopo
 from .pyg import GraphSageSampler
+import torch.multiprocessing as mp
+import multiprocessing as cmp
 
 def generate_neighbour_num(node_num, edge_index, sizes, resultl_path, device_list, parallel=False, mode='CPU', num_proc=1, reverse=False, sample=False):
     

@@ -33,6 +33,8 @@ def create_extension(with_cuda=False):
     include_dirs = [
         os.path.join(os.getcwd(), 'srcs/cpp/include')
     ]
+    print(include_dirs)
+    
     library_dirs = []
     libraries = []
     extra_cxx_flags = [

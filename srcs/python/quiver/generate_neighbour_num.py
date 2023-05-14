@@ -21,7 +21,7 @@ def generate_neighbour_num(node_num, edge_index, sizes, resultl_path, device_lis
             n_id, _, __ = sampler.sample(torch.tensor([node])) # GPU
             neighbour_num[node] = n_id.shape[0]
         
-        np.save(f'{resultl_path}{sizes[0]}_{sizes[1]}_neighbour_num_{reverse}.npy', neighbour_num)
+        np.save(f'{resultl_path}/{sizes[0]}_{sizes[1]}_neighbour_num_{reverse}.npy', neighbour_num)
     else:
         if  mode == 'GPU':
             parallel_generate_neighbour_num_GPU(node_num, edge_index, sizes, resultl_path, device_list, num_proc, reverse, sample)
@@ -55,7 +55,7 @@ def single_generate_neighbour_num(rank, node_num, csr_topo, num_proc, sizes, mod
         if node % 10000 == 0:
             print(f'Process {rank} has finished {100*(idx)/(end-start)}%;')
     np.place(neighbour_num, neighbour_num==0, (neighbour_num.sum() // num))
-    np.save(f'{resultl_path}{sizes[0]}_{sizes[1]}_neighbour_num_{rank}.npy', neighbour_num)
+    np.save(f'{resultl_path}/{sizes[0]}_{sizes[1]}_neighbour_num_{rank}.npy', neighbour_num)
     print(f'Process {rank} has finished')
     
 def parallel_generate_neighbour_num_GPU(node_num, edge_index, sizes, resultl_path, device_list, num_proc, reverse=False, sample=False):
@@ -70,10 +70,10 @@ def parallel_generate_neighbour_num_GPU(node_num, edge_index, sizes, resultl_pat
     )
     # torch.cuda.synchronize()
     for i in range(num_proc):
-        neighbour_num.append(np.load(f'{resultl_path}{sizes[0]}_{sizes[1]}_neighbour_num_{i}.npy'))
-        os.remove(f'{resultl_path}{sizes[0]}_{sizes[1]}_neighbour_num_{i}.npy')
+        neighbour_num.append(np.load(f'{resultl_path}/{sizes[0]}_{sizes[1]}_neighbour_num_{i}.npy'))
+        os.remove(f'{resultl_path}/{sizes[0]}_{sizes[1]}_neighbour_num_{i}.npy')
     neighbour_num = np.concatenate(neighbour_num, axis=0)
-    np.save(f'{resultl_path}{sizes[0]}_{sizes[1]}_neighbour_num_{reverse}.npy', neighbour_num)
+    np.save(f'{resultl_path}/{sizes[0]}_{sizes[1]}_neighbour_num_{reverse}.npy', neighbour_num)
     
 def parallel_generate_neighbour_num_CPU(node_num, edge_index, sizes, resultl_path, device_list, num_proc, reverse=False, sample=False):
     neighbour_num = []
@@ -89,7 +89,7 @@ def parallel_generate_neighbour_num_CPU(node_num, edge_index, sizes, resultl_pat
         p.join()
         
     for i in range(num_proc):
-        neighbour_num.append(np.load(f'{resultl_path}{sizes[0]}_{sizes[1]}_neighbour_num_{i}.npy'))
-        os.remove(f'{resultl_path}{sizes[0]}_{sizes[1]}_neighbour_num_{i}.npy')
+        neighbour_num.append(np.load(f'{resultl_path}/{sizes[0]}_{sizes[1]}_neighbour_num_{i}.npy'))
+        os.remove(f'{resultl_path}/{sizes[0]}_{sizes[1]}_neighbour_num_{i}.npy')
     neighbour_num = np.concatenate(neighbour_num, axis=0)
-    np.save(f'{resultl_path}{sizes[0]}_{sizes[1]}_neighbour_num_{reverse}.npy', neighbour_num)
+    np.save(f'{resultl_path}/{sizes[0]}_{sizes[1]}_neighbour_num_{reverse}.npy', neighbour_num)

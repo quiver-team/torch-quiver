@@ -12,7 +12,7 @@ sys.path.append(osp.abspath(osp.join(os.getcwd(),'../..'))) # For import src
 import time
 import numpy as np
 from quiver import RequestBatcher, HybridSampler
-from quiver import InferenceServer_Debug as InferenceServer
+
 import torch
 import quiver
 from model import SAGE
@@ -37,7 +37,8 @@ def test_request_from_local(rank, stream_queue, sizes, warmup_num):
 def test_request_from_local_preparation(rank, stream_queue, test_num, warmup_num):
     os.sched_setaffinity(0, [2*rank])
     np.random.seed(rank)
-    time.sleep(10)      
+    time.sleep(10)
+    
     batch_size_list = [2, 4, 6, 8, 10, 12, 24, 36, 48, 60, 128, 256]
     for batch_size in batch_size_list:
         for i in range(warmup_num):
@@ -47,6 +48,12 @@ def test_request_from_local_preparation(rank, stream_queue, test_num, warmup_num
         for i in range(test_num):
             tmp = np.random.randint(0, node_num, size=batch_size)
             stream_queue.put(torch.tensor(tmp))
+            
+def print_result(rank, result_queue, cpu_offset=0):
+    os.sched_setaffinity(0, [2*(cpu_offset+rank)])
+    while True:
+        result = result_queue.get()
+        print(result)
 
 if __name__ == "__main__":
     mp.set_sharing_strategy('file_system')
@@ -130,12 +137,25 @@ if __name__ == "__main__":
     sampler.start()
     sampled_queue_list = sampler.sampled_request_queue_list()
         
-    result_path = osp.join(sys.path[0], 'run_result')
-    server = InferenceServer(model_path=model_path, device_list=device_list, 
-                                x_feature=quiver_feature, task_queue_list=sampled_queue_list, 
+    result_path = osp.join(sys.path[0], 'result')
+    
+    # from quiver import InferenceServer_Debug as InferenceServer
+    # server = InferenceServer(model_path=model_path, device_list=device_list, 
+    #                             x_feature=quiver_feature, task_queue_list=sampled_queue_list, 
+    #                             sample_mode=sample_mode, csr_topo=csr_topo, sizes=sizes, uva_gpu=uva_gpu,
+    #                             result_path=result_path, exp_id=exp_id, ignord_length=ignord_length_per_proc,
+    #                             proc_num_per_device=proc_num_per_device)
+    
+    from quiver import InferenceServer
+    server = InferenceServer(model_path=model_path, device_list=device_list,
+                                x_feature=quiver_feature, task_queue_list=sampled_queue_list,
                                 sample_mode=sample_mode, csr_topo=csr_topo, sizes=sizes, uva_gpu=uva_gpu,
-                                result_path=result_path, exp_id=exp_id, ignord_length=ignord_length_per_proc,
-                                proc_num_per_device=proc_num_per_device, cpu_offset=cpu_offset)
+                                proc_num_per_device = proc_num_per_device)
+    result_queue_list = server.result_queue_list()
+    for idx in range(len(result_queue_list)):
+        proc = mp.Process(target=print_result, args=(idx, result_queue_list[idx], cpu_offset,))
+        proc.daemon = True
+        proc.start()
     
     if request_mode == 'Preparation':
         for idx in range(len(stream_input_queue_list)):

@@ -66,7 +66,7 @@ class quiver<T, CPU>
         const T n = row_ptr_.size();
         const T m = col_idx_.size();
 
-        std::cout<<"get num threads "<< at::get_num_threads()<<std::endl;
+        // std::cout<<"get num threads "<< at::get_num_threads()<<std::endl;
         
         at::parallel_for(0, bs, 1, [&](size_t start, size_t end){
             for(size_t i = start; i < end; i++){

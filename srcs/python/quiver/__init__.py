@@ -5,7 +5,7 @@ from . import multiprocessing
 from .utils import CSRTopo
 from .utils import Topo as p2pCliqueTopo
 from .utils import init_p2p
-from .utils import generate_neighbour_num
+from .generate_neighbour_num import generate_neighbour_num
 from .comm import NcclComm, getNcclId
 from .partition import quiver_partition_feature, load_quiver_feature_partition
 from .serving import RequestBatcher, HybridSampler, InferenceServer, InferenceServer_Debug

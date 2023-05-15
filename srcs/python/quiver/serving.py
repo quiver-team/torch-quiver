@@ -2,7 +2,7 @@ import torch.multiprocessing as mp
 import torch
 import numpy as np 
 import os
-import torch_quiver as qv
+from .pyg import GraphSageSampler
 import time
 
 __all__ = ["RequestBatcher", "HybridSampler", "InferenceServer", "InferenceServer_Debug"]
@@ -118,7 +118,7 @@ class HybridSampler(object):
             
     def cpu_sampler_worker_loop(self, rank, sample_task_queue_list, result_queue_list, device_num, sizes, csr_topo, cpu_offset):
         os.sched_setaffinity(0, [2*(cpu_offset+rank)])
-        cpu_sampler = qv.pyg.GraphSageSampler(csr_topo, sizes, device='cpu', mode='CPU')
+        cpu_sampler = GraphSageSampler(csr_topo, sizes, device='cpu', mode='CPU')
         print(f"CPU Sampler {rank} Start")   
         task_queue = sample_task_queue_list[rank % device_num]
         result_queue = result_queue_list[rank % device_num]
@@ -128,7 +128,6 @@ class HybridSampler(object):
             res = cpu_sampler.sample(tmp)
             result_queue.put((res, time.perf_counter()-start))
         
-        
     def sampled_request_queue_list(self):
         return [self.cpu_sampled_queue_list, self.gpu_batched_queue_list]
     
@@ -137,8 +136,7 @@ class InferenceServer(object):
     def __init__(self, model_path, 
                  device_list, x_feature, task_queue_list, 
                  sample_mode, csr_topo, sizes, ignord_length=100,
-                 result_path=None, exp_id=0, proc_num_per_device=0, 
-                 uva_gpu='GPU') -> None:
+                 proc_num_per_device=0, uva_gpu='GPU') -> None:
         self.cpu_sampled_queue_list = task_queue_list[0]
         self.model_path = model_path
         self.device_list = device_list
@@ -147,8 +145,6 @@ class InferenceServer(object):
         self.sample_mode = sample_mode
         self.csr_topo = csr_topo
         self.sizes = sizes
-        self.result_path = result_path
-        self.exp_id = exp_id
         self.ignord_length = ignord_length
         self.proc_num_per_device = proc_num_per_device
         self.uva_gpu = uva_gpu
@@ -188,7 +184,7 @@ class InferenceServer(object):
         rank_id = rank%len(device_list)
         device = f"cuda:{device_list[rank_id]}"
         gpu_sample_task_queue = gpu_sample_task_queue_list[rank_id]
-        gpu_sampler = qv.pyg.GraphSageSampler(csr_topo, sizes, device=device_list[rank_id], mode=sample_mode)
+        gpu_sampler = GraphSageSampler(csr_topo, sizes, device=device_list[rank_id], mode=sample_mode)
         print(f"GPU Sampler {rank} Start")
         model = torch.load(model_path).to(device)
         model.eval()
@@ -200,7 +196,7 @@ class InferenceServer(object):
                 n_id, batch_size, adjs = gpu_sampler.sample(sample_task)
                 x_input = feature[n_id].to(device)
                 out = model(x_input, adjs)
-                output_queue.put(out)
+                output_queue.put(out.cpu())
                     
     def cpu_sampler_inference_loop(self, rank, device_list, feature, cpu_sampled_queue_list, model_path, output_queue):
         rank_id = rank%len(device_list)
@@ -216,7 +212,7 @@ class InferenceServer(object):
                 adjs = [adj.to(device) for adj in adjs]
                 x_input = feature[n_id].to(device)
                 out = model(x_input, adjs)
-                output_queue.put(out)
+                output_queue.put(out.cpu())
         
     def result_queue_list(self):
         return self.output_queue_list
@@ -227,7 +223,7 @@ class InferenceServer_Debug(object):
                  device_list, x_feature, task_queue_list, 
                  sample_mode, csr_topo, sizes, ignord_length=100,
                  result_path=None, exp_id=0, proc_num_per_device=0, 
-                 uva_gpu='GPU', cpu_offset=0) -> None:
+                 uva_gpu='GPU') -> None:
         self.cpu_sampled_queue_list = task_queue_list[0]
         self.model_path = model_path
         self.device_list = device_list
@@ -241,7 +237,6 @@ class InferenceServer_Debug(object):
         self.ignord_length = ignord_length
         self.proc_num_per_device = proc_num_per_device
         self.uva_gpu = uva_gpu
-        self.cpu_offset = cpu_offset
         
     def start(self):
         num_proc = len(self.device_list) * self.proc_num_per_device
@@ -261,7 +256,6 @@ class InferenceServer_Debug(object):
         model_path, feature, gpu_sample_task_queue_list, 
         sample_mode, csr_topo, sizes, res_path, exp_id,
         num_proc, uva_gpu, ignord_length):
-        # os.sched_setaffinity(0, [2*(cpu_offset+rank)])
         if sample_mode == 'Auto':
             if rank < num_proc//2:
                 self.gpu_sampler_inference_loop(rank, device_list, feature, gpu_sample_task_queue_list, model_path, csr_topo, sizes, res_path, exp_id, uva_gpu, ignord_length)        
@@ -278,7 +272,7 @@ class InferenceServer_Debug(object):
         rank_id = rank%len(device_list)
         device = f"cuda:{device_list[rank_id]}"
         gpu_sample_task_queue = gpu_sample_task_queue_list[rank_id]
-        gpu_sampler = qv.pyg.GraphSageSampler(csr_topo, sizes, device=device_list[rank_id], mode=sample_mode)
+        gpu_sampler = GraphSageSampler(csr_topo, sizes, device=device_list[rank_id], mode=sample_mode)
         print(f"GPU Sampler {rank} Start")
         model = torch.load(model_path).to(device)
         model.eval()

@@ -128,7 +128,6 @@ class HybridSampler(object):
             res = cpu_sampler.sample(tmp)
             result_queue.put((res, time.perf_counter()-start))
         
-        
     def sampled_request_queue_list(self):
         return [self.cpu_sampled_queue_list, self.gpu_batched_queue_list]
     
@@ -137,8 +136,7 @@ class InferenceServer(object):
     def __init__(self, model_path, 
                  device_list, x_feature, task_queue_list, 
                  sample_mode, csr_topo, sizes, ignord_length=100,
-                 result_path=None, exp_id=0, proc_num_per_device=0, 
-                 uva_gpu='GPU') -> None:
+                 proc_num_per_device=0, uva_gpu='GPU') -> None:
         self.cpu_sampled_queue_list = task_queue_list[0]
         self.model_path = model_path
         self.device_list = device_list
@@ -147,8 +145,6 @@ class InferenceServer(object):
         self.sample_mode = sample_mode
         self.csr_topo = csr_topo
         self.sizes = sizes
-        self.result_path = result_path
-        self.exp_id = exp_id
         self.ignord_length = ignord_length
         self.proc_num_per_device = proc_num_per_device
         self.uva_gpu = uva_gpu
@@ -200,7 +196,7 @@ class InferenceServer(object):
                 n_id, batch_size, adjs = gpu_sampler.sample(sample_task)
                 x_input = feature[n_id].to(device)
                 out = model(x_input, adjs)
-                output_queue.put(out)
+                output_queue.put(out.cpu())
                     
     def cpu_sampler_inference_loop(self, rank, device_list, feature, cpu_sampled_queue_list, model_path, output_queue):
         rank_id = rank%len(device_list)
@@ -216,7 +212,7 @@ class InferenceServer(object):
                 adjs = [adj.to(device) for adj in adjs]
                 x_input = feature[n_id].to(device)
                 out = model(x_input, adjs)
-                output_queue.put(out)
+                output_queue.put(out.cpu())
         
     def result_queue_list(self):
         return self.output_queue_list
@@ -227,7 +223,7 @@ class InferenceServer_Debug(object):
                  device_list, x_feature, task_queue_list, 
                  sample_mode, csr_topo, sizes, ignord_length=100,
                  result_path=None, exp_id=0, proc_num_per_device=0, 
-                 uva_gpu='GPU', cpu_offset=0) -> None:
+                 uva_gpu='GPU') -> None:
         self.cpu_sampled_queue_list = task_queue_list[0]
         self.model_path = model_path
         self.device_list = device_list
@@ -241,7 +237,6 @@ class InferenceServer_Debug(object):
         self.ignord_length = ignord_length
         self.proc_num_per_device = proc_num_per_device
         self.uva_gpu = uva_gpu
-        self.cpu_offset = cpu_offset
         
     def start(self):
         num_proc = len(self.device_list) * self.proc_num_per_device
@@ -261,7 +256,6 @@ class InferenceServer_Debug(object):
         model_path, feature, gpu_sample_task_queue_list, 
         sample_mode, csr_topo, sizes, res_path, exp_id,
         num_proc, uva_gpu, ignord_length):
-        # os.sched_setaffinity(0, [2*(cpu_offset+rank)])
         if sample_mode == 'Auto':
             if rank < num_proc//2:
                 self.gpu_sampler_inference_loop(rank, device_list, feature, gpu_sample_task_queue_list, model_path, csr_topo, sizes, res_path, exp_id, uva_gpu, ignord_length)        

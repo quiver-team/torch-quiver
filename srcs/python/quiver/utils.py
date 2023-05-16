@@ -4,7 +4,6 @@ import torch
 import torch_quiver as torch_qv
 from typing import List
 
-
 def find_cliques(adj_mat, clique_res, remaining_nodes, potential_clique,
                  skip_nodes):
 
@@ -279,3 +278,6 @@ def parse_size(sz) -> int:
             if sz.upper().endswith(suf):
                 return int(float(sz[:-len(suf)]) * u)
     raise Exception("invalid size: {}".format(sz))
+
+
+    

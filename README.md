@@ -11,10 +11,65 @@ Quiver is a distributed graph learning library for [PyTorch Geometric](https://g
 
 [![Documentation Status](https://readthedocs.org/projects/torch-quiver/badge/?version=latest)](https://torch-quiver.readthedocs.io/en/latest/?badge=latest)
 
-
-<!-- **Quiver** is a high-performance GNN training add-on which can fully utilize the hardware to achive the best GNN trainning performance. By integrating Quiver into your GNN training pipeline with **just serveral lines of code change**, you can enjoy **much better end-to-end performance** and **much better scalability with multi-gpus**, you can even achieve **super linear scalability** if your GPUs are connected with NVLink, Quiver will help you make full use of NVLink. -->
-
 --------------------------------------------------------------------------------
+
+## Release 0.2.0 is out!
+
+In the latest release `torch-quiver==0.2.0`, we have added support for efficient GNN serving and faster feature collection.
+
+### High-throughput & Low-latency GNN Serving
+
+Quiver now supports efficient GNN serving. The serving API is simple and easy-to-use. For example, the following code snippet shows how to use Quiver to serve a GNN model:
+
+<!-- TODO: complete code -->
+
+```python
+from torch_geometric.datasets import Reddit
+from torch.multiprocessing import Queue
+from quiver import AutoBatch, ServingSampler, ServerInference
+
+
+# Define dataset and sampler
+dataset = Reddit(...)
+
+# Instantiate the auto batch component
+request_batcher = RequestBatcher(stream_input_queue, ...)
+# batched_request_queue_list = [cpu_batched_request_queue_list, gpu_batched_request_queue_list]
+batched_queue_list = request_batcher.batched_request_queue_list() 
+
+# Instantiate the sampler component
+hybrid_sampler = HybridSampler(dataset, batched_queue_list, ...)
+# sampled_request_queue_list = [cpu_sampled_request_queue_list, gpu_sampled_request_queue_list]
+sampled_queue_list = hybrid_sampler.sampled_request_queue_list()
+hybrid_sampler.start()
+
+# Instantiate the inference server component
+server = InferenceServer(model_path, dataset, sampled_queue_list, ...)
+# result_queue_list = [Queue, ..., Queue]
+result_queue_list = server.result_queue_list() 
+
+server.start()
+```
+
+A full example using Quiver to serve a GNN model with Reddit dataset on a single machine can be found [here](https://github.com/quiver-team/torch-quiver/examples/serving/reddit/reddit_serving.py).
+
+### Test Serving
+
+```cmd
+$ cd examples/serving
+$ python prepare_data.py
+$ python reddit_serving.py
+```
+
+### Key Idea
+
+Quiver's key idea is to exploit **workload metrics** for predicting the irregular computation of GNN requests, and governing the use of GPUs for graph sampling and feature aggregation: (1) for graph sampling, Quiver calculates the **probabilistic sampled graph size**, a metric that predicts the degree of parallelism in graph sampling. Quiver uses this metric to assign sampling tasks to GPUs only when the performance gains surpass CPU-based sampling; and (2) for feature aggregation, Quiver relies on the **feature access probability** to decide which features to partition and replicate across a distributed GPU NUMA topology. Quiver achieves up to 35$\times$ lower latency with a 8$\times$ higher throughput compared to state-of-the-art GNN approaches (DGL and PyG).
+
+Below is a figure that describes a benchmark that evaluates the performance of Quiver in serving situation, PyG (2.0.3) and [DGL](https://github.com/dmlc/dgl) (1.0.2) on a 2-GPU server that runs the [Reddit with GraphSage](http://snap.stanford.edu/graphsage/). 
+
+![Throughput vs. Latency of GNN request serving](docs/serving/tp99.png)
+
+---
 
 ## Why Quiver?
 
@@ -34,6 +89,23 @@ If you are a GNN researcher or you are a `PyG`'s or `DGL`'s user and you are suf
 <!-- * **Easy-to-use and unified API**:
 Integrate Quiver into your training pipeline in `PyG` or `DGL` is just a matter of several lines of code change. We've also implemented IPC mechanism which makes it also a piece of cake to use Quiver to speedup your multi-gpu GNN model training (see the next section for a [quick tour](#quick-tour-for-new-users)).  -->
 
+### Faster Feature Aggregation
+
+Feature aggregation is one of the performance bottleneck of GNN systems. Quiver enables faster feature aggregation with the following techniques:
+
+- Quiver uses the **feature access probability** metric to place popular features strategically on GPUs. A primary objective of feature placement is to
+enable GPUs to take advantage of low-latency connectivity,
+such as NVLink and InfiniBand, to their peer GPUs. This
+allows GPUs to achieve low-latency access to features when
+aggregating features.
+
+- Quiver uses GPU kernels that can leverage efficient one-sided
+reads to access remote features over NVLink/InfiniBand.
+
+More details of our feature aggregation techniques can be found in our repo [quiver-feature](https://github.com/quiver-team/quiver-feature).
+
+<!-- **Quiver** is a high-performance GNN training add-on which can fully utilize the hardware to achive the best GNN trainning performance. By integrating Quiver into your GNN training pipeline with **just serveral lines of code change**, you can enjoy **much better end-to-end performance** and **much better scalability with multi-gpus**, you can even achieve **super linear scalability** if your GPUs are connected with NVLink, Quiver will help you make full use of NVLink. -->
+
 Below is a chart that describes a benchmark that evaluates the performance of Quiver, PyG (2.0.1) and [DGL](https://github.com/dmlc/dgl) (0.7.0) on a 4-GPU server that runs the [Open Graph Benchmark](https://ogb.stanford.edu/). 
 
 ![e2e_benchmark](docs/multi_medias/imgs/benchmark_e2e_performance-min.png)
@@ -42,15 +114,17 @@ We will add multi-node result soon.
 
 For system design details, see Quiver's [design overview](docs/Introduction_en.md) (Chinese version: [设计简介](docs/Introduction_cn.md)).
 
+
 ## Install
 
 ----
-### Pip Install
+### Install Dependence
 
 To install Quiver:
   1. Install [Pytorch](https://pytorch.org/get-started/locally/)
   2. Install [PyG](https://github.com/pyg-team/pytorch_geometric)
-  3. Install the `Quiver` pip package
+   
+### Pip Install
 
 ```cmd
 $ pip install torch-quiver
@@ -66,6 +140,13 @@ We have tested Quiver with the following setup:
 |-------------|---------|---------|
 | **Ubuntu**   | ✅      | ✅      | -->
 
+### Install From Source
+
+```cmd
+$ git clone https://github.com/quiver-team/torch-quiver.git && cd torch-quiver
+$ QUIVER_ENABLE_CUDA=1 python setup.py install
+```
+
 ### Test Install
 
 You can download Quiver's examples to test installation:
@@ -80,14 +161,14 @@ A successful run should contain the following line:
 `Epoch xx, Loss: xx.yy, Approx. Train: xx.yy`
 
 
-### Install from source
+<!-- ### Install from source
 
 To build Quiver from source:
 
 ```cmd
 $ git clone git@github.com:quiver-team/torch-quiver.git && cd torch-quiver
 $ sh ./install.sh
-```
+``` -->
 
 ### Use Quiver with Docker
 
@@ -184,7 +265,20 @@ Quiver is released under the Apache 2.0 license.  -->
 
 ## Community
 
-We welcome contributors to join the development of Quiver. Quiver is currently maintained by researchers from the [University of Edinburgh](https://www.ed.ac.uk/), [Imperial College London](https://www.imperial.ac.uk/), [Tsinghua University](https://www.tsinghua.edu.cn/en/index.htm) and [University of Waterloo](https://uwaterloo.ca/). The development of Quiver has received the support from [Alibaba](https://github.com/alibaba) and [Lambda Labs](https://lambdalabs.com/). 
+We welcome contributors to join the development of Quiver. Quiver is currently maintained by researchers from the [University of Edinburgh](https://www.ed.ac.uk/), [Imperial College London](https://www.imperial.ac.uk/), [Tsinghua University](https://www.tsinghua.edu.cn/en/index.htm) and [University of Waterloo](https://uwaterloo.ca/). The development of Quiver has received the support from [Alibaba](https://github.com/alibaba) and [Lambda Labs](https://lambdalabs.com/).
+
+## Citation
+
+<!--TODO: complete citation-->
+If you find the design of Quiver useful or use Quiver in your work, please cite Quiver with the bibtex below:
+```bibtex
+@misc{quiver2023,
+    author = {},
+    title = {},
+    journal={arXiv preprint arXiv:},
+    year = {2023}
+}
+```
 
 <!-- ## Architecture Overview
 Key reasons behind Quiver's high performance are that it provides two key components: `quiver.Feature` and `quiver.Sampler`.

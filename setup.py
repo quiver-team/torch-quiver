@@ -18,20 +18,23 @@ def find_cuda():
 
 
 def have_cuda():
-    if os.getenv('QUIVER_ENABLE_CUDA') == 1: return True
+    if os.getenv('QUIVER_ENABLE_CUDA') == '1': return True
     import torch
     return torch.cuda.is_available()
 
 
 def create_extension(with_cuda=False):
+    print('Building torch_quiver with CUDA:', with_cuda)
     srcs = []
     srcs += glob.glob('srcs/cpp/src/quiver/*.cpp')
     srcs += glob.glob('srcs/cpp/src/quiver/cpu/*.cpp')
     srcs += glob.glob('srcs/cpp/src/quiver/torch/*.cpp')
 
     include_dirs = [
-        os.path.join(os.path.dirname(__file__), './srcs/cpp/include')
+        os.path.join(os.getcwd(), 'srcs/cpp/include')
     ]
+    print(include_dirs)
+    
     library_dirs = []
     libraries = []
     extra_cxx_flags = [
@@ -58,7 +61,7 @@ def create_extension(with_cuda=False):
         include_dirs=include_dirs,
         library_dirs=library_dirs,
         libraries=libraries,
-        with_cuda=with_cuda,
+        # with_cuda=with_cuda,
         extra_compile_args={
             'cxx': extra_cxx_flags,
             'nvcc': ['-O3', '--expt-extended-lambda', '-lnuma'],

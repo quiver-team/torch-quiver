@@ -56,7 +56,7 @@ A full example using Quiver to serve a GNN model with Reddit dataset on a single
 ### Test Serving
 
 ```cmd
-$ cd examples/serving
+$ cd examples/serving/reddit
 $ python prepare_data.py
 $ python reddit_serving.py
 ```

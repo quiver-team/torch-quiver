@@ -12,7 +12,7 @@ from scipy.sparse import csr_matrix
 from pathlib import Path
 
 import quiver
-from quiver.partition import partition_with_replication, partition_without_replication, select_nodes
+from quiver.partition import partition_without_replication, select_nodes
 
 # data_root = "/data/papers/ogbn_papers100M/raw/"
 # label = np.load(osp.join(data_root, "node-label.npz"))

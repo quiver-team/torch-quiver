@@ -180,7 +180,7 @@ def run(rank, world_size, quiver_sampler, quiver_feature, y, train_idx,
 
 
 if __name__ == '__main__':
-    root = "/data/papers/"
+    root = "/data"
     world_size = torch.cuda.device_count()
     dataset = Paper100MDataset(root, 0.15 * min(world_size, 4))
 

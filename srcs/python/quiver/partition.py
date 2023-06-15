@@ -10,6 +10,7 @@ __all__ = [
 ]
 
 QUIVER_MAGIC_NUMBER = 256
+CHUNK_NUM = 32
 
 
 def partition_without_replication(device, probs, ids):

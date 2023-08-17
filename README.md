@@ -273,9 +273,9 @@ We welcome contributors to join the development of Quiver. Quiver is currently m
 If you find the design of Quiver useful or use Quiver in your work, please cite Quiver with the bibtex below:
 ```bibtex
 @misc{quiver2023,
-    author = {},
-    title = {},
-    journal={arXiv preprint arXiv:},
+    author = {Zeyuan Tan, Xiulong Yuan, Congjie He, Man-Kit Sit, Guo Li, Xiaoze Liu, Baole Ai, Kai Zeng, Peter Pietzuch and Luo Mai},
+    title = {Quiver: Supporting GPUs for Low-Latency, High-Throughput GNN Serving with Workload Awareness},
+    eprint={2305.10863},
     year = {2023}
 }
 ```

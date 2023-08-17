@@ -7,7 +7,7 @@ import os.path as osp
 from torch_sparse import SparseTensor
 import time
 import numpy as np
-from quiver.partition import partition_with_replication, partition_without_replication, select_nodes
+from quiver.partition import partition_without_replication, select_nodes
 
 SCALE = 1
 GPU_CACHE_GB = 8

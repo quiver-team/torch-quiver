@@ -11,7 +11,9 @@ class RequestBatcher(object):
     def __init__(self, device_num, stream_queue_list,
                  input_proc_per_device, sample_mode='GPU', request_mode='CPU',
                  threshold=800, batch_time_limit=10, fixed_batch_size=512,
-                 neighbour_path=None, cpu_offset=0) -> None:
+
+                 neighbour_path=None, cpu_range=[]) -> None:
+
         
         self.cpu_batched_queue_list = [mp.Manager().Queue() for i in range(device_num)]
         self.gpu_batched_queue_list = [mp.Manager().Queue() for i in range(device_num)]
@@ -24,7 +26,8 @@ class RequestBatcher(object):
         self.fixed_batch_size = fixed_batch_size
         self.neighbour_path = neighbour_path
         self.request_mode = request_mode
-        self.cpu_offset = cpu_offset
+        self.cpu_range = cpu_range
+
                 
         if sample_mode == 'Auto':
             for i in range(input_proc_per_device * device_num):
@@ -36,7 +39,10 @@ class RequestBatcher(object):
                 child_process.start()
             
     def fixed_despatch(self, idx):
-        os.sched_setaffinity(0, [2*(self.cpu_offset+idx)])
+
+        if len(self.cpu_range) > 0:
+            os.sched_setaffinity(0, [self.cpu_range[idx%len(self.cpu_range)]])
+
         stream_queue = self.stream_queue_list[idx]
         if self.sample_mode == 'CPU':
             batched_queue = self.cpu_batched_queue_list[idx % self.device_num]
@@ -64,7 +70,11 @@ class RequestBatcher(object):
     #             batched_queue.put(item) 
         
     def auto_despatch(self, idx):
-        os.sched_setaffinity(0, [2*(self.cpu_offset+idx)])
+
+        if len(self.cpu_range) > 0:
+            os.sched_setaffinity(0, [self.cpu_range[idx%len(self.cpu_range)]])
+            
+
         stream_queue = self.stream_queue_list[idx]
         gpu_batched_queue = self.gpu_batched_queue_list[idx % self.device_num]
         cpu_batched_queue = self.cpu_batched_queue_list[idx % self.device_num]
@@ -95,11 +105,13 @@ class HybridSampler(object):
                  device_num,
                  worker_num_per_device,
                  batched_queue_list,
-                 cpu_offset=0):
+
+                 cpu_range=[]):
         
         self.csr_topo = csr_topo
         self.csr_topo.share_memory_()
-        self.cpu_offset = cpu_offset
+        self.cpu_range = cpu_range
+
         self.device_num = device_num
         self.cpu_num_workers = device_num * worker_num_per_device
         self.sizes = sizes
@@ -112,12 +124,15 @@ class HybridSampler(object):
         
         for i in range(self.cpu_num_workers):
             child_process = mp.Process(target=self.cpu_sampler_worker_loop, 
-                                       args=(i, self.cpu_batched_queue_list, self.cpu_sampled_queue_list, self.device_num, self.sizes, self.csr_topo, self.cpu_offset))
+
+                                       args=(i, self.cpu_batched_queue_list, self.cpu_sampled_queue_list, self.device_num, self.sizes, self.csr_topo,))
             child_process.daemon = True
             child_process.start()
             
-    def cpu_sampler_worker_loop(self, rank, sample_task_queue_list, result_queue_list, device_num, sizes, csr_topo, cpu_offset):
-        os.sched_setaffinity(0, [2*(cpu_offset+rank)])
+    def cpu_sampler_worker_loop(self, rank, sample_task_queue_list, result_queue_list, device_num, sizes, csr_topo):
+        if len(self.cpu_range) > 0:
+            os.sched_setaffinity(0, [self.cpu_range[rank%len(self.cpu_range)]])
+
         cpu_sampler = GraphSageSampler(csr_topo, sizes, device='cpu', mode='CPU')
         print(f"CPU Sampler {rank} Start")   
         task_queue = sample_task_queue_list[rank % device_num]

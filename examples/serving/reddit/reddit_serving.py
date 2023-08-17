@@ -17,8 +17,11 @@ import torch
 import quiver
 from model import SAGE
         
-def test_request_from_local(rank, stream_queue, sizes, warmup_num):
-    os.sched_setaffinity(0, [2*rank])
+
+def test_request_from_local(rank, stream_queue, sizes, warmup_num, cpu_range=[]):
+    if len(cpu_range) > 0:
+        os.sched_setaffinity(0, [cpu_range[rank%len(cpu_range)]])
+
     np.random.seed(rank)
     time.sleep(10)
 
@@ -34,8 +37,11 @@ def test_request_from_local(rank, stream_queue, sizes, warmup_num):
         batch = workload[i]
         stream_queue.put(torch.tensor(batch))
     
-def test_request_from_local_preparation(rank, stream_queue, test_num, warmup_num):
-    os.sched_setaffinity(0, [2*rank])
+
+def test_request_from_local_preparation(rank, stream_queue, test_num, warmup_num, cpu_range=[]):
+    if len(cpu_range) > 0:
+        os.sched_setaffinity(0, [cpu_range[rank%len(cpu_range)]])
+
     np.random.seed(rank)
     time.sleep(10)
     
@@ -49,8 +55,9 @@ def test_request_from_local_preparation(rank, stream_queue, test_num, warmup_num
             tmp = np.random.randint(0, node_num, size=batch_size)
             stream_queue.put(torch.tensor(tmp))
             
-def print_result(rank, result_queue, cpu_offset=0):
-    os.sched_setaffinity(0, [2*(cpu_offset+rank)])
+
+def print_result(rank, result_queue):
+
     while True:
         result = result_queue.get()
         print(result)
@@ -61,6 +68,9 @@ if __name__ == "__main__":
     
     dataset_nm = 'reddit'
     device_list = [0, 1]
+
+    cpu_num = 56
+
     proc_num_per_device = 2
     input_proc_per_device = 4
     CPU_sampler_per_device = 4
@@ -118,21 +128,28 @@ if __name__ == "__main__":
     quiver_feature.from_cpu_tensor(data.x)
     print("Data load finished")
     
-    cpu_offset = device_num*input_proc_per_device 
+
+    cpu_offset = 0
+    cpu_range = [2*i%cpu_num + (2*i//cpu_num)%2 for i in range(cpu_offset, cpu_offset+device_num*input_proc_per_device)]
+    cpu_offset = device_num*input_proc_per_device
+
     
     stream_input_queue_list = [mp.Manager().Queue() for i in range(device_num*input_proc_per_device)]
     request_batcher = RequestBatcher(device_num=device_num, stream_queue_list=stream_input_queue_list, 
                            input_proc_per_device=input_proc_per_device, 
                            sample_mode=sample_mode, request_mode=request_mode, threshold=threshold, 
-                           neighbour_path=neighbour_path, cpu_offset=cpu_offset)
-    batched_queue_list = request_batcher.batched_request_queue_list()
-    cpu_offset = cpu_offset + device_num*input_proc_per_device
-    
 
+                           neighbour_path=neighbour_path, cpu_range=cpu_range)
+    batched_queue_list = request_batcher.batched_request_queue_list()
+    
+    cpu_range = [2*i%cpu_num + (2*i//cpu_num)%2 for i in range(cpu_offset, cpu_offset+device_num*CPU_sampler_per_device)]
+    cpu_offset = cpu_offset + device_num*CPU_sampler_per_device
+    
     sampler = HybridSampler(sizes=sizes, csr_topo=csr_topo, device_num=device_num, 
                              worker_num_per_device=CPU_sampler_per_device,
                              batched_queue_list=batched_queue_list,
-                             cpu_offset=cpu_offset)
+                             cpu_range=cpu_range)
+
     cpu_offset = cpu_offset + device_num*CPU_sampler_per_device
     sampler.start()
     sampled_queue_list = sampler.sampled_request_queue_list()
@@ -153,18 +170,24 @@ if __name__ == "__main__":
                                 proc_num_per_device = proc_num_per_device)
     result_queue_list = server.result_queue_list()
     for idx in range(len(result_queue_list)):
-        proc = mp.Process(target=print_result, args=(idx, result_queue_list[idx], cpu_offset,))
+
+        proc = mp.Process(target=print_result, args=(idx, result_queue_list[idx],))
         proc.daemon = True
         proc.start()
+        
+    cpu_range = [2*i%cpu_num + (2*i//cpu_num)%2 for i in range(cpu_offset, cpu_offset+len(stream_input_queue_list))]
     
     if request_mode == 'Preparation':
         for idx in range(len(stream_input_queue_list)):
-            proc = mp.Process(target=test_request_from_local_preparation, args=(idx, stream_input_queue_list[idx], test_num, warmup_num,))
+            proc = mp.Process(target=test_request_from_local_preparation, args=(idx, stream_input_queue_list[idx], test_num, warmup_num, cpu_range, ))
+
             proc.daemon = True
             proc.start()
     else:
         for idx in range(len(stream_input_queue_list)):
-            proc = mp.Process(target=test_request_from_local, args=(idx, stream_input_queue_list[idx], sizes, warmup_num))
+
+            proc = mp.Process(target=test_request_from_local, args=(idx, stream_input_queue_list[idx], sizes, warmup_num, cpu_range, ))
+
             proc.daemon = True
             proc.start()
         

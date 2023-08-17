@@ -259,17 +259,17 @@ def preprocess(data_path, host, host_size, p2p_group, p2p_size):
 #     t4 = time.time()
 #     print(f'order {t4 - t3}')
 
-# def init_feat(host, host_size, p2p_group, p2p_size):
-#     t = torch.zeros((cpu_size, 768 * SCALE))
-#     torch.save(t, f'/mnt/data/mag/{host_size}h/cpu_feat{host}.pt')
-#     del t
-#     gpu_size = GPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * SCALE * 4)
-#     cpu_size = CPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * SCALE * 4)
-#     for gpu in range(p2p_size):
-#         t = torch.zeros((gpu_size, 768 * SCALE))
-#         torch.save(t, f'/mnt/data/mag/{host_size}h/gpu_feat{host}_{gpu}.pt')
-#         del t
+def init_feat(host, host_size, p2p_group, p2p_size):
+    t = torch.zeros((cpu_size, 768 * SCALE))
+    torch.save(t, f'/mnt/data/mag/{host_size}h/cpu_feat{host}.pt')
+    del t
+    gpu_size = GPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * SCALE * 4)
+    cpu_size = CPU_CACHE_GB * 1024 * 1024 * 1024 // (768 * SCALE * 4)
+    for gpu in range(p2p_size):
+        t = torch.zeros((gpu_size, 768 * SCALE))
+        torch.save(t, f'/mnt/data/mag/{host_size}h/gpu_feat{host}_{gpu}.pt')
+        del t
 
 preprocess('/data/mag', 0, 1, 2, 4)
 # preprocess_unbalance(0, 1, 2, 4)
-# init_feat(0, 1, 2, 4)
+init_feat(0, 1, 2, 4)
